@@ -1,0 +1,10 @@
+import {
+  "moonbitlang/core/encoding/utf8",
+}
+
+supported_targets = "-all+native"
+
+options(
+  "native-stub": [ "platform.c", "pty.c" ],
+  link: { "native": { "cc-link-flags": "-lcrypto" } },
+)

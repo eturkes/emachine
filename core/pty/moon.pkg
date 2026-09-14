@@ -1,0 +1,16 @@
+import {
+  "moonbit-community/pty" @system_pty,
+  "moonbitlang/async",
+  "moonbitlang/async/io",
+  "moonbitlang/core/env",
+}
+
+import {
+  "eturkes/emachine/native",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/core/encoding/utf8",
+} for "test"
+
+supported_targets = "-all+native"
+options(link: { "native": { "cc-link-flags": "-lcrypto" } })

@@ -1,0 +1,70 @@
+{
+  "name": "emachine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A personal, multi-machine project command center",
+  "author": "eturkes",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "packageManager": "pnpm@11.26.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build:server": "cd core && moon build --target native --release",
+    "build:web": "node scripts/icons.mjs && vite build --config web/vite.config.ts && node scripts/service-worker.mjs",
+    "build": "pnpm build:server && pnpm build:web",
+    "check": "tsc --noEmit && cd core && moon check --target native",
+    "test:core": "cd core && moon test --target native",
+    "test:network": "node --test tests/network.test.mjs",
+    "test:web": "playwright test --config tests/playwright.config.ts",
+    "desktop": "electron .",
+    "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"
+  },
+  "devDependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-next": "5.3.0",
+    "@fontsource/iosevka": "5.3.0",
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.5.1",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "sharp": "0.35.4",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  },
+  "build": {
+    "appId": "com.eturkes.emachine",
+    "productName": "emachine",
+    "directories": {
+      "output": "desktop/release"
+    },
+    "files": [
+      "desktop/*.cjs",
+      "desktop/auth.html",
+      "web/dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development",
+      "icon": "web/public/icons/512.png"
+    },
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "artifactName": "emachine-${version}-${arch}.${ext}"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "sharp"
+    ]
+  }
+}

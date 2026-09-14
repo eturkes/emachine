@@ -1,0 +1,13 @@
+import {
+  "eturkes/emachine/model",
+  "eturkes/emachine/native",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/io",
+  "moonbitlang/async/process",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+}
+
+supported_targets = "-all+native"
+options(link: { "native": { "cc-link-flags": "-lcrypto" } })
