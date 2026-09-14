@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "eturkes/emachine/pty"
+
+import {
+  "moonbitlang/async",
+}
+
+// Values
+pub async fn[G] spawn(@async.TaskGroup[G], String, String, String, String, Int, Int, extra_env? : Map[String, String]) -> Pty
+
+// Errors
+
+// Types and methods
+pub struct Pty {
+  // private fields
+}
+pub fn Pty::close(Self) -> Unit
+pub async fn Pty::read(Self) -> Bytes
+pub fn Pty::resize(Self, Int, Int) -> Unit raise
+pub async fn Pty::wait(Self) -> Int
+pub async fn Pty::write(Self, Bytes) -> Unit
+
+// Type aliases
+
+// Traits

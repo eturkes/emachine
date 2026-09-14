@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "eturkes/emachine/native"
+
+// Values
+pub fn close_descriptor(Int) -> Unit
+
+pub fn file_identity(String) -> String raise
+
+pub fn hostname() -> String raise
+
+pub fn now_ms() -> Int64
+
+pub fn open_pty(Int, Int) -> (Int, String) raise
+
+pub fn random_id() -> String raise
+
+pub fn resize_pty(Int, Int, Int) -> Unit raise
+
+pub fn secure_equal(String, String) -> Bool
+
+pub fn sha256(Bytes) -> String raise
+
+pub fn sync_directory(String) -> Unit raise
+
+// Errors
+pub suberror NativeError {
+  NativeError(String)
+}
+
+// Types and methods
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,64 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "eturkes/emachine/features"
+
+import {
+  "eturkes/emachine/model",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub async fn activate(@model.Config, @model.Project, String) -> @model.Feature
+
+pub async fn active(@model.Config, String) -> Array[Receipt]
+
+pub async fn begin(@model.Config, @model.Project, String) -> String
+
+pub async fn checkpoint(@model.Config, @model.Project, String) -> String
+
+pub async fn create(@model.Config, @model.Project, String, String) -> String
+
+pub async fn fingerprint(@model.Project, Manifest) -> String
+
+pub async fn get_active(@model.Config, String, String) -> Receipt
+
+pub async fn inventory(@model.Config) -> @model.State
+
+pub async fn lock_project(@model.Config, String) -> @fs.File
+
+pub async fn mark_fresh(@model.Config, @model.Project, Receipt, String) -> Unit
+
+pub fn parse_manifest(Json) -> Manifest raise
+
+pub async fn remove(@model.Config, @model.Project, String) -> Unit
+
+pub async fn restore(@model.Config, @model.Project, String, String) -> Unit
+
+pub fn state_path(@model.Config, String, String) -> String raise
+
+pub async fn tail_text(String, maximum? : Int) -> String
+
+// Errors
+
+// Types and methods
+pub(all) struct Manifest {
+  id : String
+  title : String
+  entry : String
+  output : String
+  build : Array[String]
+  refresh : String
+  watch : Array[String]
+  actions : Map[String, Array[String]]
+  buildTimeoutMs : Int
+} derive(ToJson, @json.FromJson)
+
+pub(all) struct Receipt {
+  feature : @model.Feature
+  manifest : Manifest
+  inputs : String
+} derive(ToJson, @json.FromJson)
+
+// Type aliases
+
+// Traits

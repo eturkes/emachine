@@ -1,7 +1,11 @@
 ///|
 test "feature identifiers and relative paths" {
-  for id in ["a", "source-map", "pipeline2"] { assert_true(@model.valid_id(id)) }
-  for id in ["", "../x", "A", "a/b", "a b", "日本", "-x"] { assert_false(@model.valid_id(id)) }
+  for id in ["a", "source-map", "pipeline2"] {
+    assert_true(@model.valid_id(id))
+  }
+  for id in ["", "../x", "A", "a/b", "a b", "日本", "-x"] {
+    assert_false(@model.valid_id(id))
+  }
   assert_true(@model.safe_relative("assets/main.js"))
   for path in ["/etc/passwd", "../x", "a/../x", "a//b", "a\\b", "a\x00b"] {
     assert_false(@model.safe_relative(path))

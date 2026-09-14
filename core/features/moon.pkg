@@ -10,4 +10,7 @@ import {
 }
 
 supported_targets = "-all+native"
-options(link: { "native": { "cc-link-flags": "-lcrypto" } })
+
+options(
+  link: { "native": { "cc-link-flags": "-lcrypto" } },
+)

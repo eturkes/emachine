@@ -5,7 +5,11 @@ pub suberror NativeError {
 
 ///|
 #borrow(data, out)
-extern "C" fn digest_ffi(data : Bytes, len : Int, out : FixedArray[Byte]) -> Int = "em_sha256"
+extern "C" fn digest_ffi(
+  data : Bytes,
+  len : Int,
+  out : FixedArray[Byte],
+) -> Int = "em_sha256"
 
 ///|
 #borrow(out)
@@ -24,7 +28,11 @@ extern "C" fn hostname_ffi(out : FixedArray[Byte], len : Int) -> Int = "em_hostn
 
 ///|
 #borrow(path, out)
-extern "C" fn identity_ffi(path : Bytes, out : FixedArray[Byte], len : Int) -> Int = "em_identity"
+extern "C" fn identity_ffi(
+  path : Bytes,
+  out : FixedArray[Byte],
+  len : Int,
+) -> Int = "em_identity"
 
 ///|
 #borrow(path)
@@ -32,14 +40,18 @@ extern "C" fn sync_dir_ffi(path : Bytes) -> Int = "em_sync_dir"
 
 ///|
 fn check(code : Int, operation : String) -> Unit raise {
-  if code != 0 { raise NativeError("\{operation}: errno \{code}") }
+  if code != 0 {
+    raise NativeError("\{operation}: errno \{code}")
+  }
 }
 
 ///|
 fn c_string(value : String) -> Bytes {
   let bytes = @utf8.encode(value)
   let out : FixedArray[Byte] = FixedArray::make(bytes.length() + 1, 0)
-  for i = 0; i < bytes.length(); i = i + 1 { out[i] = bytes[i] }
+  for i = 0; i < bytes.length(); i = i + 1 {
+    out[i] = bytes[i]
+  }
   out.unsafe_reinterpret_as_bytes()
 }
 
@@ -58,7 +70,9 @@ fn hex(data : Bytes) -> String {
 ///|
 fn from_c_string(data : FixedArray[Byte]) -> String {
   let mut length = 0
-  while length < data.length() && data[length] != 0 { length = length + 1 }
+  while length < data.length() && data[length] != 0 {
+    length = length + 1
+  }
   @utf8.decode_lossy(data.unsafe_reinterpret_as_bytes()[:length])
 }
 
@@ -104,7 +118,13 @@ pub fn sync_directory(path : String) -> Unit raise {
 
 ///|
 #borrow(out, slave)
-extern "C" fn pty_open_ffi(cols : Int, rows : Int, out : FixedArray[Int], slave : FixedArray[Byte], capacity : Int) -> Int = "em_pty_open"
+extern "C" fn pty_open_ffi(
+  cols : Int,
+  rows : Int,
+  out : FixedArray[Int],
+  slave : FixedArray[Byte],
+  capacity : Int,
+) -> Int = "em_pty_open"
 
 ///|
 extern "C" fn pty_resize_ffi(fd : Int, cols : Int, rows : Int) -> Int = "em_pty_resize"

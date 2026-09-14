@@ -1,0 +1,36 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "eturkes/emachine/server"
+
+import {
+  "eturkes/emachine/model",
+  "moonbitlang/async/http",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn authorized(@model.Config, Map[@http.CaseInsensitiveString, String], Bool) -> Bool
+
+pub fn dimension(String, String, Int) -> Int
+
+pub async fn serve(@model.Config) -> Unit
+
+pub fn valid_revision(String) -> Bool
+
+// Errors
+
+// Types and methods
+type Exchange
+
+type Job derive(ToJson, @json.FromJson)
+
+type Packet
+
+type Peer
+
+type Room
+
+type Runtime
+
+// Type aliases
+
+// Traits

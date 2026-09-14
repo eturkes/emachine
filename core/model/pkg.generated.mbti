@@ -1,0 +1,118 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "eturkes/emachine/model"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub async fn atomic_json(String, Json) -> Unit
+
+pub fn basename(String) -> String
+
+pub fn content_type(String) -> String
+
+pub async fn discover(Config) -> Array[Project]
+
+pub async fn ensure_dir(String) -> Unit
+
+pub fn feature_data(Config, String, String) -> String raise
+
+pub fn field(Json, String) -> Json
+
+pub async fn future_path(String) -> String
+
+pub async fn initialize(Config) -> Unit
+
+pub fn int_field(Json, String, fallback? : Int) -> Int
+
+pub fn is_within(String, String) -> Bool
+
+pub async fn load_config() -> Config
+
+pub fn machine(Config) -> Machine
+
+pub fn parent(String) -> String
+
+pub fn project_data(Config, String) -> String raise
+
+pub async fn read_json(String) -> Json
+
+pub async fn resolve_project(Config, String) -> Project
+
+pub async fn safe_file(String, String) -> String
+
+pub fn safe_relative(String) -> Bool
+
+pub fn string_array(Json) -> Array[String] raise
+
+pub fn string_field(Json, String, fallback? : String) -> String
+
+pub fn test_config(String) -> Config
+
+pub fn url_decode(String) -> String raise
+
+pub fn valid_id(String) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) struct Config {
+  port : Int
+  projectRoot : String
+  dataRoot : String
+  stateRoot : String
+  runtimeRoot : String
+  webRoot : String
+  machineName : String
+  allowedUsers : Array[String]
+  allowedOrigins : Array[String]
+  directUrl : String
+  gatewayUrl : String
+  gatewaySecret : String
+  snapshotBackend : String
+  shell : String
+  mut machineId : String
+} derive(ToJson)
+
+pub(all) struct Diagnostic {
+  feature : String
+  message : String
+  updatedAt : Double
+} derive(ToJson, @json.FromJson)
+
+pub(all) struct Feature {
+  id : String
+  title : String
+  revision : String
+  entry : String
+  status : String
+  updatedAt : Double
+} derive(ToJson, @json.FromJson)
+
+pub(all) struct Machine {
+  id : String
+  name : String
+  version : String
+  projectRoot : String
+} derive(ToJson, @json.FromJson)
+
+pub(all) struct Project {
+  id : String
+  name : String
+  path : String
+  mut features : Array[Feature]
+  mut diagnostics : Array[Diagnostic]
+} derive(ToJson, @json.FromJson)
+
+type RegistryEntry derive(ToJson, @json.FromJson)
+
+pub(all) struct State {
+  protocol : Int
+  machine : Machine
+  projects : Array[Project]
+} derive(ToJson, @json.FromJson)
+
+// Type aliases
+
+// Traits
