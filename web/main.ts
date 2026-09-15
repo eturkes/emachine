@@ -5,6 +5,7 @@ import './style.css';
 import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
 import { attachAppUpdates } from './updates';
+import { attachInterfaceUpdates } from './interface';
 
 const $ = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const element = document.createElement(tag); element.className = className; element.textContent = text; return element;
@@ -44,6 +45,7 @@ const connectionBadge = $('span', 'connection-badge');
 const jobButton = button('Jobs', () => showJobs(), 'text-button'); jobButton.hidden = true;
 const themeButton = button('◐', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'icon', 'Change color theme');
 const actions = $('div', 'header-actions'); actions.append(connectionBadge, jobButton, button('⌘', () => openPalette(), 'icon', 'Open command palette, Control or Command Shift P'), themeButton, button('⚙', () => openSettings(), 'icon', 'Machine settings'));
+attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
 attachAppUpdates(actions, dialog);
 tabHeader.append(mobileMenu, tabs, actions);
 const contextBar = $('div', 'context-bar');
@@ -279,3 +281,5 @@ void fleet.start().catch(error => notice(String(error)));
 if ('serviceWorker' in navigator && ['https:', 'http:'].includes(location.protocol)) {
   navigator.serviceWorker.register(new URL('./sw.js', location.href), { scope: './' }).catch(() => {});
 }
+// Only a fully initialized shell confirms a staged UI; the preload binds this to its document.
+void window.emachineInterface?.ready().catch(() => {});

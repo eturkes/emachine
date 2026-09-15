@@ -13,6 +13,21 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await b?.close(); await a?.close(); });
 
+test('reloading restores the selected project on a nonfirst machine', async ({ page }) => {
+  await page.goto(a.origin);
+  await expect(page.getByRole('button', { name: 'alpha on Workstation A, online', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Remote B');
+  await page.getByLabel('Direct address', { exact: true }).fill(b.origin + '/');
+  await page.getByRole('button', { name: 'Connect machine', exact: true }).click();
+  await page.getByRole('button', { name: 'beta on Workstation B, online', exact: true }).click();
+  await expect(page.locator('.project-title')).toHaveText('beta');
+  const selection = await page.evaluate(() => localStorage.getItem('emachine:selection'));
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'beta on Workstation B, online', exact: true })).toHaveAttribute('aria-current', 'page');
+  expect(await page.evaluate(() => localStorage.getItem('emachine:selection'))).toBe(selection);
+});
+
 test('manual desktop update controls preserve the workspace and render progress and restart states', async ({ page }) => {
   await page.addInitScript(() => {
     let state: any = { status: 'idle', version: '0.1.0', message: 'Updates are checked only when you request them.' };

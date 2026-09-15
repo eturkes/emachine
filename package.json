@@ -1,6 +1,6 @@
 {
   "name": "emachine",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A personal, multi-machine project command center",
   "author": "eturkes",
@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build:server": "cd core && moon build cmd/main --target native --release",
-    "build:web": "node scripts/icons.mjs && vite build --config web/vite.config.ts && node scripts/seed-client.mjs && node scripts/service-worker.mjs",
+    "build:web": "node scripts/icons.mjs && vite build --config web/vite.config.ts && node scripts/seed-client.mjs && node scripts/service-worker.mjs && node scripts/interface-manifest.mjs",
     "build": "pnpm build:server && pnpm build:web",
     "check": "tsc --noEmit && cd core && moon check --target native",
     "test:core": "cd core && moon test --target native",
@@ -21,9 +21,11 @@
     "test:web": "playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
     "test:desktop-update": "node tests/desktop-updates.mjs",
+    "test:desktop-interface": "node tests/desktop-interface.mjs",
+    "test:interface": "node --test tests/interface.test.mjs",
     "test:release": "node --test tests/release.test.mjs",
     "test:updater": "node --test tests/updater.test.mjs",
-    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:updater && pnpm build && pnpm test:network && pnpm test:web",
+    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:updater && pnpm test:interface && pnpm build && pnpm test:network && pnpm test:web",
     "release:prepare": "node scripts/prepare-release.mjs",
     "desktop": "electron .",
     "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"

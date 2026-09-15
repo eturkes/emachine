@@ -21,7 +21,7 @@
 
 - Install graph: `pnpm install --frozen-lockfile`.
 - Standard acceptance: `pnpm verify` = type/core check, native tests, native+web build, real network tests, ChromiumFish browser tests.
-- Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-update`; real AppImages + graphical session. Update gate = temporary feed, corrupt download rejection, manual installation + actual replacement/relaunch. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
+- Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-update && pnpm test:desktop-interface`; real AppImages + graphical session. Runtime gate = temporary feed, corruption rejection + replacement/relaunch. Interface gate = native trust, selective transfer, same binary/PID, retained selection/terminal, failure/offline recovery. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
 - Installed deployment: `node scripts/check-installation.mjs`; optional additional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
@@ -33,6 +33,8 @@
 - `scripts/install.mjs` guards owned files, validates systemd units, installs user service. `KillMode=process` preserves zmx across restarts. Core supervises ordinary workers.
 - `scripts/seed-client.mjs` writes only machine identity/name/addresses to built `bootstrap.json`; no credentials. Native endpoint supplies dynamic bootstrap.
 - PWA precaches allowlisted shell bytes only. API/bootstrap/terminal/source/results never enter its service-worker cache.
+- Desktop UI delivery: `pnpm build:web` emits `ui-manifest.json` in the served web root; no runtime release needed. One native-approved HTTPS source (loopback HTTP allowed), metadata-only polling, manual verified refresh, fixed `emachine://app` origin/profile. Seeds stay bundled. Contract/recovery = `docs/interface-updates.md`.
+- Interface bridge = `desktop/interface-manifest.cjs` owns the native compatibility version, path/size limits + canonical hashes. Native API/runtime requirements change → bump bridge and ship a runtime update. Serialize readiness/recovery pointer writes; keep staging outside cleanup races. `pnpm test:interface` owns these invariants and runs in `pnpm verify`.
 - Public FreeBSD route not deployed. Caddy/PF changes were blocked. Keep its planned address out of live connection seeds until deployment succeeds.
 
 ## Releases

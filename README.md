@@ -20,6 +20,10 @@ APPIMAGE_EXTRACT_AND_RUN=1 ./emachine.AppImage
 
 On this workstation, run `emachine-app` or select **emachine** in the application menu.
 
+In builds with **Refresh**, select a trusted interface server once, then use **Refresh interface** for UI changes.
+This reloads verified web files without replacing the AppImage or restarting the application process.
+The server needs only a web build for ordinary UI changes. See [interface updates and recovery](docs/interface-updates.md).
+
 In updater-enabled builds, select **Updates**, then **Check for updates**.
 Select **Download update**, then **Restart and install**. Updates never install automatically when you close the app.
 This updates only the desktop client, not machine servers or project views.
@@ -114,6 +118,7 @@ pnpm install --frozen-lockfile
 pnpm verify
 pnpm appimage
 pnpm test:desktop
+pnpm test:desktop-interface
 ```
 
 The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20260904`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.

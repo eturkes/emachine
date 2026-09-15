@@ -73,7 +73,9 @@ chmod +x emachine.AppImage
 Clients without a FUSE helper can set `APPIMAGE_EXTRACT_AND_RUN=1` when launching.
 Release publication is explicit. Pushing a branch or tag does not start a separate automatic publishing workflow.
 
-## In-app updates
+## Desktop runtime updates
+
+These controls replace the AppImage. [Interface updates](interface-updates.md) use **Refresh** instead and do not need a GitHub release.
 
 Select **Updates**, then **Check for updates**. Select **Download update** when a newer stable release is available.
 After the download, select **Restart and install**. Closing the app does not install a pending update.
@@ -88,4 +90,4 @@ Your connection settings stay in the Electron profile. The update replaces only 
 Machine servers and project views have separate update paths. Server terminals and jobs survive a client restart.
 
 Version `0.1.0` has no updater. Install an updater-enabled AppImage once before using the button for later releases.
-A source edit is not a release. Each update needs a higher version and all four published assets.
+A source edit is not a runtime release. Each runtime update needs a higher version and all four published assets.

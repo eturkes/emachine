@@ -1,10 +1,11 @@
 'use strict';
-const { app, BrowserWindow, protocol, net, session, dialog, ipcMain } = require('electron');
-const { join, resolve, sep } = require('node:path');
+const { app, BrowserWindow, protocol, net, session, dialog, ipcMain, Menu } = require('electron');
+const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { autoUpdater } = require('electron-updater');
 const { createUpdateController, registerUpdateIpc, writableAppImage } = require('./updates.cjs');
+const { createInterfaceController, registerInterfaceIpc } = require('./interface.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true,
@@ -46,14 +47,15 @@ app.on('login', (event, contents, details, authInfo, callback) => {
 
 async function start() {
   const root = resolve(__dirname, '../web/dist');
+  let ui;
   protocol.handle('emachine', async request => {
     const url = new URL(request.url);
     if (url.host !== 'app' || request.method !== 'GET') return new Response('Not found', { status: 404 });
     let path;
     try { path = decodeURIComponent(url.pathname); } catch { return new Response('Invalid path', { status: 400 }); }
     if (path.includes('\\') || path.includes('\0') || path.split('/').includes('..')) return new Response('Invalid path', { status: 400 });
-    const file = resolve(root, '.' + (path === '/' ? '/index.html' : path));
-    if (!file.startsWith(root + sep)) return new Response('Not found', { status: 404 });
+    const file = ui.assetPath(path === '/' ? 'index.html' : path.slice(1));
+    if (!file) return new Response('Not found', { status: 404 });
     if (path === '/bootstrap.json') {
       // This optional file contains only machine addresses, never credentials.
       try { return await net.fetch(pathToFileURL(file).href); } catch { return Response.json({ servers: [] }); }
@@ -63,6 +65,7 @@ async function start() {
       const headers = new Headers(source.headers);
       headers.set('Content-Security-Policy', SHELL_CSP);
       headers.set('X-Content-Type-Options', 'nosniff');
+      headers.set('Cache-Control', 'no-store');
       return new Response(source.body, { status: source.status, headers });
     } catch { return new Response('Not found', { status: 404 }); }
   });
@@ -79,7 +82,7 @@ async function start() {
   });
   main = new BrowserWindow({
     width: 1320, height: 860, minWidth: 420, minHeight: 380,
-    title: 'emachine', backgroundColor: '#0c1218', show: false,
+    title: 'emachine', backgroundColor: '#0c1218', show: false, autoHideMenuBar: true,
     icon: join(root, 'icons/512.png'),
     webPreferences: { nodeIntegration: false, nodeIntegrationInSubFrames: false,
       contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false,
@@ -91,12 +94,39 @@ async function start() {
     notify: state => { if (!main.isDestroyed()) main.webContents.send('emachine:update:state', state); },
   });
   registerUpdateIpc(ipcMain, main, updates);
-  main.removeMenu();
+  ui = await createInterfaceController({ bundleRoot: root, cacheRoot: join(app.getPath('userData'), 'interface'),
+    fetch: (url, options) => net.fetch(url, options),
+    reload: () => main.loadURL('emachine://app/index.html'),
+    notify: state => { if (!main.isDestroyed()) main.webContents.send('emachine:interface:state', state); },
+    confirmSource: async source => (await dialog.showMessageBox(main, { type: 'warning', title: 'Trust interface source',
+      message: source ? 'Trust this server to replace the application interface?' : 'Stop checking the interface server?',
+      detail: source ? `Interface code can access your connected machines. Only trust a server you control.\n\n${source}` : 'Your saved interface remains available.',
+      buttons: ['Cancel', 'Trust source'], defaultId: 0, cancelId: 0 })).response === 1,
+  });
+  registerInterfaceIpc(ipcMain, main, ui);
+  // Native recovery remains reachable when a downloaded renderer cannot display its controls.
+  main.setMenu(Menu.buildFromTemplate([{ label: 'Interface', submenu: [
+    { label: 'Refresh interface', accelerator: 'CommandOrControl+Shift+R', click: () => { void ui.refresh(); } },
+    { label: 'Use bundled interface', accelerator: 'CommandOrControl+Shift+B', click: async () => {
+      const answer = await dialog.showMessageBox(main, { type: 'question', title: 'Restore bundled interface',
+        message: 'Reload the bundled interface?', detail: 'Save work in open views first. Server terminals and jobs keep running.',
+        buttons: ['Cancel', 'Reload'], defaultId: 0, cancelId: 0 });
+      if (answer.response === 1) await ui.restore();
+    } },
+  ] }]));
+  main.setMenuBarVisibility(false);
   main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   main.webContents.on('will-navigate', event => event.preventDefault());
   main.webContents.on('will-attach-webview', event => event.preventDefault());
+  main.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) void ui.loadFailed();
+  });
+  main.webContents.on('render-process-gone', () => { void ui.loadFailed(); });
   main.once('ready-to-show', () => main.show());
-  await main.loadURL('emachine://app/index.html');
+  await ui.start();
+  const initialCheck = setTimeout(() => { void ui.check(); }, 1000);
+  const checks = setInterval(() => { void ui.check(); }, 60000);
+  main.on('closed', () => { clearTimeout(initialCheck); clearInterval(checks); ui.dispose(); });
 }
 if (!app.requestSingleInstanceLock()) app.quit();
 else {

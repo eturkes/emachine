@@ -187,21 +187,21 @@ export class Fleet {
       }
     }
     for (const config of connections ?? []) {
-      try { this.add(config, false); } catch { /* The settings dialog can replace obsolete saved endpoints. */ }
+      try { this.add(config, false, false); } catch { /* The settings dialog can replace obsolete saved endpoints. */ }
     }
     this.persist();
     this.changed();
     for (const link of this.links) void link.connect();
   }
-  add(config: Connection, connect = true): void {
+  add(config: Connection, connect = true, announce = true): void {
     config = { ...config, direct: baseUrl(config.direct), gateway: config.gateway ? baseUrl(config.gateway) : undefined };
     const previous = this.links.find(link => link.config.key === config.key);
     previous?.stop();
     const link = new Link(config, () => { this.persist(); this.changed(); }, (source, job, recovered) => this.job(source, job, recovered));
     const index = previous ? this.links.indexOf(previous) : -1;
     if (index < 0) this.links.push(link); else this.links[index] = link;
-    this.persist();
-    this.changed();
+    // Startup restores all cached machines before rendering can replace a saved project selection.
+    if (announce) { this.persist(); this.changed(); }
     if (connect) void link.connect();
   }
   remove(key: string): void {

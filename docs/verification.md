@@ -8,6 +8,8 @@
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, a real fixture machine, and zmx attachment |
 | `pnpm test:desktop-update` | Two real AppImage versions, a temporary update feed, corrupt download rejection, manual installation, actual restart, stable filename, and retained settings |
+| `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
+| `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
 | `node scripts/check-installation.mjs` | Enabled and active service, valid systemd unit, disjoint storage, HTTPS, exact desktop CORS, and credential-free client files |
 | `git diff --check` | Patch whitespace integrity |
@@ -19,6 +21,11 @@ Browser tests cover route-prefix boundaries, concurrent machines, keyboard input
 The update gate builds its newer candidate in a temporary directory. It modifies only a temporary AppImage and profile.
 It also checks missing metadata, no newer version, and closing the app without installing a downloaded update.
 The test supplies a loopback feed from Electron's main process. The shipped renderer has no feed override.
+
+The interface gate serves temporary web files with the desktop CORS origin. Source approval still passes through the production IPC handler.
+Its native confirmation response is controlled only by the test's main-process connection.
+Changed index files exercise real staging and reloads. Unchanged fonts and scripts must not be fetched from the server.
+The interface gate modifies no installed client, personal profile, or user project.
 
 Source gates and packaged-client checks passed. The installation check passed. An independent HTTPS health request from the FreeBSD host also returned `200 OK` with certificate and hostname verification enabled.
 
