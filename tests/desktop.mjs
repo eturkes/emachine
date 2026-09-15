@@ -22,6 +22,11 @@ try {
   const isolation = await page.evaluate(() => ({ node: typeof process, require: typeof require, url: location.href }));
   assert.equal(isolation.node, 'undefined'); assert.equal(isolation.require, 'undefined');
   assert.equal(isolation.url, 'emachine://app/index.html');
+  await page.getByRole('button', { name: 'App updates', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'App updates', exact: true })).toBeVisible();
+  await expect(page.locator('.update-version')).toHaveText(`Installed version: ${version}`);
+  await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   if (process.argv.includes('--unseeded')) {
     const seed = await page.evaluate(async () => (await fetch(new URL('./bootstrap.json', location.href))).json());
     assert.deepEqual(seed, { servers: [] }, 'Release assets must not contain private machine connections.');

@@ -11,13 +11,20 @@ Release builds start with an empty machine list. Add your machine's direct Tails
 The AppImage is a client; run the MoonBit server separately on each project machine.
 
 ```sh
-chmod +x emachine-0.1.0-x86_64.AppImage
-./emachine-0.1.0-x86_64.AppImage
+mv emachine-0.1.1-x86_64.AppImage emachine.AppImage
+chmod +x emachine.AppImage
+./emachine.AppImage
 # Without a FUSE mount helper:
-APPIMAGE_EXTRACT_AND_RUN=1 ./emachine-0.1.0-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ./emachine.AppImage
 ```
 
 On this workstation, run `emachine-app` or select **emachine** in the application menu.
+
+In updater-enabled builds, select **Updates**, then **Check for updates**.
+Select **Download update**, then **Restart and install**. Updates never install automatically when you close the app.
+This updates only the desktop client, not machine servers or project views.
+Version `0.1.0` requires one manual replacement to get these controls. Keep the new AppImage in a writable folder.
+Rename it to `emachine.AppImage` before creating a shortcut, so the filename stays stable across updates.
 
 For direct browser or phone access, connect Tailscale and open:
 
@@ -122,7 +129,8 @@ node scripts/install-desktop.mjs
 
 Review the exact allowed origins in the generated configuration before connecting another client. Enable user lingering when the service must run without an interactive login.
 
-AppImage output: `desktop/release/emachine-0.1.0-x86_64.AppImage`. The desktop launcher uses extraction mode, so it does not depend on a FUSE mount helper.
+AppImage output: `desktop/release/emachine-VERSION-x86_64.AppImage`. The local installer copies it to `desktop/installed/emachine.AppImage`.
+The desktop launcher uses this stable path and extraction mode. It does not depend on a FUSE mount helper.
 
 To prepare a GitHub release, use `pnpm release:prepare`. It verifies committed source and builds an isolated, unseeded AppImage.
 See [the release workflow](docs/releases.md) for SSH pushes, release assets, and checksum verification.

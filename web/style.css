@@ -102,6 +102,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .dialog h2 { font-size: 23px; font-weight: 550; letter-spacing: -.7px; margin: 0; }
 .dialog h3 { font-size: 15px; font-weight: 600; margin: 20px 0 12px; }
 .dialog-copy { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.update-version { color: var(--muted); font: 12px Iosevka,monospace; margin: 22px 0 14px; }
+.update-message { margin: 22px 0; line-height: 1.6; overflow-wrap: anywhere; }
+.update-progress { display: block; width: 100%; height: 8px; margin: 0 0 22px; accent-color: var(--accent); }
 .connection-row { display: flex; align-items: center; gap: 6px; padding: 15px 0; border-bottom: 1px solid var(--border); }
 .connection-row > div { min-width: 0; flex: 1; display: grid; gap: 6px; }
 .connection-row strong { font-size: 14px; }

@@ -21,7 +21,7 @@
 
 - Install graph: `pnpm install --frozen-lockfile`.
 - Standard acceptance: `pnpm verify` = type/core check, native tests, native+web build, real network tests, ChromiumFish browser tests.
-- Desktop: `pnpm appimage && pnpm test:desktop`; real AppImage + graphical session. `node scripts/install-desktop.mjs` updates own launcher/menu entry.
+- Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-update`; real AppImages + graphical session. Update gate = temporary feed, corrupt download rejection, manual installation + actual replacement/relaunch. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
 - Installed deployment: `node scripts/check-installation.mjs`; optional additional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
@@ -38,6 +38,6 @@
 ## Releases
 
 - Repository = `git@github.com:eturkes/emachine.git`; source/tag pushes use SSH. GitHub release API uses authenticated `gh`.
-- `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json}`.
+- `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json,latest-linux.yml}`. Update metadata must match exact artifact/version. Updater = manual stable releases only; no automatic download, install-on-quit, or renderer-controlled feed.
 - `EMACHINE_CLIENT_SEED=empty` must not read machine configuration. Release packaging must preserve the installed AppImage and exclude local identities, addresses, state and credentials.
 - Version tags immutable; create annotated `vX.Y.Z` only at prepared `release.json.commit`. No forced push or asset clobber. Publish after upload/digest validation. Workflow = `docs/releases.md`.

@@ -6,6 +6,7 @@ import { access, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { updateManifest, validateUpdateMetadata } from './update-metadata.mjs';
 
 const root = await realpath(fileURLToPath(new URL('../', import.meta.url)));
 const exec = promisify(execFile);
@@ -53,6 +54,7 @@ try {
     `--config.directories.output=${output}`], source);
   const name = `emachine-${pkg.version}-x86_64.AppImage`;
   const artifact = join(output, name);
+  await validateUpdateMetadata(output, pkg.version, name);
   await run(process.execPath, ['tests/desktop.mjs', '--unseeded'], root, { EMACHINE_APPIMAGE: artifact });
   assert.equal(await git('rev-parse', 'HEAD'), commit, 'The checkout changed during release preparation.');
   assert.equal(await git('status', '--porcelain'), '', 'The source changed during release preparation.');
@@ -62,8 +64,9 @@ try {
     clientSeed: 'empty', electron: pkg.devDependencies.electron, node: process.version, packageManager: pkg.packageManager,
     asset: { name, bytes: (await stat(artifact)).size, sha256: digest } };
   await rename(artifact, join(ready, name));
+  await rename(join(output, updateManifest), join(ready, updateManifest));
   await writeFile(join(ready, 'release.json'), JSON.stringify(metadata, null, 2) + '\n');
-  await writeFile(join(ready, 'SHA256SUMS'), `${digest}  ${name}\n${await sha256(join(ready, 'release.json'))}  release.json\n`);
+  await writeFile(join(ready, 'SHA256SUMS'), `${digest}  ${name}\n${await sha256(join(ready, 'release.json'))}  release.json\n${await sha256(join(ready, updateManifest))}  ${updateManifest}\n`);
   await mkdir(join(root, 'desktop/publish'), { recursive: true });
   await rename(ready, destination);
   console.log(`Prepared ${tag} from ${commit}\n${destination}\nNo remote changes were made. The installed AppImage is unchanged.`);

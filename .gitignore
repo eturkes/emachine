@@ -10,5 +10,6 @@
 **/.venv/
 desktop/release/
 desktop/publish/
+desktop/installed/
 config.local.json
 *.log

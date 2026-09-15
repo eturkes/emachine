@@ -13,6 +13,54 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await b?.close(); await a?.close(); });
 
+test('manual desktop update controls preserve the workspace and render progress and restart states', async ({ page }) => {
+  await page.addInitScript(() => {
+    let state: any = { status: 'idle', version: '0.1.0', message: 'Updates are checked only when you request them.' };
+    const listeners = new Set<(value: any) => void>();
+    const calls: string[] = [];
+    const emit = (change: any) => { state = { version: '0.1.0', ...change }; listeners.forEach(fn => fn(state)); return state; };
+    (window as any).updateFixture = { calls };
+    window.emachineUpdates = {
+      getState: async () => state,
+      onState: callback => { listeners.add(callback); return () => { listeners.delete(callback); }; },
+      check: async () => { calls.push('check'); return emit({ status: 'available', nextVersion: '0.2.0', message: 'Version 0.2.0 is available.' }); },
+      download: async () => {
+        calls.push('download'); emit({ status: 'downloading', nextVersion: '0.2.0', percent: 42, message: 'Downloading version 0.2.0: 42%.' });
+        return new Promise(resolve => { (window as any).updateFixture.finish = () => resolve(emit({ status: 'downloaded', nextVersion: '0.2.0', message: 'Version 0.2.0 is ready. Save work in your open views before restarting.' })); });
+      },
+      install: async () => { calls.push('install'); return emit({ status: 'installing', message: 'Restarting to install the update...' }); },
+    };
+  });
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  await page.locator('.terminal-pane').evaluate(element => { (element as HTMLElement).dataset.continuity = 'kept'; });
+  const calls = () => page.evaluate(() => (window as any).updateFixture.calls);
+  await page.getByRole('button', { name: 'App updates', exact: true }).click();
+  await expect(page.locator('.update-version')).toHaveText('Installed version: 0.1.0');
+  expect(await calls()).toEqual([]);
+  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Download update', exact: true })).toBeEnabled();
+  expect(await calls()).toEqual(['check']);
+  await page.getByRole('button', { name: 'Download update', exact: true }).click();
+  await expect(page.getByRole('progressbar')).toHaveJSProperty('value', 42);
+  await expect(page.getByRole('button', { name: 'Downloading...', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'App updates', exact: true }).click();
+  await expect(page.getByRole('progressbar')).toHaveJSProperty('value', 42);
+  await page.evaluate(() => (window as any).updateFixture.finish());
+  await expect(page.getByRole('button', { name: 'Restart and install', exact: true })).toBeEnabled();
+  expect(await calls()).toEqual(['check', 'download']);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-continuity', 'kept');
+  await page.screenshot({ path: 'test-results/emachine-updates-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'Restart and install', exact: true })).toBeVisible();
+  expect(await page.locator('dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/emachine-updates-phone.png' });
+  await page.getByRole('button', { name: 'Restart and install', exact: true }).click();
+  expect(await calls()).toEqual(['check', 'download', 'install']);
+  await expect(page.getByRole('button', { name: 'Restarting...', exact: true })).toBeDisabled();
+});
+
 test('machine URLs preserve gateway prefixes and reject encoded escapes', async () => {
   const base = baseUrl('https://example.invalid/emachine/m/instance');
   expect(endpoint(base, 'api/v1/state')).toBe('https://example.invalid/emachine/m/instance/api/v1/state');
@@ -26,6 +74,7 @@ test('machine URLs preserve gateway prefixes and reject encoded escapes', async 
 test('live discovery, concurrent machines and persistent terminal rendering', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(a.origin);
+  await expect(page.getByRole('button', { name: 'App updates', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'alpha on Workstation A, online', exact: true })).toBeVisible();
   await expect(page.locator('.terminal-pane')).toHaveCount(1);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');

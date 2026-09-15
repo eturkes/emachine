@@ -3,6 +3,8 @@ const { app, BrowserWindow, protocol, net, session, dialog, ipcMain } = require(
 const { join, resolve, sep } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { autoUpdater } = require('electron-updater');
+const { createUpdateController, registerUpdateIpc, writableAppImage } = require('./updates.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true,
@@ -80,8 +82,15 @@ async function start() {
     title: 'emachine', backgroundColor: '#0c1218', show: false,
     icon: join(root, 'icons/512.png'),
     webPreferences: { nodeIntegration: false, nodeIntegrationInSubFrames: false,
-      contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false },
+      contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false,
+      preload: join(__dirname, 'preload.cjs') },
   });
+  const updates = createUpdateController({ updater: autoUpdater, version: app.getVersion(),
+    supported: app.isPackaged && process.platform === 'linux' && Boolean(process.env.APPIMAGE),
+    writable: () => writableAppImage(process.env.APPIMAGE),
+    notify: state => { if (!main.isDestroyed()) main.webContents.send('emachine:update:state', state); },
+  });
+  registerUpdateIpc(ipcMain, main, updates);
   main.removeMenu();
   main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   main.webContents.on('will-navigate', event => event.preventDefault());

@@ -1,12 +1,16 @@
-import { access, mkdir, writeFile, readFile, rename, chmod } from 'node:fs/promises';
+import { access, mkdir, writeFile, readFile, rename, chmod, copyFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-const image = join(root, `desktop/release/emachine-${version}-x86_64.AppImage`);
-await access(image);
+const source = join(root, `desktop/release/emachine-${version}-x86_64.AppImage`);
+await access(source);
+// electron-updater preserves versionless names; a versioned launcher would break after installation.
+const installed = join(root, 'desktop/installed');
+const image = join(installed, 'emachine.AppImage');
+await mkdir(installed, { recursive: true });
 const home = homedir();
 const binaryDir = join(home, '.local/bin');
 const applications = join(process.env.XDG_DATA_HOME || join(home, '.local/share'), 'applications');
@@ -20,6 +24,10 @@ async function owned(path, contents, mode) {
   const pending = path + '.pending-' + randomUUID();
   await writeFile(pending, contents, { mode }); await rename(pending, path); await chmod(path, mode);
 }
+const pendingImage = image + '.pending-' + randomUUID();
+try {
+  await copyFile(source, pendingImage); await chmod(pendingImage, 0o755); await rename(pendingImage, image);
+} finally { await rm(pendingImage, { force: true }); }
 await owned(launcher, `#!/bin/sh\n# emachine managed desktop launcher\n# Extraction also supports systems without a FUSE mount helper.\nexport APPIMAGE_EXTRACT_AND_RUN=1\nexec ${quote(image)} "$@"\n`, 0o755);
 const desktopQuote = value => '"' + value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('`', '\\`').replaceAll('$', '\\$').replaceAll('%', '%%') + '"';
 await owned(entry, `# emachine managed desktop entry

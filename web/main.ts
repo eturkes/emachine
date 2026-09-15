@@ -4,6 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
+import { attachAppUpdates } from './updates';
 
 const $ = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const element = document.createElement(tag); element.className = className; element.textContent = text; return element;
@@ -43,6 +44,7 @@ const connectionBadge = $('span', 'connection-badge');
 const jobButton = button('Jobs', () => showJobs(), 'text-button'); jobButton.hidden = true;
 const themeButton = button('◐', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'icon', 'Change color theme');
 const actions = $('div', 'header-actions'); actions.append(connectionBadge, jobButton, button('⌘', () => openPalette(), 'icon', 'Open command palette, Control or Command Shift P'), themeButton, button('⚙', () => openSettings(), 'icon', 'Machine settings'));
+attachAppUpdates(actions, dialog);
 tabHeader.append(mobileMenu, tabs, actions);
 const contextBar = $('div', 'context-bar');
 const title = $('div', 'project-title');

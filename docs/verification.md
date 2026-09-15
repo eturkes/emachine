@@ -4,16 +4,21 @@
 
 | Command | Coverage |
 | --- | --- |
-| `pnpm verify` | Type checking, native checking, 15 native tests, production builds, 7 network test results, and 6 browser tests |
+| `pnpm verify` | Type and native checking, native tests, release metadata tests, updater state and IPC tests, production builds, network tests, and browser tests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, a real fixture machine, and zmx attachment |
+| `pnpm test:desktop-update` | Two real AppImage versions, a temporary update feed, corrupt download rejection, manual installation, actual restart, stable filename, and retained settings |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
 | `node scripts/check-installation.mjs` | Enabled and active service, valid systemd unit, disjoint storage, HTTPS, exact desktop CORS, and credential-free client files |
 | `git diff --check` | Patch whitespace integrity |
 
 The native and network gates use real filesystem operations and zmx processes. Browser tests use ChromiumFish and real native fixture servers. The configured desktop gate sends no shell commands to the existing project.
 
-The six browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, reconnect behavior, and recovered jobs.
+Browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, reconnect behavior, recovered jobs, neutral light colors, and manual update controls.
+
+The update gate builds its newer candidate in a temporary directory. It modifies only a temporary AppImage and profile.
+It also checks missing metadata, no newer version, and closing the app without installing a downloaded update.
+The test supplies a loopback feed from Electron's main process. The shipped renderer has no feed override.
 
 Source gates and packaged-client checks passed. The installation check passed. An independent HTTPS health request from the FreeBSD host also returned `200 OK` with certificate and hostname verification enabled.
 
