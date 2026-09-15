@@ -53,6 +53,56 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   expect(errors).toEqual([]);
 });
 
+test('light palette stays neutral across the shell, terminal and phone layout', async ({ page }) => {
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const toggle = page.getByRole('button', { name: /^Theme:/ });
+  await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  const colors = () => page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const tokens = Object.fromEntries(['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft'].map(name => [name, root.getPropertyValue('--' + name).trim()]));
+    return {
+      tokens,
+      selection: getComputedStyle(document.documentElement, '::selection').backgroundColor,
+      terminalText: getComputedStyle(document.querySelector('.xterm-rows')!).color,
+      terminalBackground: getComputedStyle(document.querySelector('.xterm-scrollable-element')!).backgroundColor,
+      chrome: document.querySelector('meta[name="theme-color"]')!.getAttribute('content'),
+    };
+  });
+  const dark = await colors();
+  await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const rgb = (color: string) => color.startsWith('#') ? color.slice(1, 7).match(/../g)!.map(hex => parseInt(hex, 16)) : color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+  const luminance = (color: string) => rgb(color).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+  const light = await colors();
+  for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText, terminalBackground: light.terminalBackground })) {
+    expect(new Set(rgb(color)).size, `${name} must have no color tint`).toBe(1);
+  }
+  expect(rgb(light.terminalText)).toEqual(rgb(light.tokens.text));
+  expect(rgb(light.terminalBackground)).toEqual(rgb(light.tokens.bg));
+  expect(light.chrome).toBe(light.tokens.bg);
+  for (const foreground of ['text', 'muted', 'accent']) for (const background of ['bg', 'surface', 'hover']) {
+    const values = [luminance(light.tokens[foreground]), luminance(light.tokens[background])].sort((a, b) => a - b);
+    expect((values[1] + .05) / (values[0] + .05), `${foreground} contrast on ${background}`).toBeGreaterThanOrEqual(4.5);
+  }
+  await page.screenshot({ path: 'test-results/emachine-light-desktop.png', animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.terminal-keys')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/emachine-light-phone.png', animations: 'disabled' });
+  await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'alpha on Workstation A, online', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/emachine-light-drawer.png', animations: 'disabled' });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  expect(await colors()).toEqual(light);
+  await toggle.click(); await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  expect(await colors()).toEqual(dark);
+});
+
 test('feature replacement updates only its project view', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');

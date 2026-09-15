@@ -64,7 +64,7 @@ function applyRail(): void { app.classList.toggle('rail-collapsed', collapsed); 
 function applyTheme(): void {
   theme = preference === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' : preference;
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0c1218' : '#f5f7f3');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
   themeButton.title = `Theme: ${preference}${preference === 'auto' ? ` (${theme})` : ''}`;
   themeButton.setAttribute('aria-label', themeButton.title);
   for (const terminal of terminals.values()) terminal.theme(theme);
