@@ -33,7 +33,7 @@ async function digest(file) {
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
 }
-let app, restarted, server, debugPort;
+let app, launchedProcess, restarted, server, debugPort;
 let mode = 'missing'; let corrupt = true; let requests = 0;
 try {
   await exec('pnpm', ['exec', 'electron-builder', '--linux', 'AppImage', '--x64', '--publish', 'never',
@@ -70,6 +70,7 @@ try {
   await new Promise(resolve => reservation.close(resolve));
   async function launch() {
     app = await electron.launch({ executablePath: image, args: ['--user-data-dir=' + profile], env, timeout: 60000 });
+    launchedProcess = app.process();
     // Test-only main-process control: production exposes no feed override or generic IPC.
     await app.evaluate(({ app }, { feed, profile, debugPort }) => {
       const require = process.getBuiltinModule('module').createRequire(app.getAppPath() + '/package.json');
@@ -117,14 +118,21 @@ try {
   await expect(nextPage.locator('.update-version')).toHaveText(`Installed version: ${nextVersion}`);
   assert.equal(await nextPage.evaluate(() => localStorage.getItem('emachine:update-test')), 'retained');
   assert.equal(await digest(image), after, 'The stable launcher path must contain the exact new artifact.');
-  console.log(`AppImage update passed: ${version} -> ${nextVersion}; missing/current feeds, corrupt download rejection, no install on quit, verified replacement, actual restart, stable path and retained profile.`);
 } finally {
   try {
     const browser = restarted || await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 1000 });
     const session = await browser.newBrowserCDPSession();
-    await session.send('Browser.close'); await browser.close();
+    // Electron exits without replying to Browser.close; disconnect after sending it.
+    void session.send('Browser.close').catch(() => {});
+    await browser.close();
   } catch { /* No restarted test client remains connected. */ }
-  await app?.close().catch(() => {});
+  await expect.poll(async () => {
+    try { await fetch(`http://127.0.0.1:${debugPort}/json/version`, { signal: AbortSignal.timeout(1000) }); return false; }
+    catch { return true; }
+  }, { timeout: 10000 }).toBe(true);
+  // quitAndInstall exits Electron itself; closing that stale Playwright handle can wait forever.
+  if (app && launchedProcess.exitCode === null && launchedProcess.signalCode === null) await app.close().catch(() => {});
   if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   await rm(stage, { recursive: true, force: true });
 }
+console.log(`AppImage update passed: ${version} -> ${nextVersion}; missing/current feeds, corrupt download rejection, no install on quit, verified replacement, actual restart, stable path and retained profile.`);
