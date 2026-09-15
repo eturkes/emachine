@@ -30,6 +30,7 @@
 
 ## Deployment
 
+- CachyOS = server/build/test host; desktop client runs on a separate user machine. Deliver AppImages through GitHub Releases. Desktop installation requires an explicitly named client target; CachyOS GUI gates use temporary profiles only. Preserve the local server, web deployment and project state during client packaging/removal.
 - `scripts/install.mjs` guards owned files, validates systemd units, installs user service. `KillMode=process` preserves zmx across restarts. Core supervises ordinary workers.
 - `scripts/seed-client.mjs` writes only machine identity/name/addresses to built `bootstrap.json`; no credentials. Native endpoint supplies dynamic bootstrap.
 - PWA precaches allowlisted shell bytes only. API/bootstrap/terminal/source/results never enter its service-worker cache.

@@ -11,14 +11,14 @@ Release builds start with an empty machine list. Add your machine's direct Tails
 The AppImage is a client; run the MoonBit server separately on each project machine.
 
 ```sh
-mv emachine-0.1.1-x86_64.AppImage emachine.AppImage
+mv emachine-0.1.2-x86_64.AppImage emachine.AppImage
 chmod +x emachine.AppImage
 ./emachine.AppImage
 # Without a FUSE mount helper:
 APPIMAGE_EXTRACT_AND_RUN=1 ./emachine.AppImage
 ```
 
-On this workstation, run `emachine-app` or select **emachine** in the application menu.
+Run the AppImage on your desktop client machine. The CachyOS host builds releases and runs the machine server; it has no desktop client installation.
 
 In builds with **Refresh**, select a trusted interface server once, then use **Refresh interface** for UI changes.
 This reloads verified web files without replacing the AppImage or restarting the application process.
@@ -128,14 +128,13 @@ To install the server on another Linux machine, build it first, then run:
 ```sh
 node scripts/install.mjs --direct https://MACHINE.TAILNET.ts.net:4743/
 sudo tailscale serve --bg --https=4743 http://127.0.0.1:4737
-pnpm appimage
-node scripts/install-desktop.mjs
 ```
 
 Review the exact allowed origins in the generated configuration before connecting another client. Enable user lingering when the service must run without an interactive login.
 
-AppImage output: `desktop/release/emachine-VERSION-x86_64.AppImage`. The local installer copies it to `desktop/installed/emachine.AppImage`.
-The desktop launcher uses this stable path and extraction mode. It does not depend on a FUSE mount helper.
+AppImage build output: `desktop/release/emachine-VERSION-x86_64.AppImage`. Building or testing an AppImage does not install it.
+On an explicitly selected desktop client with a source checkout, `node scripts/install-desktop.mjs` installs the built AppImage and shortcuts.
+That installer uses the stable path `desktop/installed/emachine.AppImage` and extraction mode. Server installation does not require it.
 
 To prepare a GitHub release, use `pnpm release:prepare`. It verifies committed source and builds an isolated, unseeded AppImage.
 See [the release workflow](docs/releases.md) for SSH pushes, release assets, and checksum verification.
