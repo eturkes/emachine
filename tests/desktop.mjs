@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { _electron as electron, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, mkdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fixture, root } from './network-helper.mjs';
 
@@ -15,13 +15,19 @@ for (const line of execFileSync('systemctl', ['--user', 'show-environment'], { e
 }
 let app;
 try {
-  app = await electron.launch({ executablePath: join(root, `desktop/release/emachine-${version}-x86_64.AppImage`), args: ['--user-data-dir=' + profile], env, timeout: 60000 });
+  app = await electron.launch({ executablePath: resolve(process.env.EMACHINE_APPIMAGE || join(root, `desktop/release/emachine-${version}-x86_64.AppImage`)), args: ['--user-data-dir=' + profile], env, timeout: 60000 });
   const page = await app.firstWindow();
   await expect(page.locator('.brand-name')).toHaveText('emachine');
   assert.equal(await app.evaluate(({ app }) => app.isPackaged), true);
   const isolation = await page.evaluate(() => ({ node: typeof process, require: typeof require, url: location.href }));
   assert.equal(isolation.node, 'undefined'); assert.equal(isolation.require, 'undefined');
   assert.equal(isolation.url, 'emachine://app/index.html');
+  if (process.argv.includes('--unseeded')) {
+    const seed = await page.evaluate(async () => (await fetch(new URL('./bootstrap.json', location.href))).json());
+    assert.deepEqual(seed, { servers: [] }, 'Release assets must not contain private machine connections.');
+    await expect(page.locator('.empty-state')).toBeVisible();
+    await expect(page.locator('.project-item')).toHaveCount(0);
+  }
   if (process.argv.includes('--configured')) {
     const seed = JSON.parse(await readFile(join(root, 'web/dist/bootstrap.json'), 'utf8'));
     assert.ok(seed.servers?.length, 'Configured acceptance requires a seeded machine.');

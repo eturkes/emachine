@@ -34,3 +34,10 @@
 - `scripts/seed-client.mjs` writes only machine identity/name/addresses to built `bootstrap.json`; no credentials. Native endpoint supplies dynamic bootstrap.
 - PWA precaches allowlisted shell bytes only. API/bootstrap/terminal/source/results never enter its service-worker cache.
 - Public FreeBSD route not deployed. Caddy/PF changes were blocked. Keep its planned address out of live connection seeds until deployment succeeds.
+
+## Releases
+
+- Repository = `git@github.com:eturkes/emachine.git`; source/tag pushes use SSH. GitHub release API uses authenticated `gh`.
+- `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json}`.
+- `EMACHINE_CLIENT_SEED=empty` must not read machine configuration. Release packaging must preserve the installed AppImage and exclude local identities, addresses, state and credentials.
+- Version tags immutable; create annotated `vX.Y.Z` only at prepared `release.json.commit`. No forced push or asset clobber. Publish after upload/digest validation. Workflow = `docs/releases.md`.

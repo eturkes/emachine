@@ -20,7 +20,9 @@
     "test:network": "node --test tests/network.test.mjs",
     "test:web": "playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
-    "verify": "pnpm check && pnpm test:core && pnpm build && pnpm test:network && pnpm test:web",
+    "test:release": "node --test tests/release.test.mjs",
+    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm build && pnpm test:network && pnpm test:web",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "desktop": "electron .",
     "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"
   },

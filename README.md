@@ -6,6 +6,17 @@ Each machine owns its projects. Clients combine the project lists without connec
 
 ## Open the application
 
+Download the Linux x86-64 AppImage and `SHA256SUMS` from [GitHub Releases](https://github.com/eturkes/emachine/releases/latest).
+Release builds start with an empty machine list. Add your machine's direct Tailscale address in **Machines**.
+The AppImage is a client; run the MoonBit server separately on each project machine.
+
+```sh
+chmod +x emachine-0.1.0-x86_64.AppImage
+./emachine-0.1.0-x86_64.AppImage
+# Without a FUSE mount helper:
+APPIMAGE_EXTRACT_AND_RUN=1 ./emachine-0.1.0-x86_64.AppImage
+```
+
 On this workstation, run `emachine-app` or select **emachine** in the application menu.
 
 For direct browser or phone access, connect Tailscale and open:
@@ -112,6 +123,9 @@ node scripts/install-desktop.mjs
 Review the exact allowed origins in the generated configuration before connecting another client. Enable user lingering when the service must run without an interactive login.
 
 AppImage output: `desktop/release/emachine-0.1.0-x86_64.AppImage`. The desktop launcher uses extraction mode, so it does not depend on a FUSE mount helper.
+
+To prepare a GitHub release, use `pnpm release:prepare`. It verifies committed source and builds an isolated, unseeded AppImage.
+See [the release workflow](docs/releases.md) for SSH pushes, release assets, and checksum verification.
 
 ## Verification boundaries
 

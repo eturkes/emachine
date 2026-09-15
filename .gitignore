@@ -9,5 +9,6 @@
 **/__pycache__/
 **/.venv/
 desktop/release/
+desktop/publish/
 config.local.json
 *.log
