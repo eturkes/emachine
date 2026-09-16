@@ -22,11 +22,13 @@ try {
   const isolation = await page.evaluate(() => ({ node: typeof process, require: typeof require, url: location.href }));
   assert.equal(isolation.node, 'undefined'); assert.equal(isolation.require, 'undefined');
   assert.equal(isolation.url, 'emachine://app/index.html');
-  await page.getByRole('button', { name: 'App updates', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'App updates', exact: true })).toBeVisible();
-  await expect(page.locator('.update-version')).toHaveText(`Installed version: ${version}`);
-  await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  assert.equal(await page.evaluate(() => typeof window.emachineUpdates), 'undefined');
+  await expect(page.getByRole('button', { name: 'App updates', exact: true, includeHidden: true })).toHaveCount(0);
+  assert.equal(await app.evaluate(({ app }) => {
+    const require = process.getBuiltinModule('module').createRequire(app.getAppPath() + '/package.json');
+    try { require.resolve('electron-updater'); return true; }
+    catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; return false; }
+  }), false, 'The packaged application must not contain the retired updater dependency.');
   if (process.argv.includes('--unseeded')) {
     const seed = await page.evaluate(async () => (await fetch(new URL('./bootstrap.json', location.href))).json());
     assert.deepEqual(seed, { servers: [] }, 'Release assets must not contain private machine connections.');

@@ -3,8 +3,6 @@ const { app, BrowserWindow, protocol, net, session, dialog, ipcMain, Menu } = re
 const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
-const { autoUpdater } = require('electron-updater');
-const { createUpdateController, registerUpdateIpc, writableAppImage } = require('./updates.cjs');
 const { createInterfaceController, registerInterfaceIpc } = require('./interface.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
@@ -88,12 +86,6 @@ async function start() {
       contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false,
       preload: join(__dirname, 'preload.cjs') },
   });
-  const updates = createUpdateController({ updater: autoUpdater, version: app.getVersion(),
-    supported: app.isPackaged && process.platform === 'linux' && Boolean(process.env.APPIMAGE),
-    writable: () => writableAppImage(process.env.APPIMAGE),
-    notify: state => { if (!main.isDestroyed()) main.webContents.send('emachine:update:state', state); },
-  });
-  registerUpdateIpc(ipcMain, main, updates);
   ui = await createInterfaceController({ bundleRoot: root, cacheRoot: join(app.getPath('userData'), 'interface'),
     fetch: (url, options) => net.fetch(url, options),
     reload: () => main.loadURL('emachine://app/index.html'),

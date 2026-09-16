@@ -9,6 +9,7 @@
 - Maintain terminal/process lifetime independently of browser component lifetime. Disconnected input is dropped; reconnect never replays uncertain input.
 - Direct Tailscale owner access; exact Origin checks. Public gateway needs independent browser authentication + private upstream credential. Secrets stay out of code, bundles, URLs, logs.
 - Feature code trusted, normal account permissions. Arbitrary interfaces/actions allowed; subprocess boundaries provide fault isolation, not a security sandbox.
+- Header = text controls + view titles; route details in Settings, disconnection in the offline banner. AppImage upgrades = external GitHub Releases; no built-in updater. Interface refresh remains independent.
 
 ## Feature iteration
 
@@ -22,7 +23,7 @@
 
 - Install graph: `pnpm install --frozen-lockfile`.
 - Standard acceptance: `pnpm verify` = type/core check, native tests, native+web build, real network tests, ChromiumFish browser tests.
-- Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-update && pnpm test:desktop-interface`; real AppImages + graphical session. Runtime gate = temporary feed, corruption rejection + replacement/relaunch. Interface gate = native trust, selective transfer, same binary/PID, retained selection/terminal, failure/offline recovery. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
+- Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-interface`; real AppImages + graphical session. Runtime gate = isolated renderer, absent app-updater bridge/dependency, real server + terminal. Interface gate = native trust, selective transfer, same binary/PID, retained selection/terminal, failure/offline recovery. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
 - Installed deployment: `node scripts/check-installation.mjs`; `--terminal PROJECT` additionally proves reuse of an existing manual zmx daemon without sending input. Optional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
@@ -42,6 +43,6 @@
 ## Releases
 
 - Repository = `git@github.com:eturkes/emachine.git`; source/tag pushes use SSH. GitHub release API uses authenticated `gh`.
-- `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json,latest-linux.yml}`. Update metadata must match exact artifact/version. Updater = manual stable releases only; no automatic download, install-on-quit, or renderer-controlled feed.
+- `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json,latest-linux.yml}`. Keep release metadata for external update tools + older clients; metadata must match exact artifact/version.
 - `EMACHINE_CLIENT_SEED=empty` must not read machine configuration. Release packaging must preserve the installed AppImage and exclude local identities, addresses, state and credentials.
 - Version tags immutable; create annotated `vX.Y.Z` only at prepared `release.json.commit`. No forced push or asset clobber. Publish after upload/digest validation. Workflow = `docs/releases.md`.

@@ -4,10 +4,9 @@
 
 | Command | Coverage |
 | --- | --- |
-| `pnpm verify` | Type and native checking, native tests, release metadata tests, updater state and IPC tests, production builds, network tests, and browser tests |
+| `pnpm verify` | Type and native checking, native tests, release metadata tests, interface and IPC tests, production builds, network tests, and browser tests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
-| `pnpm test:desktop` | Real AppImage, renderer isolation, a real fixture machine, and zmx attachment |
-| `pnpm test:desktop-update` | Two real AppImage versions, a temporary update feed, corrupt download rejection, manual installation, actual restart, stable filename, and retained settings |
+| `pnpm test:desktop` | Real AppImage, renderer isolation, absent app-updater bridge and dependency, a real fixture machine, and zmx attachment |
 | `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
 | `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
@@ -16,11 +15,9 @@
 
 The native and network gates use real filesystem operations and zmx processes. Browser tests use ChromiumFish and real native fixture servers. The configured desktop gate sends no shell commands to the existing project.
 
-Browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, reconnect behavior, recovered jobs, neutral light colors, and manual update controls.
-
-The update gate builds its newer candidate in a temporary directory. It modifies only a temporary AppImage and profile.
-It also checks missing metadata, no newer version, and closing the app without installing a downloaded update.
-The test supplies a loopback feed from Electron's main process. The shipped renderer has no feed override.
+Browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, and reconnect behavior.
+They also cover recovered jobs, neutral light colors, text-only header controls, and absent app-update controls with a legacy desktop bridge.
+Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
 
 The interface gate serves temporary web files with the desktop CORS origin. Source approval still passes through the production IPC handler.
 Its native confirmation response is controlled only by the test's main-process connection.

@@ -31,7 +31,7 @@ function sourceUrl(value) {
 function validateManifest(input) {
   const bad = () => { throw failure('UI_MANIFEST', 'The server returned invalid interface metadata. The current interface is unchanged.'); };
   if (!input || input.format !== 1 || !Number.isSafeInteger(input.bridge)) bad();
-  if (input.bridge !== BRIDGE) throw failure('UI_BRIDGE', 'This interface needs a different desktop runtime. Check App updates before refreshing.');
+  if (input.bridge !== BRIDGE) throw failure('UI_BRIDGE', 'This interface needs a different desktop runtime. Install the required AppImage from GitHub Releases before refreshing.');
   if (!Array.isArray(input.files) || !input.files.length || input.files.length > 256 || !isDigest(input.revision)) bad();
   let previous = ''; let total = 0;
   const files = input.files.map(file => {

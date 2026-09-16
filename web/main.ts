@@ -4,7 +4,6 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
-import { attachAppUpdates } from './updates';
 import { attachInterfaceUpdates } from './interface';
 
 const $ = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -30,7 +29,7 @@ const jobs = new Map<string, { link: Link; job: Job }>();
 const app = $('div', 'app'); document.querySelector('#app')!.append(app);
 const scrim = button('', () => app.classList.remove('drawer-open'), 'drawer-scrim', 'Close project drawer');
 const rail = $('aside', 'project-rail'); rail.setAttribute('aria-label', 'Projects');
-const brand = $('header', 'brand'); brand.append($('span', 'brand-mark', 'e'), $('div', 'brand-name', 'emachine'), button('×', () => app.classList.remove('drawer-open'), 'icon mobile-close', 'Close projects'));
+const brand = $('header', 'brand'); brand.append($('span', 'brand-mark', 'e'), $('div', 'brand-name', 'emachine'), button('Close', () => app.classList.remove('drawer-open'), 'text-button mobile-close', 'Close projects'));
 const search = $('input', 'project-search'); search.type = 'search'; search.placeholder = 'Find a project'; search.setAttribute('aria-label', 'Filter projects'); search.oninput = () => { filter = search.value; renderRail(); };
 const projectList = $('nav', 'project-list'); projectList.setAttribute('aria-label', 'Project list');
 const railFooter = $('footer', 'rail-footer');
@@ -39,14 +38,12 @@ railFooter.append(button('＋ Machines', () => openSettings(), 'manage-machines'
 rail.append(brand, $('div', 'rail-label', 'WORKSPACES'), search, projectList, railFooter);
 const workspace = $('main', 'workspace');
 const tabHeader = $('header', 'tab-header');
-const mobileMenu = button('☰', () => app.classList.toggle('drawer-open'), 'icon mobile-menu', 'Open project drawer');
+const mobileMenu = button('Projects', () => app.classList.toggle('drawer-open'), 'text-button mobile-menu', 'Open project drawer');
 const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project views');
-const connectionBadge = $('span', 'connection-badge');
 const jobButton = button('Jobs', () => showJobs(), 'text-button'); jobButton.hidden = true;
-const themeButton = button('◐', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'icon', 'Change color theme');
-const actions = $('div', 'header-actions'); actions.append(connectionBadge, jobButton, button('▦', () => openPalette(), 'icon workspace-switcher', 'Go to a workspace or view, Control Shift P'), themeButton, button('⚙', () => openSettings(), 'icon', 'Machine settings'));
+const themeButton = button('Theme', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'text-button', 'Change color theme');
+const actions = $('div', 'header-actions'); actions.append(jobButton, button('Workspaces', () => openPalette(), 'text-button', 'Go to a workspace or view, Control Shift P'), themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
-attachAppUpdates(actions, dialog);
 tabHeader.append(mobileMenu, tabs, actions);
 const contextBar = $('div', 'context-bar');
 const title = $('div', 'project-title');
@@ -166,12 +163,9 @@ function render(): void {
   tabs.replaceChildren();
   for (const terminal of terminals.values()) terminal.show(false);
   for (const frame of frames.values()) frame.element.hidden = true;
-  if (!active) { title.textContent = ''; path.textContent = ''; offline.hidden = true; connectionBadge.textContent = fleet.links.length ? 'Connecting' : 'No machines'; return; }
+  if (!active) { title.textContent = ''; path.textContent = ''; offline.hidden = true; return; }
   const { link, project, key } = active;
   title.textContent = project.name; path.textContent = project.path || `${link.state!.machine.name} · last known workspace`;
-  connectionBadge.textContent = link.online ? link.route === link.config.gateway ? 'Gateway' : 'Direct' : 'Offline';
-  connectionBadge.className = `connection-badge ${link.online ? 'connected' : 'disconnected'}`;
-  connectionBadge.title = link.route ?? link.config.direct;
   offline.hidden = link.online;
   offline.textContent = `${link.state!.machine.name} is offline. Its projects remain listed. ${link.error}`;
   diagnostics.hidden = !project.diagnostics.length;
@@ -185,9 +179,9 @@ function render(): void {
   selectedTabs[key] = tab;
   let draggedTab = '';
   for (const feature of features) {
-    const b = button(feature.id === 'terminal' ? '›_  Terminal' : feature.title, () => choose(key, feature.id), `tab${feature.id === tab ? ' active' : ''}`);
+    const b = button(feature.title, () => choose(key, feature.id), `tab${feature.id === tab ? ' active' : ''}`);
     b.dataset.tabId = feature.id; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(feature.id === tab));
-    if (feature.status === 'stale') { const stale = $('span', 'stale-indicator', '•'); stale.title = 'Analysis is not current. Any last result is retained until analysis runs again.'; b.append(stale); }
+    if (feature.status === 'stale') { const stale = $('span', 'stale-indicator', 'Stale'); stale.title = 'Analysis is not current. Any last result is retained until analysis runs again.'; b.append(stale); }
     b.draggable = true; b.ondragstart = () => { draggedTab = feature.id; }; b.ondragover = event => event.preventDefault();
     b.ondrop = event => { event.preventDefault(); if (!draggedTab || draggedTab === feature.id) return; const order = features.map(feature => feature.id).filter(id => id !== draggedTab); order.splice(order.indexOf(feature.id), 0, draggedTab); orderTabs[key] = order; save('tab-order', orderTabs); render(); };
     tabs.append(b);

@@ -39,7 +39,7 @@ export function attachInterfaceUpdates(actions: HTMLElement, dialog: (title: str
   void api.getState().then(badge).catch(() => {});
   entry.onclick = () => {
     const d = dialog('Interface updates');
-    const copy = element('p', 'dialog-copy', 'Refresh the interface without replacing the AppImage. App updates remain separate for desktop runtime and security changes.');
+    const copy = element('p', 'dialog-copy', 'Refresh the interface without replacing the AppImage. Install desktop runtime and security updates separately from GitHub Releases.');
     const version = element('p', 'interface-version');
     const form = element('form', 'interface-source-form');
     const label = element('label', '', 'Interface source');

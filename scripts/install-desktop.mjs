@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const source = join(root, `desktop/release/emachine-${version}-x86_64.AppImage`);
 await access(source);
-// electron-updater preserves versionless names; a versioned launcher would break after installation.
+// A stable filename keeps launchers valid when the AppImage is replaced externally.
 const installed = join(root, 'desktop/installed');
 const image = join(installed, 'emachine.AppImage');
 await mkdir(installed, { recursive: true });

@@ -24,11 +24,9 @@ In builds with **Refresh**, select a trusted interface server once, then use **R
 This reloads verified web files without replacing the AppImage or restarting the application process.
 The server needs only a web build for ordinary UI changes. See [interface updates and recovery](docs/interface-updates.md).
 
-In updater-enabled builds, select **Updates**, then **Check for updates**.
-Select **Download update**, then **Restart and install**. Updates never install automatically when you close the app.
-This updates only the desktop client, not machine servers or project views.
-Version `0.1.0` requires one manual replacement to get these controls. Keep the new AppImage in a writable folder.
-Rename it to `emachine.AppImage` before creating a shortcut, so the filename stays stable across updates.
+Install desktop runtime updates from GitHub Releases with your external update method. The application has no built-in AppImage updater.
+Keep the filename `emachine.AppImage` when replacing it, so existing shortcuts stay valid.
+Your connection settings remain in the desktop profile. Machine servers and project views have separate update paths.
 
 For direct browser or phone access, connect Tailscale and open:
 
@@ -43,6 +41,10 @@ The direct route uses your Tailscale identity. It does not require another emach
 The optional public route on FreeBSD is **not deployed**. Its jail needs a scoped Tailscale routing change and an authenticated Caddy route. See [the deployment notes](docs/public-gateway.md). The client already supports a separate gateway address for each machine.
 
 ## Work with projects
+
+Use **Workspaces** to find a project or view. **Control+Shift+P** opens the same search.
+Use **Theme** to cycle through automatic, dark, and light colors. **Settings** opens machine connections and route details.
+On narrow screens, **Projects** opens the sidebar. The top bar uses text labels, including the **Terminal** tab.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 

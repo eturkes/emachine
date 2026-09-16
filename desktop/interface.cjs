@@ -174,7 +174,7 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
       if (disposed || active !== target) return getState();
       clearTimeout(timer); pending = undefined;
       if (active === bundle) {
-        set('error', 'The bundled interface could not start. Reopen the app or use App updates.');
+        set('error', 'The bundled interface could not start. Reopen the app or replace the AppImage from GitHub Releases.');
         return getState();
       }
       const previous = failed?.previous ?? fallback;

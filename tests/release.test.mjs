@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { clientSeed } from '../scripts/seed-client.mjs';
 import { updateManifest, validateUpdateMetadata } from '../scripts/update-metadata.mjs';
 
-test('desktop releases use the public GitHub update feed', async () => {
+test('desktop releases retain GitHub metadata without a bundled app updater', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.deepEqual(pkg.build.publish, [{ provider: 'github', owner: 'eturkes', repo: 'emachine', releaseType: 'release' }]);
-  assert.ok(pkg.dependencies['electron-updater']);
+  assert.equal(pkg.dependencies?.['electron-updater'], undefined);
 });
 
 test('update metadata binds the version, asset filename, size and checksum', async t => {

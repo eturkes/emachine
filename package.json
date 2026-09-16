@@ -20,12 +20,10 @@
     "test:network": "node --test tests/network.test.mjs",
     "test:web": "playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
-    "test:desktop-update": "node tests/desktop-updates.mjs",
     "test:desktop-interface": "node tests/desktop-interface.mjs",
     "test:interface": "node --test tests/interface.test.mjs",
     "test:release": "node --test tests/release.test.mjs",
-    "test:updater": "node --test tests/updater.test.mjs",
-    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:updater && pnpm test:interface && pnpm build && pnpm test:network && pnpm test:web",
+    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:interface && pnpm build && pnpm test:network && pnpm test:web",
     "release:prepare": "node scripts/prepare-release.mjs",
     "desktop": "electron .",
     "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"
@@ -78,8 +76,5 @@
       "appimage": "1.0.3"
     },
     "artifactName": "emachine-${version}-${arch}.${ext}"
-  },
-  "dependencies": {
-    "electron-updater": "6.8.9"
   }
 }

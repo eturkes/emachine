@@ -22,7 +22,7 @@ The output directory is `desktop/publish/vVERSION/`. It contains:
 - `emachine-VERSION-x86_64.AppImage`: the Linux desktop client.
 - `SHA256SUMS`: checksums for the AppImage and its release metadata.
 - `release.json`: the source commit, version, platform, build-tool versions, and artifact checksum.
-- `latest-linux.yml`: the version, filename, size, and SHA-512 checksum used by the in-app updater.
+- `latest-linux.yml`: the version, filename, size, and SHA-512 checksum for external update tools and older clients.
 
 Preparation validates the update metadata against the exact AppImage. `SHA256SUMS` also covers `latest-linux.yml`.
 
@@ -75,19 +75,16 @@ Release publication is explicit. Pushing a branch or tag does not start a separa
 
 ## Desktop runtime updates
 
-These controls replace the AppImage. [Interface updates](interface-updates.md) use **Refresh** instead and do not need a GitHub release.
+Replace the AppImage from GitHub Releases with your external update method. The application has no built-in AppImage updater.
+[Interface updates](interface-updates.md) use **Refresh** instead and do not need a GitHub release.
+Save work in open views before closing the client and replacing its AppImage.
 
-Select **Updates**, then **Check for updates**. Select **Download update** when a newer stable release is available.
-After the download, select **Restart and install**. Closing the app does not install a pending update.
+Verify the downloaded files with `SHA256SUMS`. Checksums detect corruption; they are not an independent publisher signature.
+Release access depends on the repository's security. No GitHub credential is embedded in the client.
 
-The updater downloads through HTTPS and checks the asset's SHA-512 checksum against GitHub's release metadata.
-This checks download integrity, not an independent publisher signature. Release access depends on the repository's security.
-No GitHub credential is embedded in the client.
-
-Keep the AppImage in a writable folder. A versionless filename preserves launchers across updates.
+A versionless filename preserves launchers across updates.
 The local installer uses `desktop/installed/emachine.AppImage`; builds and release preparation leave that copy unchanged.
 Your connection settings stay in the Electron profile. The update replaces only the desktop client.
 Machine servers and project views have separate update paths. Server terminals and jobs survive a client restart.
 
-Version `0.1.0` has no updater. Install an updater-enabled AppImage once before using the button for later releases.
 A source edit is not a runtime release. Each runtime update needs a higher version and all four published assets.

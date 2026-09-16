@@ -28,52 +28,18 @@ test('reloading restores the selected project on a nonfirst machine', async ({ p
   expect(await page.evaluate(() => localStorage.getItem('emachine:selection'))).toBe(selection);
 });
 
-test('manual desktop update controls preserve the workspace and render progress and restart states', async ({ page }) => {
+test('app update controls stay absent even with a legacy desktop bridge', async ({ page }) => {
   await page.addInitScript(() => {
-    let state: any = { status: 'idle', version: '0.1.0', message: 'Updates are checked only when you request them.' };
-    const listeners = new Set<(value: any) => void>();
     const calls: string[] = [];
-    const emit = (change: any) => { state = { version: '0.1.0', ...change }; listeners.forEach(fn => fn(state)); return state; };
     (window as any).updateFixture = { calls };
-    window.emachineUpdates = {
-      getState: async () => state,
-      onState: callback => { listeners.add(callback); return () => { listeners.delete(callback); }; },
-      check: async () => { calls.push('check'); return emit({ status: 'available', nextVersion: '0.2.0', message: 'Version 0.2.0 is available.' }); },
-      download: async () => {
-        calls.push('download'); emit({ status: 'downloading', nextVersion: '0.2.0', percent: 42, message: 'Downloading version 0.2.0: 42%.' });
-        return new Promise(resolve => { (window as any).updateFixture.finish = () => resolve(emit({ status: 'downloaded', nextVersion: '0.2.0', message: 'Version 0.2.0 is ready. Save work in your open views before restarting.' })); });
-      },
-      install: async () => { calls.push('install'); return emit({ status: 'installing', message: 'Restarting to install the update...' }); },
-    };
+    (window as any).emachineUpdates = Object.fromEntries(['getState', 'onState', 'check', 'download', 'install'].map(name =>
+      [name, () => { calls.push(name); throw new Error('The retired app updater must not be called.'); }]));
   });
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
-  await page.locator('.terminal-pane').evaluate(element => { (element as HTMLElement).dataset.continuity = 'kept'; });
-  const calls = () => page.evaluate(() => (window as any).updateFixture.calls);
-  await page.getByRole('button', { name: 'App updates', exact: true }).click();
-  await expect(page.locator('.update-version')).toHaveText('Installed version: 0.1.0');
-  expect(await calls()).toEqual([]);
-  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Download update', exact: true })).toBeEnabled();
-  expect(await calls()).toEqual(['check']);
-  await page.getByRole('button', { name: 'Download update', exact: true }).click();
-  await expect(page.getByRole('progressbar')).toHaveJSProperty('value', 42);
-  await expect(page.getByRole('button', { name: 'Downloading...', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-  await page.getByRole('button', { name: 'App updates', exact: true }).click();
-  await expect(page.getByRole('progressbar')).toHaveJSProperty('value', 42);
-  await page.evaluate(() => (window as any).updateFixture.finish());
-  await expect(page.getByRole('button', { name: 'Restart and install', exact: true })).toBeEnabled();
-  expect(await calls()).toEqual(['check', 'download']);
-  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-continuity', 'kept');
-  await page.screenshot({ path: 'test-results/emachine-updates-desktop.png' });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('button', { name: 'Restart and install', exact: true })).toBeVisible();
-  expect(await page.locator('dialog').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await page.screenshot({ path: 'test-results/emachine-updates-phone.png' });
-  await page.getByRole('button', { name: 'Restart and install', exact: true }).click();
-  expect(await calls()).toEqual(['check', 'download', 'install']);
-  await expect(page.getByRole('button', { name: 'Restarting...', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'App updates', exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.locator('.tab-header')).not.toContainText('Updates');
+  expect(await page.evaluate(() => (window as any).updateFixture.calls)).toEqual([]);
 });
 
 test('machine URLs preserve gateway prefixes and reject encoded escapes', async () => {
@@ -117,13 +83,13 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   expect(errors).toEqual([]);
 });
 
-test('workspace switcher uses a neutral icon and preserves navigation', async ({ page }) => {
+test('workspace switcher uses text and preserves navigation', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   const label = 'Go to a workspace or view, Control Shift P';
   const switcher = page.getByRole('button', { name: label, exact: true, includeHidden: true });
   expect(await switcher.count()).toBe(1);
-  await expect(switcher).toHaveText('▦');
+  await expect(switcher).toHaveText('Workspaces');
   await expect(switcher).toHaveAttribute('title', label);
   await switcher.click();
   const search = page.getByRole('textbox', { name: 'Search commands', exact: true });
@@ -140,8 +106,53 @@ test('workspace switcher uses a neutral icon and preserves navigation', async ({
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/emachine-workspace-switcher.png', animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(switcher).toBeHidden();
+  await expect(switcher).toBeVisible();
+  await switcher.click();
+  await expect(search).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('top bar uses text controls without connection badges at desktop and phone widths', async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = { status: 'unconfigured' as const, source: '', revision: 'fixture', bundled: true, message: 'Choose an interface source.' };
+    const getState = async () => state;
+    window.emachineInterface = { getState, setSource: getState, check: getState, refresh: getState, restore: getState, ready: getState, onState: () => () => {} };
+  });
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const header = page.locator('.tab-header');
+  await expect(header.getByRole('tab')).toHaveText('Terminal');
+  await expect(header.locator('.connection-badge')).toHaveCount(0);
+  await expect(header).not.toContainText(/Direct|Gateway|Offline/);
+  const settings = header.getByRole('button', { name: 'Machine settings', exact: true });
+  const theme = header.getByRole('button', { name: /^Theme:/ });
+  await expect(settings).toHaveText('Settings');
+  await expect(theme).toHaveText('Theme');
+  await expect(header.getByRole('button', { name: 'Interface updates', exact: true })).toHaveText('Refresh');
+  for (const width of [1360, 720, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const control of await header.locator('button:visible').all()) {
+      await expect(control).toBeInViewport({ ratio: 1 });
+      expect(await control.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      expect((await control.innerText()).trim()).toMatch(/^[A-Za-z ]+$/);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await settings.click();
+    await expect(page.getByRole('heading', { name: 'Machines', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    for (const value of ['dark', 'light', 'auto']) {
+      await theme.click();
+      await expect(theme).toHaveAttribute('aria-label', new RegExp(`^Theme: ${value}`));
+      if (value !== 'auto') await page.screenshot({ path: `test-results/emachine-text-header-${width}-${value}.png`, animations: 'disabled' });
+    }
+    if (width <= 700) {
+      const projects = header.getByRole('button', { name: 'Open project drawer', exact: true });
+      await expect(projects).toHaveText('Projects');
+      await projects.click();
+      await expect(page.getByRole('button', { name: 'Close projects', exact: true })).toHaveText('Close');
+      await page.getByRole('button', { name: 'Close projects', exact: true }).click();
+    }
+  }
 });
 
 for (const viewport of [{ width: 1360, height: 900 }, { width: 390, height: 844 }]) {
@@ -304,7 +315,9 @@ test('fallback route, identity deduplication and reconnection preserve project s
   await connect('Fallback B', 'http://127.0.0.1:9/', b.origin + '/');
   const row = page.getByRole('button', { name: 'alpha on Workstation B, online', exact: true });
   await row.click();
-  await expect(page.locator('.connection-badge')).toHaveText('Gateway');
+  await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
+  await expect(page.locator('.connection-row').filter({ hasText: 'Fallback B' }).locator('.online-text')).toHaveText(`Connected through ${b.origin}/`);
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
   await page.locator('.terminal-pane:not([hidden])').evaluate(element => { (element as HTMLElement).dataset.continuity = 'retained'; });
   await connect('Same machine direct', b.origin + '/');

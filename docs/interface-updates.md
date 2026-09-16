@@ -30,7 +30,8 @@ Your saved connections, selected project, and preferences stay in the same deskt
 Server terminals and jobs keep running. The refreshed interface reconnects to them.
 Unsaved text and other temporary state inside a view can be lost during a reload.
 
-**Updates** remains separate. Use it for Electron, native integration, and desktop security updates.
+Install Electron, native integration, and desktop security updates from GitHub Releases with your external update method.
+The application has no built-in AppImage updater.
 A UI refresh does not update the machine server or its project views.
 Project views continue to use their own activation workflow.
 
@@ -55,6 +56,8 @@ The desktop always reads its optional machine seed from the original AppImage.
 
 The bridge version describes the desktop API that the UI needs. An incompatible revision is rejected before activation.
 When a UI change needs a different native API or runtime capability, update the bridge contract and desktop runtime together.
+Removing the optional app-updater controls leaves the required interface bridge unchanged.
+Older AppImages can load the text-only interface, but removing their native updater requires replacing the AppImage.
 File hashes detect corruption. They do not provide an independent publisher signature or protect against malicious code from a trusted source.
 
 ## Offline use and recovery
