@@ -11,7 +11,7 @@ Release builds start with an empty machine list. Add your machine's direct Tails
 The AppImage is a client; run the MoonBit server separately on each project machine.
 
 ```sh
-mv emachine-0.1.2-x86_64.AppImage emachine.AppImage
+mv emachine-0.1.3-x86_64.AppImage emachine.AppImage
 chmod +x emachine.AppImage
 ./emachine.AppImage
 # Without a FUSE mount helper:
