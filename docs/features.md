@@ -53,6 +53,14 @@ The SDK reports rendering errors to the server through the parent. Codexify can 
 
 Use `emachine.job(id)` to recover a known job after reconnecting. Use `await emachine.artifact('result.json')` to obtain an authenticated artifact URL. Store useful view selections in project-specific feature state rather than relying on the iframe's lifetime.
 
+## Theme
+
+Use neutral grayscale surfaces, text, borders, controls, focus indicators, and selections in both themes. Match the parent theme. The SDK's `--accent` token provides neutral emphasis, not a brand color.
+
+Reserve color for functional states or data distinctions. Use separate semantic tokens for these roles. Pair colored status indicators with text or symbols. Keep decorative backgrounds and ordinary navigation neutral.
+
+Copy theme styles into each feature workspace. Feature releases must keep their own pinned styles. Copy `tests/theme-contract.mjs` into the workspace to check neutral surfaces and text contrast in the feature's browser gate.
+
 ## Server actions
 
 An action receives JSON on standard input. Its working directory is the immutable active release, not the managed project. The server supplies these environment variables:

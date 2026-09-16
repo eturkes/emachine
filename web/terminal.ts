@@ -5,9 +5,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
-  background: '#0c1218', foreground: '#e4eee9', cursor: '#7cddba', cursorAccent: '#0c1218', selectionBackground: '#365c5280',
-  black: '#16212a', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dce9e5',
-  brightBlack: '#748780', brightRed: '#ff9d9d', brightGreen: '#a4efb6', brightYellow: '#ffe19b', brightBlue: '#b0caff', brightMagenta: '#e0b9ff', brightCyan: '#a2f4df', brightWhite: '#ffffff',
+  background: '#151515', foreground: '#e7e7e7', cursor: '#d6d6d6', cursorAccent: '#151515', selectionBackground: '#a3a3a380',
+  black: '#202020', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
+  brightBlack: '#858585', brightRed: '#ff9d9d', brightGreen: '#a4efb6', brightYellow: '#ffe19b', brightBlue: '#b0caff', brightMagenta: '#e0b9ff', brightCyan: '#a2f4df', brightWhite: '#ffffff',
 } : {
   background: '#f7f7f7', foreground: '#292929', cursor: '#454545', cursorAccent: '#f7f7f7', selectionBackground: '#a3a3a380',
   black: '#292929', red: '#a73748', green: '#21744a', yellow: '#88621a', blue: '#345daa', magenta: '#835096', cyan: '#267d7b', white: '#666666',

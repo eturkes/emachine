@@ -2,10 +2,10 @@
   color-scheme: light dark;
   font-family: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
   font-synthesis: none;
-  --bg: #0c1218; --surface: #121c24; --raised: #1b2831; --hover: #22323a;
-  --text: #e4eee9; --muted: #94aaa0; --border: #293a40; --accent: #7cddba;
-  --accent-soft: #7cddba12; --warning: #ecc780; --danger: #ed7985;
-  --selection: #3d826855; --backdrop: #071014b0; --scrim: #050a10aa;
+  --bg: #151515; --surface: #1c1c1c; --raised: #262626; --hover: #303030;
+  --text: #e7e7e7; --muted: #ababab; --border: #3a3a3a; --accent: #d6d6d6;
+  --accent-soft: #d6d6d612; --warning: #ecc780; --danger: #ed7985;
+  --selection: #d6d6d633; --backdrop: #080808b0; --scrim: #080808aa;
   --rail: 252px; --bar: 56px; --radius: 10px;
   background: var(--bg); color: var(--text); font-size: 15px;
 }

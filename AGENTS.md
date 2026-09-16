@@ -11,6 +11,7 @@
 - Feature code trusted, normal account permissions. Arbitrary interfaces/actions allowed; subprocess boundaries provide fault isolation, not a security sandbox.
 - Header = text controls + view titles; route details in Settings, disconnection in the offline banner. AppImage upgrades = external GitHub Releases; no built-in updater. Interface refresh remains independent.
 - Theme = persisted light/dark; environment resolves missing/legacy preferences once. Desktop rail stays expanded; phone drawer remains. No project/path or live-shell strips; exceptional terminal status + control share the shortcut bar.
+- Shell + default feature styling = neutral grayscale in both themes, including text, surfaces, controls, selection, focus, terminal defaults + launcher icons. Accent tokens mean neutral emphasis. Use chromatic colors only for labeled functional states, warnings/errors, or data distinctions; keep semantic tokens separate from controls. Match the parent theme; copy/pin styles per feature. Apply this default to every new feature unless explicitly overridden.
 
 ## Feature iteration
 
@@ -28,6 +29,7 @@
 - Installed deployment: `node scripts/check-installation.mjs`; `--terminal PROJECT` additionally proves reuse of an existing manual zmx daemon without sending input. Optional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
+- Theme gate = `pnpm test:web`; neutral surface/contrast, SDK/authentication, pixel-level icons + starter propagation. `tests/theme-contract.mjs` can be copied into independent feature gates. Icon replay = `node scripts/icons.mjs && git diff --exit-code -- web/public/icons/`; tracked PNG bytes must remain identical.
 - Tests use temporary project roots and clean exact fixture zmx sessions. User projects are not test fixtures.
 - Final claimed gates rerun from committed source. Never label physical mobile, native snapshots, or public login verified without direct evidence.
 

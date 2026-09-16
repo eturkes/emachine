@@ -80,7 +80,7 @@ async function start() {
   });
   main = new BrowserWindow({
     width: 1320, height: 860, minWidth: 420, minHeight: 380,
-    title: 'emachine', backgroundColor: '#0c1218', show: false, autoHideMenuBar: true,
+    title: 'emachine', backgroundColor: '#151515', show: false, autoHideMenuBar: true,
     icon: join(root, 'icons/512.png'),
     webPreferences: { nodeIntegration: false, nodeIntegrationInSubFrames: false,
       contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false,

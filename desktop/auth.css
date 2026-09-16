@@ -1,7 +1,9 @@
-:root { color-scheme:dark; font:14px system-ui,sans-serif; background:#0c1218; color:#e4eee9; }
-body { margin:22px; } h1 { font-size:21px; margin:0 0 8px; } p { color:#94aaa0; }
+:root { color-scheme:dark; font:14px system-ui,sans-serif; background:#151515; color:#e7e7e7; }
+body { margin:22px; } h1 { font-size:21px; margin:0 0 8px; } p { color:#ababab; }
 form,label { display:grid; gap:7px; } form { gap:12px; }
-input { font:inherit; padding:9px; border:1px solid #293a40; background:#121c24; color:inherit; border-radius:6px; }
+input { font:inherit; padding:9px; border:1px solid #3a3a3a; background:#1c1c1c; color:inherit; border-radius:6px; }
 form div { display:flex; justify-content:flex-end; gap:8px; }
-button { font:inherit; padding:8px 14px; border:1px solid #293a40; border-radius:6px; background:#121c24; color:inherit; cursor:pointer; }
-button[type=submit] { background:#7cddba;color:#0c1218; }
+button { font:inherit; padding:8px 14px; border:1px solid #3a3a3a; border-radius:6px; background:#1c1c1c; color:inherit; cursor:pointer; }
+button[type=submit] { background:#d6d6d6;color:#151515; }
+:focus-visible { outline:2px solid #d6d6d6; outline-offset:3px; }
+::selection { background:#d6d6d633; }

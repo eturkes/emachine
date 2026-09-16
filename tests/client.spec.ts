@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { baseUrl, endpoint, socketUrl } from '../web/transport';
 // @ts-expect-error This JavaScript fixture drives the real native server.
 import { fixture, socket } from './network-helper.mjs';
+// @ts-expect-error Shared JavaScript color assertions also run in project-owned feature gates.
+import { neutral, neutralTheme } from './theme-contract.mjs';
 
 let a: any;
 let b: any;
@@ -400,6 +402,75 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
   await toggle.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await colors()).toEqual(dark);
+});
+
+test('dark structural palette stays neutral with readable controls and terminal', async ({ page }) => {
+  await page.goto(a.origin);
+  if (await page.locator('html').getAttribute('data-theme') !== 'dark') await page.getByRole('button', { name: /^Theme:/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  await neutralTheme(page.locator('body'), {
+    tokens: ['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft', 'selection', 'backdrop', 'scrim'],
+    selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows', '.xterm-scrollable-element'],
+    surfaces: ['bg', 'surface', 'raised', 'hover'], semantic: ['warning', 'danger'],
+  });
+  await page.screenshot({ path: 'test-results/emachine-neutral-dark-desktop.png', animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+  await page.screenshot({ path: 'test-results/emachine-neutral-dark-phone.png', animations: 'disabled' });
+});
+
+test('SDK controls and native authentication use neutral colors', async ({ page }) => {
+  for (const file of ['web/public/sdk.css', 'desktop/auth.css']) {
+    await page.setContent(`<style>${await readFile(file, 'utf8')}</style><p>Details</p><form><label>Address<input></label><button type="submit">Connect</button></form><a href="#">Help</a>`);
+    for (const theme of ['dark', 'light']) {
+      await page.locator('html').evaluate((element, theme) => { element.dataset.theme = theme; }, theme);
+      await page.locator('input').focus();
+      const samples = await page.locator('body').evaluate(() => [...document.querySelectorAll('html,p,input,button')].flatMap(element => {
+        const style = getComputedStyle(element);
+        return ['color', 'backgroundColor', 'borderTopColor', 'outlineColor'].map(property => ({ name: `${element.tagName}.${property}`, color: style[property as keyof CSSStyleDeclaration] as string }));
+      }));
+      for (const { name, color } of samples) neutral(color, `${file} ${theme} ${name}`);
+    }
+  }
+});
+
+test('launcher icons and startup colors contain no decorative tint', async () => {
+  const { default: sharp } = await import('sharp');
+  for (const size of [180, 192, 512]) {
+    const { data, info } = await sharp(`web/public/icons/${size}.png`).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height, info.channels]).toEqual([size, size, 4]);
+    let visible = 0, tinted = 0;
+    for (let index = 0; index < data.length; index += 4) if (data[index + 3]) {
+      visible++;
+      if (data[index] !== data[index + 1] || data[index + 1] !== data[index + 2]) tinted++;
+    }
+    expect(visible).toBeGreaterThan(size * size / 2);
+    expect(tinted, `${size}px icon tinted pixels`).toBe(0);
+  }
+  const manifest = JSON.parse(await readFile('web/public/manifest.webmanifest', 'utf8'));
+  neutral(manifest.background_color, 'PWA background'); neutral(manifest.theme_color, 'PWA theme');
+  neutral((await readFile('web/index.html', 'utf8')).match(/name="theme-color" content="([^"]+)"/)![1], 'HTML startup');
+  neutral((await readFile('desktop/main.cjs', 'utf8')).match(/backgroundColor: '([^']+)'/)![1], 'Native startup');
+});
+
+test('new feature starter follows both neutral parent themes', async ({ page }) => {
+  await a.cli('feature', 'create', 'alpha', 'neutral-starter', 'Neutral starter');
+  await a.cli('feature', 'activate', 'alpha', 'neutral-starter');
+  try {
+    await page.goto(a.origin);
+    await page.getByRole('tab', { name: 'Neutral starter', exact: true }).click();
+    const frame = page.frameLocator('iframe[title="Neutral starter — alpha"]');
+    for (const theme of ['light', 'dark']) {
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(frame.locator('html')).toHaveAttribute('data-theme', theme);
+      const colors = await frame.locator('body').evaluate(() => [document.documentElement, document.querySelector('p')!].flatMap(element => {
+        const style = getComputedStyle(element); return [style.color, style.backgroundColor];
+      }));
+      for (const color of colors) neutral(color, `starter ${theme}`);
+      await page.getByRole('button', { name: /^Theme:/ }).click();
+    }
+  } finally { await a.cli('feature', 'remove', 'alpha', 'neutral-starter'); }
 });
 
 test('feature replacement updates only its project view', async ({ page }) => {

@@ -293,9 +293,9 @@ pub async fn create(
     #|<!doctype html>
     #|<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     #|<title>Project view</title>
-    #|<style>:root{color-scheme:dark light;font:16px system-ui;background:#101820;color:#e6eeeb}body{margin:0;padding:32px}h1{font-size:28px}p{color:#a1b5ae;max-width:55ch;line-height:1.6}</style>
+    #|<style>:root{color-scheme:dark;font:16px system-ui;--bg:#151515;--text:#e7e7e7;--muted:#ababab;background:var(--bg);color:var(--text)}:root[data-theme=light]{color-scheme:light;--bg:#f7f7f7;--text:#292929;--muted:#666666}body{margin:0;padding:32px}h1{font-size:28px}p{color:var(--muted);max-width:55ch;line-height:1.6}</style>
     #|<h1 id="title">Project view</h1><p id="project"></p><p>This workspace is ready for a project-specific implementation. Ask Codexify to edit this feature.</p>
-    #|<script>addEventListener('message',e=>{if(e.source!==parent||e.data?.type!=='emachine:context')return;document.querySelector('#title').textContent=e.data.feature.title;document.querySelector('#project').textContent=e.data.project.name;document.documentElement.style.colorScheme=e.data.theme});parent.postMessage({type:'emachine:ready'},'*');</script></html>
+    #|<script>addEventListener('message',e=>{if(e.source!==parent||e.data?.type!=='emachine:context')return;document.querySelector('#title').textContent=e.data.feature.title;document.querySelector('#project').textContent=e.data.project.name;document.documentElement.dataset.theme=e.data.theme});parent.postMessage({type:'emachine:ready'},'*');</script></html>
   @fs.write_file(
     workspace + "/index.html",
     html,
