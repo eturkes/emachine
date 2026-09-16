@@ -2,6 +2,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { attachTerminalTouchScroll } from './terminal-touch';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
@@ -34,6 +35,7 @@ export class TerminalPane {
   private status = document.createElement('span');
   private control: HTMLButtonElement;
   private terminal: Terminal;
+  private detachTouch?: () => void;
   private fit = new FitAddon();
   private ws?: WebSocket;
   private observer: ResizeObserver;
@@ -71,6 +73,7 @@ export class TerminalPane {
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
       this.terminal.open(this.host);
+      this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
       this.layout();
     });
     this.terminal.onData(data => {
@@ -174,6 +177,7 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
+    this.detachTouch?.();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }

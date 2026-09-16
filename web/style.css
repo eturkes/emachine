@@ -19,7 +19,7 @@
 :root[data-theme='dark'] { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-body { overscroll-behavior: none; }
+html, body { overscroll-behavior: none; }
 [hidden] { display: none !important; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; }
@@ -67,7 +67,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .view { width: 100%; height: 100%; border: 0; }
 .feature-frame { display: block; background: var(--bg); }
 .terminal-pane { display: flex; flex-direction: column; padding: 14px 16px 0; }
-.terminal-host { min-height: 0; flex: 1; overflow: auto; }
+.terminal-host { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport { background-color: var(--bg); }
 .terminal-keys { display: flex; align-items: center; gap: 4px; padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); flex-shrink: 0; overflow-x: auto; scroll-padding-inline: 6px; }

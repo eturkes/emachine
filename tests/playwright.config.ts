@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 
 export default defineConfig({
-  testDir: '.', testMatch: 'client.spec.ts', workers: 1,
+  testDir: '.', testMatch: ['client.spec.ts', 'terminal-touch.spec.ts'], workers: 1,
   timeout: 45000, expect: { timeout: 15000 }, reporter: 'list',
   outputDir: '../test-results/browser',
   use: {
