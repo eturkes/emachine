@@ -29,7 +29,7 @@ Each saved connection: `{id?: string, name: string, direct: string, gateway?: st
 
 ## Terminal
 
-`WS api/v1/terminal/{projectId}?cols=100&rows=30` attaches one persistent project zmx session. Creation happens on first attachment. Every browser connection gets its own native attachment; disconnection closes only that attachment. The session survives machine-server restarts.
+`WS api/v1/terminal/{projectId}?cols=100&rows=30` attaches a zmx session named exactly after the current project. The server inherits `ZMX_DIR`; otherwise, zmx resolves its normal socket directory. An existing manual SSH session is reused, including its working directory and shell state. A missing session starts in the project directory. Every browser connection gets its own native attachment; disconnection closes only that attachment. The session survives machine-server restarts. After a project rename, new attachments use the new name; existing attachments remain intact.
 
 Server binary frames contain raw terminal bytes. Server text frames:
 - `{type:"state", session:string, mode:"control"|"observe", cols:number, rows:number}`.
@@ -42,6 +42,8 @@ Client binary frames contain raw UTF-8 input, accepted only from the controller.
 - `{type:"ping"}`.
 
 First connection controls; others observe until claiming control or controller disconnection. All native attachments use the controller's dimensions. Observer terminals render those dimensions instead of resizing the shared shell. Clear the browser terminal before reconnecting: zmx replays terminal state. Do not interpret terminal OSC as authority to read clipboard or open external URLs automatically.
+
+The controller policy applies only to Emachine clients. Manual zmx attachments can also send input and affect terminal dimensions.
 
 ## Feature frames and jobs
 

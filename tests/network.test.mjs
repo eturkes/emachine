@@ -1,9 +1,108 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile, readdir, rename, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { fixture, socket, until, sleep } from './network-helper.mjs';
+
+const exec = promisify(execFile);
+async function sessions(f) {
+  const { stdout } = await exec('zmx', ['list'], { env: f.env, timeout: 5000 });
+  return [...stdout.matchAll(/^\s*name=(.*?)\tpid=(\d+)\tclients=(\d+)/gm)]
+    .map(([, name, pid, clients]) => ({ name, pid: Number(pid), clients: Number(clients) }));
+}
+
+function manualTerminal(f, name) {
+  const child = spawn('script', ['--quiet', '--return', '--command',
+    'exec zmx attach "$EMACHINE_TEST_SESSION" /bin/bash --noprofile --norc', '/dev/null'], {
+    cwd: f.home, env: { ...f.env, TERM: 'xterm-256color', EMACHINE_TEST_SESSION: name },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let text = '';
+  const ended = new Promise((resolve, reject) => { child.once('close', resolve); child.once('error', reject); });
+  child.stdout.on('data', data => {
+    text = (text + data.toString('utf8')).slice(-65536);
+    if (data.includes(Buffer.from('\x1b[c'))) child.stdin.write('\x1b[?1;2c');
+    if (data.includes(Buffer.from('\x1b[6n'))) child.stdin.write('\x1b[1;1R');
+  });
+  child.stderr.on('data', data => { text = (text + data).slice(-65536); });
+  return {
+    get text() { return text; },
+    command(line) { child.stdin.write(line + '\r'); },
+    async close() {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      child.stdin.end('\x1c');
+      const timer = setTimeout(() => child.kill('SIGTERM'), 3000);
+      try { await ended; } finally { clearTimeout(timer); }
+    },
+  };
+}
+
+test('project-named zmx session interoperability', { timeout: 120000 }, async t => {
+  await t.test('missing sessions use the exact project name in the default namespace', async t => {
+    const f = await fixture();
+    const clients = [];
+    t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+    const project = (await f.state()).projects.find(p => p.name === 'alpha');
+    assert.deepEqual(await sessions(f), []);
+    const client = await socket(f, `api/v1/terminal/${project.id}`); clients.push(client);
+    await until(() => client.packets.some(p => p.mode === 'control'));
+    assert.equal(client.packets.find(p => p.type === 'state').session, project.name);
+    await until(async () => (await sessions(f)).some(s => s.name === project.name));
+    assert.deepEqual((await sessions(f)).map(s => s.name), [project.name]);
+    client.command("printf '__NA''MED_CWD__%s\\n' \"$PWD\"");
+    await until(() => client.text.includes(`__NAMED_CWD__${project.path}`));
+  });
+
+  for (const zmxDir of [false, true]) {
+    await t.test(`reuse a manual session with ${zmxDir ? 'explicit ZMX_DIR' : 'default XDG namespace'}`, async t => {
+      const f = await fixture({ zmxDir });
+      const clients = [];
+      t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+      const project = (await f.state()).projects.find(p => p.name === 'beta');
+      const manual = manualTerminal(f, project.name); clients.push(manual);
+      manual.command("EMACHINE_MANUAL=from_manual; printf '__MAN''UAL_READY__%s\\n' \"$$\"");
+      const ready = await until(() => manual.text.match(/__MANUAL_READY__(\d+)/));
+      const shellPid = ready[1];
+      const original = await until(async () => (await sessions(f)).find(s => s.name === project.name && s.clients === 1));
+      for (const phase of ['active', 'restart', 'detached']) {
+        if (phase !== 'active') { await f.stop(); await f.start(); }
+        if (phase === 'detached') await manual.close();
+        const client = await socket(f, `api/v1/terminal/${project.id}`); clients.push(client);
+        await until(() => client.packets.some(p => p.mode === 'control'));
+        client.command("printf '__RE''USE__%s:%s:%s\\n' \"$EMACHINE_MANUAL\" \"$$\" \"$PWD\"");
+        const output = await until(() => client.text.match(/__REUSE__([^\r\n]*)/));
+        assert.equal(output[1], `from_manual:${shellPid}:${f.home}`, phase);
+        assert.equal(client.packets.find(p => p.type === 'state').session, project.name);
+        await until(async () => (await sessions(f)).some(s => s.name === project.name && s.clients === (phase === 'detached' ? 1 : 2)));
+        assert.deepEqual((await sessions(f)).map(s => [s.name, s.pid]), [[project.name, original.pid]]);
+        await client.close();
+      }
+      assert.equal((await sessions(f))[0].pid, original.pid);
+    });
+  }
+
+  await t.test('new attachments follow a renamed project without killing its old session', async t => {
+    const f = await fixture();
+    const clients = [];
+    t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+    const project = (await f.state()).projects.find(p => p.name === 'alpha');
+    const old = await socket(f, `api/v1/terminal/${project.id}`); clients.push(old);
+    await until(() => old.packets.some(p => p.mode === 'control'));
+    const renamed = 'renamed project 東京';
+    await rename(project.path, join(f.config.projectRoot, renamed));
+    await until(async () => (await f.state()).projects.some(p => p.id === project.id && p.name === renamed));
+    const client = await socket(f, `api/v1/terminal/${project.id}`); clients.push(client);
+    await until(() => client.packets.some(p => p.type === 'state'));
+    assert.equal(client.packets.find(p => p.type === 'state').session, renamed);
+    await until(async () => (await sessions(f)).length === 2);
+    assert.deepEqual((await sessions(f)).map(s => s.name).sort(), [project.name, renamed].sort());
+    old.command("printf '__OL''D_ALIVE__\\n'");
+    await until(() => old.text.includes('__OLD_ALIVE__'));
+  });
+});
 
 test('real MoonBit machine server acceptance', { timeout: 180000 }, async t => {
   const f = await fixture();

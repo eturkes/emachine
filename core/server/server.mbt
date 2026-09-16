@@ -285,7 +285,6 @@ async fn route(
 pub async fn serve(config : @model.Config) -> Unit {
   @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
   @model.initialize(config)
-  @model.ensure_dir(config.runtimeRoot + "/zmx")
   let lock = @fs.open(
     config.runtimeRoot + "/server.lock",
     mode=ReadWrite,

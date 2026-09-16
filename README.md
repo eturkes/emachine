@@ -46,9 +46,13 @@ The optional public route on FreeBSD is **not deployed**. Its jail needs a scope
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 
-Open a project to create or attach its zmx session. Switching projects or tabs does not close the shell. Closing the application disconnects its attachment, not the session.
+The zmx session name is the project name, such as `figure-verification`. Open a project to attach to that session. If the session does not exist, Emachine creates it in the project directory. An existing session retains its shell, working directory, and running commands.
 
-The first connected device controls the terminal. Other devices observe the same screen until you select **Take control**. The controlling device sets the terminal dimensions.
+From SSH, run `zmx attach figure-verification` to use the same session. Emachine inherits `ZMX_DIR` when set; otherwise, zmx uses its normal socket directory. The service and SSH shell must use the same socket directory.
+
+Switching projects or tabs does not close the shell. Closing the application disconnects its attachment, not the session. After a project rename, new attachments use the new name. Existing attachments and older sessions remain intact.
+
+The first connected Emachine device controls the terminal. Other devices observe the same screen until you select **Take control**. The controlling device sets the terminal dimensions. This control applies only to Emachine clients; an SSH attachment can still send input.
 
 The shell survives an emachine service restart. It does not survive an operating-system reboot. Input entered after a detected disconnection is discarded, never queued for replay.
 
@@ -98,9 +102,12 @@ Views can contain arbitrary interfaces and declared server actions. They are tru
 | Configuration | `~/.config/emachine/config.json` |
 | Feature source, releases, checkpoints | `~/.local/share/emachine/` |
 | Job records, artifacts, mutable state | `~/.local/state/emachine/` |
-| zmx sockets and server lock | `$XDG_RUNTIME_DIR/emachine-runtime/` |
+| zmx sockets | `$ZMX_DIR`, otherwise `$XDG_RUNTIME_DIR/zmx/` when available |
+| Server lock | `$XDG_RUNTIME_DIR/emachine-runtime/` |
 
 The server rejects storage roots that overlap the managed project root. XDG variables and configuration can change these defaults.
+
+Older `em-<projectId>` sessions remain under the configured runtime root's `zmx/` directory. Emachine does not rename or terminate them.
 
 The installer enables automatic snapshot selection for new emachine-owned boundaries. The bcachefs adapter attempts native subvolumes and snapshots. Unsupported or denied operations fall back to reflink-capable copies. Checkpoint records identify the backend actually used.
 

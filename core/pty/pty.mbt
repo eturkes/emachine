@@ -11,7 +11,6 @@ pub async fn[G] spawn(
   cwd : String,
   session : String,
   shell : String,
-  runtime_dir : String,
   cols : Int,
   rows : Int,
   extra_env? : Map[String, String] = {},
@@ -25,7 +24,6 @@ pub async fn[G] spawn(
   for k, v in extra_env {
     environment[k] = v
   }
-  environment["ZMX_DIR"] = runtime_dir
   environment["TERM"] = "xterm-256color"
   environment["COLORTERM"] = "truecolor"
   let ready : @async.Queue[@system_pty.Pty] = @async.Queue(kind=Blocking(1))

@@ -6,7 +6,7 @@ import {
 }
 
 // Values
-pub async fn[G] spawn(@async.TaskGroup[G], String, String, String, String, Int, Int, extra_env? : Map[String, String]) -> Pty
+pub async fn[G] spawn(@async.TaskGroup[G], String, String, String, Int, Int, extra_env? : Map[String, String]) -> Pty
 
 // Errors
 

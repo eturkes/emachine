@@ -59,17 +59,17 @@ async fn terminal_socket(
   let project = @model.resolve_project(runtime.config, project_id)
   let cols = dimension(query, "cols", 100)
   let rows = dimension(query, "rows", 30)
-  let room = match runtime.rooms.get(project.id) {
+  let room = match runtime.rooms.get(project.name) {
     Some(room) => room
     None => {
       let room : Room = {
-        session: "em-" + project.id,
+        session: project.name,
         cols,
         rows,
         controller: "",
         peers: [],
       }
-      runtime.rooms[project.id] = room
+      runtime.rooms[project.name] = room
       room
     }
   }
@@ -90,7 +90,6 @@ async fn terminal_socket(
         project.path,
         room.session,
         runtime.config.shell,
-        runtime.config.runtimeRoot + "/zmx",
         room.cols,
         room.rows,
       )

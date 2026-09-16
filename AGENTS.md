@@ -5,6 +5,7 @@
 - Personal Linux machine daemon = MoonBit native. Browser shell = TypeScript/DOM/xterm. Desktop = isolated Electron AppImage. No server federation.
 - Source checkout outside managed projects. Discovery = immediate project-root directories. Emachine-owned files always outside managed projects.
 - Initial project = lazy zmx terminal. Feature identity `(machine, project, feature)`; source/state/releases independently owned. `terminal` reserved.
+- Terminal session = exact project name + inherited zmx namespace; reuse manual SSH sessions. Existing sessions retain shell state/cwd. Renames affect new attachments; preserve older sessions.
 - Maintain terminal/process lifetime independently of browser component lifetime. Disconnected input is dropped; reconnect never replays uncertain input.
 - Direct Tailscale owner access; exact Origin checks. Public gateway needs independent browser authentication + private upstream credential. Secrets stay out of code, bundles, URLs, logs.
 - Feature code trusted, normal account permissions. Arbitrary interfaces/actions allowed; subprocess boundaries provide fault isolation, not a security sandbox.
@@ -22,7 +23,7 @@
 - Install graph: `pnpm install --frozen-lockfile`.
 - Standard acceptance: `pnpm verify` = type/core check, native tests, native+web build, real network tests, ChromiumFish browser tests.
 - Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-update && pnpm test:desktop-interface`; real AppImages + graphical session. Runtime gate = temporary feed, corruption rejection + replacement/relaunch. Interface gate = native trust, selective transfer, same binary/PID, retained selection/terminal, failure/offline recovery. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
-- Installed deployment: `node scripts/check-installation.mjs`; optional additional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
+- Installed deployment: `node scripts/check-installation.mjs`; `--terminal PROJECT` additionally proves reuse of an existing manual zmx daemon without sending input. Optional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
 - Tests use temporary project roots and clean exact fixture zmx sessions. User projects are not test fixtures.

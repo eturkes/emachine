@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
@@ -45,7 +45,13 @@ export async function fixture(options = {}) {
   await writeFile(join(home, '.bash_profile'), 'PS1="fixture> "\nexport PS1\n');
   const configPath = join(home, 'config.json');
   await writeFile(configPath, JSON.stringify(config));
-  const env = { ...process.env, HOME: home, HISTFILE: join(home, 'history'), EMACHINE_CONFIG: configPath };
+  const env = {
+    ...process.env, HOME: home, HISTFILE: join(home, 'history'), EMACHINE_CONFIG: configPath,
+    XDG_RUNTIME_DIR: join(home, 'xdg-runtime'), XDG_STATE_HOME: join(home, 'xdg-state'),
+  };
+  delete env.ZMX_DIR; delete env.ZMX_SESSION; delete env.ZMX_SESSION_PREFIX;
+  if (options.zmxDir) env.ZMX_DIR = join(home, 'custom-zmx');
+  await mkdir(env.XDG_RUNTIME_DIR, { mode: 0o700 });
   let processHandle;
   let logs = '';
   const f = {
@@ -78,10 +84,15 @@ export async function fixture(options = {}) {
     },
     async close() {
       await f.stop();
-      try {
-        const registry = JSON.parse(await readFile(join(config.stateRoot, 'registry.json'), 'utf8'));
-        for (const project of registry) await exec('zmx', ['kill', `em-${project.id}`], { env: { ...env, ZMX_DIR: join(config.runtimeRoot, 'zmx') }, timeout: 5000 }).catch(() => {});
-      } catch { /* Failed initialization may not have a registry yet. */ }
+      // Both namespaces belong to this fixture; include pre-fix servers and renamed projects.
+      for (const directory of [env.ZMX_DIR ?? join(env.XDG_RUNTIME_DIR, 'zmx'), join(config.runtimeRoot, 'zmx')]) {
+        const cleanupEnv = { ...env, ZMX_DIR: directory };
+        delete cleanupEnv.ZMX_SESSION; delete cleanupEnv.ZMX_SESSION_PREFIX;
+        const listed = await exec('zmx', ['list', '--short'], { env: cleanupEnv, timeout: 5000 }).catch(() => ({ stdout: '' }));
+        for (const name of listed.stdout.split('\n').filter(Boolean)) {
+          await exec('zmx', ['kill', name], { env: cleanupEnv, timeout: 5000 }).catch(() => {});
+        }
+      }
       await rm(home, { recursive: true, force: true });
     },
     get logs() { return logs; },

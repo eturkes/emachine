@@ -40,20 +40,12 @@ async test "real zmx cwd, Unicode, resize and persistent shell" {
       })
       @fs.rmdir(root, recursive=true)
     })
-    let terminal = @pty.spawn(
-      group,
-      cwd,
-      session,
-      "/bin/bash",
-      runtime,
-      80,
-      24,
-      extra_env={
-        "HOME": root,
-        "HISTFILE": root + "/history",
-        "PS1": "probe> ",
-      },
-    )
+    let terminal = @pty.spawn(group, cwd, session, "/bin/bash", 80, 24, extra_env={
+      "ZMX_DIR": runtime,
+      "HOME": root,
+      "HISTFILE": root + "/history",
+      "PS1": "probe> ",
+    })
     defer terminal.close()
     terminal.write(
       @utf8.encode(
@@ -69,16 +61,11 @@ async test "real zmx cwd, Unicode, resize and persistent shell" {
     assert_true(resized.contains("37 111"))
     terminal.close()
     let _ = @async.with_timeout(5000, () => terminal.wait())
-    let reattached = @pty.spawn(
-      group,
-      cwd,
-      session,
-      "/bin/bash",
-      runtime,
-      111,
-      37,
-      extra_env={ "HOME": root, "HISTFILE": root + "/history" },
-    )
+    let reattached = @pty.spawn(group, cwd, session, "/bin/bash", 111, 37, extra_env={
+      "ZMX_DIR": runtime,
+      "HOME": root,
+      "HISTFILE": root + "/history",
+    })
     defer reattached.close()
     reattached.write(
       @utf8.encode(
