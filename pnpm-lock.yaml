@@ -18,6 +18,9 @@ importers:
       '@fontsource/iosevka':
         specifier: 5.3.0
         version: 5.3.0
+      '@fontsource/jetbrains-mono':
+        specifier: 5.3.0
+        version: 5.3.0
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
@@ -106,6 +109,9 @@ packages:
 
   '@fontsource/iosevka@5.3.0':
     resolution: {integrity: sha512-RcG0v/65e4PTuThR/d7n9jj6PLlex7YUGaLa4ZpL+NnqArWQmD8Z+6gYBTxPMVWxYMRcEw6OF4rdt8XisnC5zA==}
+
+  '@fontsource/jetbrains-mono@5.3.0':
+    resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -1785,6 +1791,8 @@ snapshots:
 
   '@fontsource/iosevka@5.3.0': {}
 
+  '@fontsource/jetbrains-mono@5.3.0': {}
+
   '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.4':
@@ -2142,7 +2150,7 @@ snapshots:
       hosted-git-info: 4.1.0
       isbinaryfile: 5.0.7
       jiti: 2.7.0
-      js-yaml: 4.3.2
+      js-yaml: 4.1.1
       json5: 2.2.3
       lazy-val: 1.0.5
       minimatch: 10.2.6
@@ -2220,7 +2228,7 @@ snapshots:
       fs-extra: 10.1.0
       http-proxy-agent: 7.0.2(supports-color@7.2.0)
       https-proxy-agent: 7.0.6(supports-color@7.2.0)
-      js-yaml: 4.3.2
+      js-yaml: 4.1.1
       sanitize-filename: 1.6.4
       source-map-support: 0.5.21
       stat-mode: 1.0.0
@@ -2344,7 +2352,7 @@ snapshots:
       app-builder-lib: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)(supports-color@7.2.0)
       builder-util: 26.15.3(supports-color@7.2.0)
       fs-extra: 10.1.0
-      js-yaml: 4.3.2
+      js-yaml: 4.1.1
     transitivePeerDependencies:
       - electron-builder-squirrel-windows
       - supports-color

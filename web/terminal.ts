@@ -1,3 +1,5 @@
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/700.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { socketUrl, type Link, type Project } from './transport';
@@ -53,9 +55,14 @@ export class TerminalPane {
       navigator.clipboard.readText().then(text => { if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.terminal.paste(text); else this.notice('Reconnect and take control before pasting.'); }).catch(() => this.notice('Clipboard access was not granted. Use your device’s Paste command.'));
     }));
     this.element.append(this.host, keys, footer);
-    this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: 'Iosevka, ui-monospace, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
+    this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
-    this.terminal.open(this.host);
+    // xterm caches fallback cell widths when opened before the bundled fonts load.
+    Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
+      if (this.closed) return;
+      this.terminal.open(this.host);
+      this.layout();
+    });
     this.terminal.onData(data => {
       if (this.ctrl && data.length === 1) { data = String.fromCharCode(data.toUpperCase().charCodeAt(0) & 31); this.ctrl = false; ctrl.setAttribute('aria-pressed', 'false'); }
       this.send(data);

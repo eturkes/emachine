@@ -117,6 +117,57 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   expect(errors).toEqual([]);
 });
 
+for (const viewport of [{ width: 1360, height: 900 }, { width: 390, height: 844 }]) {
+  test(`terminal uses standard-width monospace at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(a.origin);
+    await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+    const metrics = await page.locator('.xterm-rows').evaluate(async element => {
+      const style = getComputedStyle(element);
+      await document.fonts.load(`${style.fontSize} ${style.fontFamily}`);
+      const canvas = document.createElement('canvas').getContext('2d')!;
+      canvas.font = `${style.fontSize} ${style.fontFamily}`;
+      return {
+        family: style.fontFamily, size: parseFloat(style.fontSize),
+        widths: [...'MWil01@#'].map(character => canvas.measureText(character).width),
+      };
+    });
+    expect(metrics.size).toBe(14);
+    // Check real glyph metrics, not just the configured family or a fallback face.
+    for (const width of metrics.widths) {
+      expect(width / metrics.size).toBeGreaterThanOrEqual(.58);
+      expect(width / metrics.size).toBeLessThanOrEqual(.64);
+      expect(width).toBeCloseTo(metrics.widths[0], 3);
+    }
+    expect(metrics.family.split(',')[0].replaceAll('"', '').trim()).toBe('JetBrains Mono');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/emachine-terminal-${viewport.width}.png`, animations: 'disabled' });
+  });
+}
+
+test('terminal cells match the loaded font after a delayed font response', async ({ page }) => {
+  await page.route(/jetbrains-mono.*\.woff2$/, async route => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  await page.goto(a.origin);
+  const textRun = page.locator('.xterm-rows span').filter({ hasText: /\S/ }).first();
+  await expect(textRun).toBeVisible();
+  const metrics = await textRun.evaluate(async element => {
+    await document.fonts.ready;
+    const style = getComputedStyle(element);
+    const canvas = document.createElement('canvas').getContext('2d')!;
+    canvas.font = `${style.fontSize} ${style.fontFamily}`;
+    const text = element.textContent!;
+    return {
+      cell: element.getBoundingClientRect().width / text.length,
+      glyph: canvas.measureText(text).width / text.length,
+      pixel: 1 / devicePixelRatio,
+    };
+  });
+  expect(Math.abs(metrics.cell - metrics.glyph)).toBeLessThanOrEqual(metrics.pixel);
+});
+
 test('light palette stays neutral across the shell, terminal and phone layout', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
