@@ -44,7 +44,7 @@ const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAtt
 const connectionBadge = $('span', 'connection-badge');
 const jobButton = button('Jobs', () => showJobs(), 'text-button'); jobButton.hidden = true;
 const themeButton = button('◐', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'icon', 'Change color theme');
-const actions = $('div', 'header-actions'); actions.append(connectionBadge, jobButton, button('⌘', () => openPalette(), 'icon', 'Open command palette, Control or Command Shift P'), themeButton, button('⚙', () => openSettings(), 'icon', 'Machine settings'));
+const actions = $('div', 'header-actions'); actions.append(connectionBadge, jobButton, button('▦', () => openPalette(), 'icon workspace-switcher', 'Go to a workspace or view, Control Shift P'), themeButton, button('⚙', () => openSettings(), 'icon', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
 attachAppUpdates(actions, dialog);
 tabHeader.append(mobileMenu, tabs, actions);
@@ -254,7 +254,11 @@ function openPalette(): void {
       }
     }
   };
-  input.oninput = update; input.onkeydown = event => { if (event.key === 'Enter') results.querySelector('button')?.click(); if (event.key === 'ArrowDown') { event.preventDefault(); results.querySelector('button')?.focus(); } };
+  input.oninput = update; input.onkeydown = event => {
+    // Closing restores focus to the opener; consume Enter before it activates that button again.
+    if (event.key === 'Enter') { event.preventDefault(); results.querySelector('button')?.click(); }
+    if (event.key === 'ArrowDown') { event.preventDefault(); results.querySelector('button')?.focus(); }
+  };
   update(); d.showModal(); input.focus();
 }
 function showJobs(): void {

@@ -117,6 +117,33 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   expect(errors).toEqual([]);
 });
 
+test('workspace switcher uses a neutral icon and preserves navigation', async ({ page }) => {
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const label = 'Go to a workspace or view, Control Shift P';
+  const switcher = page.getByRole('button', { name: label, exact: true, includeHidden: true });
+  expect(await switcher.count()).toBe(1);
+  await expect(switcher).toHaveText('▦');
+  await expect(switcher).toHaveAttribute('title', label);
+  await switcher.click();
+  const search = page.getByRole('textbox', { name: 'Search commands', exact: true });
+  await expect(search).toBeFocused();
+  await search.fill('beta');
+  await page.getByRole('button', { name: 'beta / Terminal · Workstation A', exact: true }).click();
+  await expect(page.locator('.project-title')).toHaveText('beta');
+  await switcher.focus();
+  await page.keyboard.press('Control+Shift+P');
+  await expect(search).toBeFocused();
+  await search.fill('alpha');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.project-title')).toHaveText('alpha');
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/emachine-workspace-switcher.png', animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(switcher).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 for (const viewport of [{ width: 1360, height: 900 }, { width: 390, height: 844 }]) {
   test(`terminal uses standard-width monospace at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);

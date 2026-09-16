@@ -166,7 +166,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
   .tabs { padding-left: 0; }
   .tab { padding: 0 13px; }
   .header-actions .icon { min-width: 30px; font-size: 17px; }
-  .header-actions button[aria-label^='Open command'] { display: none; }
+  .header-actions .workspace-switcher { display: none; }
   .context-bar { min-height: 59px; padding: 10px 15px; }
   .project-title { font-size: 17px; }
   .project-path { font-size: 10px; }
