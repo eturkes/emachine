@@ -121,7 +121,7 @@ try {
   assert.equal(await imageDigest(), before);
   assert.equal(await page.evaluate(() => localStorage.getItem('emachine:interface-regression')), 'retained');
   assert.deepEqual(await page.evaluate(() => ({ connections: localStorage.getItem('emachine:connections:v1'), selection: localStorage.getItem('emachine:selection') })), stored);
-  await expect(page.locator('.project-title')).toHaveText('beta');
+  await expect(page.getByRole('button', { name: 'beta on Interface acceptance, online', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
   observer = await socket(machine, `api/v1/terminal/${beta.id}`);
   await expect.poll(() => observer.text.includes('__INTERFACE_BEFORE__')).toBe(true);

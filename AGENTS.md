@@ -10,6 +10,7 @@
 - Direct Tailscale owner access; exact Origin checks. Public gateway needs independent browser authentication + private upstream credential. Secrets stay out of code, bundles, URLs, logs.
 - Feature code trusted, normal account permissions. Arbitrary interfaces/actions allowed; subprocess boundaries provide fault isolation, not a security sandbox.
 - Header = text controls + view titles; route details in Settings, disconnection in the offline banner. AppImage upgrades = external GitHub Releases; no built-in updater. Interface refresh remains independent.
+- Theme = persisted light/dark; environment resolves missing/legacy preferences once. Desktop rail stays expanded; phone drawer remains. No project/path or live-shell strips; exceptional terminal status + control share the shortcut bar.
 
 ## Feature iteration
 

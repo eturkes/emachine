@@ -16,8 +16,10 @@
 The native and network gates use real filesystem operations and zmx processes. Browser tests use ChromiumFish and real native fixture servers. The configured desktop gate sends no shell commands to the existing project.
 
 Browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, and reconnect behavior.
-They also cover recovered jobs, neutral light colors, text-only header controls, and absent app-update controls with a legacy desktop bridge.
+They also cover recovered jobs, neutral light colors, explicit theme persistence, and absent app-update controls with a legacy desktop bridge.
 Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
+Layout checks reject collapsed sidebars, decorative initials, redundant strips, and Jobs or Workspaces buttons.
+Shortcut checks compare outgoing terminal bytes, verify clipboard selection and failure handling, and retain observer control without a footer.
 
 The interface gate serves temporary web files with the desktop CORS origin. Source approval still passes through the production IPC handler.
 Its native confirmation response is controlled only by the test's main-process connection.

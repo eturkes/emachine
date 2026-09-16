@@ -21,7 +21,7 @@ test('reloading restores the selected project on a nonfirst machine', async ({ p
   await page.getByLabel('Direct address', { exact: true }).fill(b.origin + '/');
   await page.getByRole('button', { name: 'Connect machine', exact: true }).click();
   await page.getByRole('button', { name: 'beta on Workstation B, online', exact: true }).click();
-  await expect(page.locator('.project-title')).toHaveText('beta');
+  await expect(page.getByRole('button', { name: 'beta on Workstation B, online', exact: true })).toHaveAttribute('aria-current', 'page');
   const selection = await page.evaluate(() => localStorage.getItem('emachine:selection'));
   await page.reload();
   await expect(page.getByRole('button', { name: 'beta on Workstation B, online', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -83,36 +83,32 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   expect(errors).toEqual([]);
 });
 
-test('workspace switcher uses text and preserves navigation', async ({ page }) => {
+test('workspace search stays keyboard-accessible without a header button', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
-  const label = 'Go to a workspace or view, Control Shift P';
-  const switcher = page.getByRole('button', { name: label, exact: true, includeHidden: true });
-  expect(await switcher.count()).toBe(1);
-  await expect(switcher).toHaveText('Workspaces');
-  await expect(switcher).toHaveAttribute('title', label);
-  await switcher.click();
+  await expect(page.getByRole('button', { name: 'Go to a workspace or view, Control Shift P', exact: true, includeHidden: true })).toHaveCount(0);
+  await page.keyboard.press('Control+Shift+P');
   const search = page.getByRole('textbox', { name: 'Search commands', exact: true });
   await expect(search).toBeFocused();
   await search.fill('beta');
   await page.getByRole('button', { name: 'beta / Terminal · Workstation A', exact: true }).click();
-  await expect(page.locator('.project-title')).toHaveText('beta');
-  await switcher.focus();
+  await expect(page.getByRole('button', { name: 'beta on Workstation A, online', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('button', { name: 'Machine settings', exact: true }).focus();
   await page.keyboard.press('Control+Shift+P');
   await expect(search).toBeFocused();
   await search.fill('alpha');
   await page.keyboard.press('Enter');
-  await expect(page.locator('.project-title')).toHaveText('alpha');
+  await expect(page.getByRole('button', { name: 'alpha on Workstation A, online', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/emachine-workspace-switcher.png', animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(switcher).toBeVisible();
-  await switcher.click();
+  await page.keyboard.press('Control+Shift+P');
   await expect(search).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test('top bar uses text controls without connection badges at desktop and phone widths', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.addInitScript(() => {
     const state = { status: 'unconfigured' as const, source: '', revision: 'fixture', bundled: true, message: 'Choose an interface source.' };
     const getState = async () => state;
@@ -127,7 +123,7 @@ test('top bar uses text controls without connection badges at desktop and phone 
   const settings = header.getByRole('button', { name: 'Machine settings', exact: true });
   const theme = header.getByRole('button', { name: /^Theme:/ });
   await expect(settings).toHaveText('Settings');
-  await expect(theme).toHaveText('Theme');
+  await expect(theme).toHaveText('Light');
   await expect(header.getByRole('button', { name: 'Interface updates', exact: true })).toHaveText('Refresh');
   for (const width of [1360, 720, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
@@ -140,10 +136,11 @@ test('top bar uses text controls without connection badges at desktop and phone 
     await settings.click();
     await expect(page.getByRole('heading', { name: 'Machines', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-    for (const value of ['dark', 'light', 'auto']) {
+    for (const value of ['dark', 'light']) {
       await theme.click();
       await expect(theme).toHaveAttribute('aria-label', new RegExp(`^Theme: ${value}`));
-      if (value !== 'auto') await page.screenshot({ path: `test-results/emachine-text-header-${width}-${value}.png`, animations: 'disabled' });
+      await expect(theme).toHaveText(value === 'dark' ? 'Dark' : 'Light');
+      await page.screenshot({ path: `test-results/emachine-text-header-${width}-${value}.png`, animations: 'disabled' });
     }
     if (width <= 700) {
       const projects = header.getByRole('button', { name: 'Open project drawer', exact: true });
@@ -153,6 +150,155 @@ test('top bar uses text controls without connection badges at desktop and phone 
       await page.getByRole('button', { name: 'Close projects', exact: true }).click();
     }
   }
+});
+
+for (const environment of ['light', 'dark'] as const) {
+  test(`theme resolves once from ${environment} and persists only explicit colors`, async ({ page }) => {
+    const opposite = environment === 'dark' ? 'light' : 'dark';
+    // ChromiumFish fixes this media query to light; simulate the environment, including change events.
+    await page.addInitScript(initial => {
+      let scheme = sessionStorage.getItem('test:color-scheme') ?? initial;
+      const matchMedia = window.matchMedia.bind(window);
+      const queries = new Map<MediaQueryList, string>();
+      window.matchMedia = query => {
+        const media = matchMedia(query);
+        const color = /^\(prefers-color-scheme: (light|dark)\)$/.exec(query)?.[1];
+        if (color) { Object.defineProperty(media, 'matches', { get: () => scheme === color }); queries.set(media, color); }
+        return media;
+      };
+      (window as any).setTestColorScheme = (value: string) => {
+        scheme = value; sessionStorage.setItem('test:color-scheme', value);
+        for (const [media, color] of queries) media.dispatchEvent(new MediaQueryListEvent('change', { media: media.media, matches: value === color }));
+      };
+    }, environment);
+    await page.goto(a.origin);
+    for (const saved of [null, '"auto"', '"invalid"', 'not-json', '"light"', '"dark"']) {
+      await page.evaluate(value => (window as any).setTestColorScheme(value), environment);
+      await page.evaluate(value => value === null ? localStorage.removeItem('emachine:theme') : localStorage.setItem('emachine:theme', value), saved);
+      await page.reload();
+      const initial = saved === '"light"' ? 'light' : saved === '"dark"' ? 'dark' : environment;
+      const next = initial === 'dark' ? 'light' : 'dark';
+      await expect(page.locator('html')).toHaveAttribute('data-theme', initial);
+      const toggle = page.getByRole('button', { name: /^Theme:/ });
+      await expect(toggle).toHaveText(initial === 'dark' ? 'Dark' : 'Light');
+      expect(await page.evaluate(() => localStorage.getItem('emachine:theme'))).toBe(JSON.stringify(initial));
+      await page.evaluate(value => (window as any).setTestColorScheme(value), opposite);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', initial);
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', initial);
+      await toggle.click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', next);
+      await expect(toggle).toHaveText(next === 'dark' ? 'Dark' : 'Light');
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', next);
+    }
+  });
+}
+
+test('streamlined layout ignores old collapse state and removes decorative strips', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('emachine:collapsed', 'true'));
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  await expect(page.locator('.brand-mark, .empty-mark, .project-glyph, .collapse-control, .context-bar, .project-title, .project-path, .terminal-footer')).toHaveCount(0);
+  await expect(page.locator('.app')).not.toHaveClass(/rail-collapsed/);
+  await expect(page.getByRole('button', { name: /Jobs|Collapse or expand|Go to a workspace or view/, includeHidden: true })).toHaveCount(0);
+  await expect(page.locator('.workspace')).not.toContainText('Live shell');
+  for (const width of [1360, 720, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width <= 700) await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+    await expect(page.locator('.brand-name')).toBeInViewport();
+    await expect(page.locator('.project-copy').first()).toBeInViewport();
+    if (width <= 700) await page.getByRole('button', { name: 'Close projects', exact: true }).click();
+    await expect(page.locator('.terminal-keys')).toBeVisible();
+    for (const key of await page.locator('.terminal-keys button:visible').all()) {
+      expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
+    }
+    for (const name of ['Copy', 'Paste', 'Alt + Arrow Up']) {
+      const key = page.locator('.terminal-keys').getByRole('button', { name, exact: true });
+      await key.scrollIntoViewIfNeeded();
+      await expect(key).toBeInViewport({ ratio: 1 });
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
+
+test('terminal shortcuts encode modifiers and retain observer control without a footer', async ({ page }) => {
+  const input: string[] = [];
+  let send!: (data: string | Buffer) => void;
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    send = data => ws.send(data);
+    ws.onMessage(data => {
+      if (Buffer.isBuffer(data)) input.push(data.toString('hex'));
+      else if (JSON.parse(data).type === 'claim') send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
+    });
+    send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
+    send(Buffer.from('Shortcut fixture\r\n'));
+  });
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const keys = page.locator('.terminal-keys');
+  const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
+  const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
+  const received = async (value: string) => { await expect.poll(() => input.join('')).toBe(Buffer.from(value).toString('hex')); input.length = 0; };
+  await alt.click(); await expect(alt).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.type('b'); await received('\u001bb');
+  await expect(alt).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.type('b'); await received('b');
+  await alt.click(); await page.keyboard.insertText('é'); await received('\u001bé');
+  await ctrl.click(); await alt.click(); await page.keyboard.type('c'); await received('\u001b\u0003');
+  await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
+  await ctrl.click(); await page.keyboard.type('c'); await received('\u0003');
+  await alt.click(); await alt.click(); await page.keyboard.type('x'); await received('x');
+  for (const application of [false, true]) {
+    send(Buffer.from(application ? '\u001b[?1h' : '\u001b[?1l'));
+    await page.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.press('Alt+ArrowUp'); await received('\u001b[1;3A');
+    await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click(); await received('\u001b[1;3A');
+    await alt.click(); await keys.getByRole('button', { name: '↑', exact: true }).click(); await received('\u001b[1;3A');
+    await expect(alt).toHaveAttribute('aria-pressed', 'false');
+    await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
+  }
+  for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
+    await keys.getByRole('button', { name, exact: true }).click(); await received(value);
+  }
+  send(JSON.stringify({ type: 'state', mode: 'observe', session: 'fixture', cols: 80, rows: 24 }));
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'observe');
+  await expect(keys).toContainText('Observing');
+  await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
+  await keys.getByRole('button', { name: 'Take control', exact: true }).click();
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  await page.keyboard.type('retained'); await received('retained');
+  await expect(keys).not.toContainText(/Observing|Live shell/);
+  await expect(page.locator('.terminal-footer')).toHaveCount(0);
+});
+
+test('terminal Copy uses the selected text and reports unavailable clipboard access', async ({ page, context }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: a.origin });
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    ws.send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
+    ws.send(Buffer.from('\u001b[2J\u001b[HclipboardFixture\r\n'));
+  });
+  await page.goto(a.origin);
+  const copy = page.locator('.terminal-keys').getByRole('button', { name: 'Copy', exact: true });
+  await expect(page.locator('.xterm-rows')).toContainText('clipboardFixture');
+  await page.evaluate(() => navigator.clipboard.writeText('preserve this'));
+  await copy.click();
+  await expect(page.locator('.toast-region')).toContainText('Select terminal text to copy.');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('preserve this');
+  const text = page.locator('.xterm-rows span').filter({ hasText: 'clipboardFixture' }).first();
+  const bounds = (await text.boundingBox())!;
+  await page.mouse.dblclick(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await copy.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('clipboardFixture');
+  await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
+  await copy.click();
+  await expect(page.locator('.toast-region')).toContainText('Clipboard access was not granted.');
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
+  await copy.click();
+  await page.locator('.terminal-keys').getByRole('button', { name: 'Paste', exact: true }).click();
+  expect(errors).toEqual([]);
 });
 
 for (const viewport of [{ width: 1360, height: 900 }, { width: 390, height: 844 }]) {
@@ -251,7 +397,7 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   expect(await colors()).toEqual(light);
-  await toggle.click(); await toggle.click();
+  await toggle.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await colors()).toEqual(dark);
 });
@@ -282,7 +428,7 @@ test('phone drawer, touch controls and shell-only offline cache', async ({ page,
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
   await page.getByRole('button', { name: 'beta on Workstation A, online', exact: true }).click();
-  await expect(page.locator('.project-title')).toHaveText('beta');
+  await expect(page.getByRole('button', { name: 'beta on Workstation A, online', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.terminal-pane:not([hidden]) .terminal-keys')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/emachine-phone.png', animations: 'disabled' });
@@ -344,6 +490,7 @@ test('fallback route, identity deduplication and reconnection preserve project s
 test('reopening the client recovers completed server-owned jobs', async ({ page }) => {
   const workspace = JSON.parse(await a.cli('feature', 'create', 'alpha', 'job-history', 'Job history')).workspace;
   await writeFile(join(workspace, 'feature.json'), JSON.stringify({ id: 'job-history', title: 'Job history', actions: { inspect: ['/bin/true'] } }));
+  await writeFile(join(workspace, 'index.html'), '<!doctype html><p>Waiting for recovered jobs</p><script>addEventListener("message", event => { if (event.source === parent && event.data.type === "emachine:job") document.querySelector("p").textContent = event.data.job.feature + " / " + event.data.job.action + " / " + event.data.job.status; });</script>');
   await a.cli('feature', 'activate', 'alpha', 'job-history');
   const alpha = (await a.state()).projects.find((project: any) => project.name === 'alpha');
   const response = await a.request(`api/v1/projects/${alpha.id}/features/job-history/jobs`, {
@@ -352,8 +499,15 @@ test('reopening the client recovers completed server-owned jobs', async ({ page 
   expect(response.status).toBe(202);
   const job = await response.json();
   await expect.poll(async () => (await (await a.request(`api/v1/jobs/${job.id}`)).json()).status).toBe('succeeded');
+  let release!: () => void;
+  const ready = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/v1/jobs', async route => { await ready; await route.continue(); });
   await page.goto(a.origin);
-  await page.getByRole('button', { name: 'Jobs', exact: true }).click();
-  await expect(page.locator('.job-row').filter({ hasText: 'job-history / inspect' })).toContainText('succeeded');
+  await page.getByRole('tab', { name: 'Job history', exact: true }).click();
+  const frame = page.frameLocator('iframe[title="Job history — alpha"]');
+  await expect(frame.locator('p')).toHaveText('Waiting for recovered jobs');
+  release();
+  await expect(frame.locator('p')).toHaveText('job-history / inspect / succeeded');
+  await expect(page.getByRole('button', { name: 'Jobs', exact: true, includeHidden: true })).toHaveCount(0);
   await a.cli('feature', 'remove', 'alpha', 'job-history');
 });

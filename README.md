@@ -42,9 +42,12 @@ The optional public route on FreeBSD is **not deployed**. Its jail needs a scope
 
 ## Work with projects
 
-Use **Workspaces** to find a project or view. **Control+Shift+P** opens the same search.
-Use **Theme** to cycle through automatic, dark, and light colors. **Settings** opens machine connections and route details.
-On narrow screens, **Projects** opens the sidebar. The top bar uses text labels, including the **Terminal** tab.
+Use **Control+Shift+P** to find a project or view. Select a project from the sidebar to open its terminal.
+The theme button shows **Light** or **Dark**. Select it to switch colors. The first launch uses your environment's color preference.
+The client saves that choice and later changes. **Settings** opens machine connections and route details.
+The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
+The terminal shortcut bar includes **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Alt + ↑**, **Copy**, and **Paste**.
+**Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 

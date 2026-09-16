@@ -16,6 +16,18 @@ export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
 function button(label: string, action: () => void, title = label): HTMLButtonElement {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.onclick = action; return b;
 }
+function modifiedInput(data: string, ctrl: boolean, alt: boolean): string {
+  const modifiers = (ctrl ? 4 : 0) | (alt ? 2 : 0);
+  if (!modifiers) return data;
+  // Cursor modifiers use CSI parameters, including when the terminal uses application cursor keys.
+  const cursor = /^\u001b(?:\[1;(\d+)|\[|O)([ABCDHF])$/.exec(data);
+  if (cursor) return `\u001b[1;${((Number(cursor[1] ?? 1) - 1) | modifiers) + 1}${cursor[2]}`;
+  const prefix = data.length > 1 && data.startsWith('\u001b') ? '\u001b' : '';
+  const character = data.slice(prefix.length);
+  if (ctrl && /^[a-z@[\]\\^_ ]$/i.test(character)) data = prefix + String.fromCharCode(character.toUpperCase().charCodeAt(0) & 31);
+  else if (ctrl && character === '?') data = prefix + '\u007f';
+  return alt && !prefix ? '\u001b' + data : data;
+}
 export class TerminalPane {
   element = document.createElement('section');
   private host = document.createElement('div');
@@ -34,27 +46,25 @@ export class TerminalPane {
   private mode: 'control' | 'observe' = 'observe';
   private generation = 0;
   private route = '';
-  private ctrl = false;
   constructor(public link: Link, public project: Project, theme: Theme, private notice: (text: string) => void) {
     this.element.className = 'terminal-pane view';
     this.element.dataset.terminalProject = project.id;
     this.host.className = 'terminal-host';
-    const footer = document.createElement('div'); footer.className = 'terminal-footer';
-    this.status.textContent = 'Connecting to the project shell…'; this.status.setAttribute('role', 'status');
-    this.control = button('Take control', () => this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'claim' })));
+    this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the project shell…'; this.status.setAttribute('role', 'status');
+    this.control = button('Take control', () => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
-    footer.append(this.status, this.control);
-    const keys = document.createElement('div'); keys.className = 'terminal-keys'; keys.setAttribute('aria-label', 'Terminal keyboard controls');
-    const ctrl = button('Ctrl', () => { this.ctrl = !this.ctrl; ctrl.setAttribute('aria-pressed', String(this.ctrl)); this.terminal.focus(); }, 'Use Control with the next character');
-    ctrl.setAttribute('aria-pressed', 'false');
-    keys.append(ctrl);
-    for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']] as const) {
-      keys.append(button(label, () => { this.send(value); this.terminal.focus(); }));
+    const keys = document.createElement('div'); keys.className = 'terminal-keys'; keys.setAttribute('role', 'group'); keys.setAttribute('aria-label', 'Terminal keyboard controls');
+    let useCtrl = false, useAlt = false;
+    const ctrl = button('Ctrl', () => { useCtrl = !useCtrl; ctrl.setAttribute('aria-pressed', String(useCtrl)); this.terminal.focus(); }, 'Use Control with the next character');
+    const alt = button('Alt', () => { useAlt = !useAlt; alt.setAttribute('aria-pressed', String(useAlt)); this.terminal.focus(); }, 'Use Alt with the next key');
+    const clearModifiers = () => { useCtrl = useAlt = false; ctrl.setAttribute('aria-pressed', 'false'); alt.setAttribute('aria-pressed', 'false'); };
+    clearModifiers();
+    keys.append(this.control, ctrl, alt);
+    for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Alt + ↑', '\u001b[1;3A']] as const) {
+      keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Alt + ↑' ? 'Alt + Arrow Up' : label));
     }
-    keys.append(button('Paste', () => {
-      navigator.clipboard.readText().then(text => { if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.terminal.paste(text); else this.notice('Reconnect and take control before pasting.'); }).catch(() => this.notice('Clipboard access was not granted. Use your device’s Paste command.'));
-    }));
-    this.element.append(this.host, keys, footer);
+    keys.append(button('Copy', () => { void this.copy(); }), button('Paste', () => { clearModifiers(); void this.paste(); }), this.status);
+    this.element.append(this.host, keys);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
     // xterm caches fallback cell widths when opened before the bundled fonts load.
@@ -64,7 +74,8 @@ export class TerminalPane {
       this.layout();
     });
     this.terminal.onData(data => {
-      if (this.ctrl && data.length === 1) { data = String.fromCharCode(data.toUpperCase().charCodeAt(0) & 31); this.ctrl = false; ctrl.setAttribute('aria-pressed', 'false'); }
+      data = modifiedInput(data, useCtrl, useAlt);
+      clearModifiers();
       this.send(data);
     });
     this.terminal.onBinary(data => {
@@ -79,6 +90,21 @@ export class TerminalPane {
   private send(data: string): void {
     // Input is deliberately discarded while disconnected, never buffered for reconnection.
     if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(new TextEncoder().encode(data));
+  }
+  private async copy(): Promise<void> {
+    const text = this.terminal.getSelection();
+    this.terminal.focus();
+    if (!text) { this.notice('Select terminal text to copy.'); return; }
+    try { await navigator.clipboard.writeText(text); }
+    catch { this.notice('Clipboard access was not granted. Use your device’s Copy command.'); }
+  }
+  private async paste(): Promise<void> {
+    this.terminal.focus();
+    try {
+      const text = await navigator.clipboard.readText();
+      if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.terminal.paste(text);
+      else this.notice('Reconnect and take control before pasting.');
+    } catch { this.notice('Clipboard access was not granted. Use your device’s Paste command.'); }
   }
   show(show: boolean): void {
     this.visible = show;
@@ -105,7 +131,7 @@ export class TerminalPane {
     this.terminal.reset();
     this.mode = 'observe'; this.control.hidden = true;
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
-    this.status.textContent = 'Attaching to the persistent shell…';
+    this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
     this.seen = Date.now();
     ws.onopen = () => { this.reconnects = 0; this.seen = Date.now(); };
     ws.onmessage = event => {
@@ -120,14 +146,15 @@ export class TerminalPane {
           this.control.hidden = this.mode === 'control';
           if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
           else this.layout();
-          this.status.textContent = this.mode === 'control' ? `Live shell · ${message.session}` : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
-        } else if (message.type === 'error') { this.status.textContent = String(message.message); this.notice(String(message.message)); }
-      } catch { this.status.textContent = 'The server sent an invalid terminal control message.'; }
+          this.status.hidden = this.mode === 'control';
+          this.status.textContent = this.mode === 'control' ? '' : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
+        } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
+      } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
     };
     ws.onclose = () => {
       if (this.closed || generation !== this.generation) return;
       this.ws = undefined; this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
-      this.control.hidden = true; this.status.textContent = 'Disconnected · the shell remains on its machine';
+      this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
       window.clearInterval(this.heartbeat);
       this.retry = window.setTimeout(() => this.connect(), Math.min(12000, 750 * 2 ** this.reconnects++));
     };

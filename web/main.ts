@@ -17,9 +17,9 @@ const save = (key: string, value: unknown) => { try { localStorage.setItem('emac
 const fleet = new Fleet();
 let selected = read('selection', '');
 let selectedTabs = read<Record<string, string>>('tabs', {});
-let preference = read<'auto' | Theme>('theme', 'auto');
-let collapsed = read('collapsed', false);
-let theme: Theme = 'dark';
+const savedTheme = read<unknown>('theme', null);
+let theme: Theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+save('theme', theme);
 let filter = '';
 let orderedProjects = read<string[]>('project-order', []);
 const orderTabs = read<Record<string, string[]>>('tab-order', {});
@@ -29,50 +29,43 @@ const jobs = new Map<string, { link: Link; job: Job }>();
 const app = $('div', 'app'); document.querySelector('#app')!.append(app);
 const scrim = button('', () => app.classList.remove('drawer-open'), 'drawer-scrim', 'Close project drawer');
 const rail = $('aside', 'project-rail'); rail.setAttribute('aria-label', 'Projects');
-const brand = $('header', 'brand'); brand.append($('span', 'brand-mark', 'e'), $('div', 'brand-name', 'emachine'), button('Close', () => app.classList.remove('drawer-open'), 'text-button mobile-close', 'Close projects'));
+const brand = $('header', 'brand'); brand.append($('div', 'brand-name', 'emachine'), button('Close', () => app.classList.remove('drawer-open'), 'text-button mobile-close', 'Close projects'));
 const search = $('input', 'project-search'); search.type = 'search'; search.placeholder = 'Find a project'; search.setAttribute('aria-label', 'Filter projects'); search.oninput = () => { filter = search.value; renderRail(); };
 const projectList = $('nav', 'project-list'); projectList.setAttribute('aria-label', 'Project list');
 const railFooter = $('footer', 'rail-footer');
 const machineCount = $('span', 'machine-count');
-railFooter.append(button('＋ Machines', () => openSettings(), 'manage-machines'), machineCount, button('‹', () => { collapsed = !collapsed; save('collapsed', collapsed); applyRail(); }, 'icon collapse-control', 'Collapse or expand the project sidebar'));
+railFooter.append(button('Machines', () => openSettings(), 'manage-machines'), machineCount);
 rail.append(brand, $('div', 'rail-label', 'WORKSPACES'), search, projectList, railFooter);
 const workspace = $('main', 'workspace');
 const tabHeader = $('header', 'tab-header');
 const mobileMenu = button('Projects', () => app.classList.toggle('drawer-open'), 'text-button mobile-menu', 'Open project drawer');
 const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project views');
-const jobButton = button('Jobs', () => showJobs(), 'text-button'); jobButton.hidden = true;
-const themeButton = button('Theme', () => { preference = preference === 'auto' ? 'dark' : preference === 'dark' ? 'light' : 'auto'; save('theme', preference); applyTheme(); }, 'text-button', 'Change color theme');
-const actions = $('div', 'header-actions'); actions.append(jobButton, button('Workspaces', () => openPalette(), 'text-button', 'Go to a workspace or view, Control Shift P'), themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
+const themeButton = button('', () => { theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); applyTheme(); }, 'text-button');
+const actions = $('div', 'header-actions'); actions.append(themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
 tabHeader.append(mobileMenu, tabs, actions);
-const contextBar = $('div', 'context-bar');
-const title = $('div', 'project-title');
-const path = $('div', 'project-path');
-const contextName = $('div', 'context-name'); contextName.append(title, path);
 const diagnostics = $('details', 'diagnostics');
 const diagnosticTitle = $('summary'); const diagnosticText = $('pre'); diagnostics.append(diagnosticTitle, diagnosticText); diagnostics.hidden = true;
-contextBar.append(contextName, diagnostics);
+actions.append(diagnostics);
 const offline = $('div', 'offline-banner'); offline.setAttribute('role', 'status'); offline.hidden = true;
 const views = $('div', 'views');
 const empty = $('section', 'empty-state');
-empty.append($('div', 'empty-mark', 'e'), $('p', 'eyebrow', 'A PERSONAL COMMAND CENTER'), $('h1', '', 'Your projects. Their own space.'), $('p', 'empty-copy', 'Connect a machine to discover its projects. Each workspace starts with a persistent terminal and grows through your requests to Codexify.'), button('Connect a machine', () => openSettings(), 'primary-button'));
-views.append(empty); workspace.append(tabHeader, contextBar, offline, views); app.append(scrim, rail, workspace);
+empty.append($('p', 'eyebrow', 'A PERSONAL COMMAND CENTER'), $('h1', '', 'Your projects. Their own space.'), $('p', 'empty-copy', 'Connect a machine to discover its projects. Each workspace starts with a persistent terminal and grows through your requests to Codexify.'), button('Connect a machine', () => openSettings(), 'primary-button'));
+views.append(empty); workspace.append(tabHeader, offline, views); app.append(scrim, rail, workspace);
 const toastRegion = $('div', 'toast-region'); toastRegion.setAttribute('aria-live', 'polite'); document.body.append(toastRegion);
 function notice(message: string): void {
   const toast = $('div', 'toast', message); toastRegion.append(toast); window.setTimeout(() => toast.remove(), 7000);
 }
-function applyRail(): void { app.classList.toggle('rail-collapsed', collapsed); }
 function applyTheme(): void {
-  theme = preference === 'auto' ? matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' : preference;
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
-  themeButton.title = `Theme: ${preference}${preference === 'auto' ? ` (${theme})` : ''}`;
+  themeButton.textContent = theme === 'dark' ? 'Dark' : 'Light';
+  themeButton.title = `Theme: ${theme}. Switch to ${theme === 'dark' ? 'light' : 'dark'}.`;
   themeButton.setAttribute('aria-label', themeButton.title);
   for (const terminal of terminals.values()) terminal.theme(theme);
   for (const frame of frames.values()) frame.context();
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
-applyRail(); applyTheme();
+applyTheme();
 function projectKey(link: Link, project: Project): string { return `${link.state!.machine.id}:${project.id}`; }
 function entries(): { key: string; link: Link; project: Project }[] {
   const result = fleet.unique().flatMap(link => (link.state?.projects ?? []).map(project => ({ key: projectKey(link, project), link, project })));
@@ -91,10 +84,8 @@ function renderRail(): void {
   for (const item of items) {
     const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}`);
     b.dataset.projectKey = item.key; b.setAttribute('aria-current', item.key === selected ? 'page' : 'false'); b.draggable = true;
-    const glyph = $('span', 'project-glyph', Array.from(item.project.name)[0]?.toUpperCase() ?? '·');
-    glyph.append($('span', `availability ${item.link.online ? 'online' : 'offline'}`));
     const copy = $('span', 'project-copy'); copy.append($('strong', '', item.project.name), $('small', '', item.link.state!.machine.name));
-    b.append(glyph, copy);
+    b.append(copy);
     b.ondragstart = event => { draggedProject = item.key; event.dataTransfer?.setData('text/plain', item.key); };
     b.ondragover = event => event.preventDefault();
     b.ondrop = event => { event.preventDefault(); if (!draggedProject || draggedProject === item.key) return; orderedProjects = entries().map(e => e.key).filter(key => key !== draggedProject); orderedProjects.splice(orderedProjects.indexOf(item.key), 0, draggedProject); save('project-order', orderedProjects); draggedProject = ''; renderRail(); };
@@ -159,13 +150,12 @@ function render(): void {
     for (const feature of item.project.features) frames.get(`${item.key}:${feature.id}`)?.update(item.link, item.project, feature);
   }
   const active = items.find(item => item.key === selected);
-  empty.hidden = Boolean(active); contextBar.hidden = !active;
+  empty.hidden = Boolean(active);
   tabs.replaceChildren();
   for (const terminal of terminals.values()) terminal.show(false);
   for (const frame of frames.values()) frame.element.hidden = true;
-  if (!active) { title.textContent = ''; path.textContent = ''; offline.hidden = true; return; }
+  if (!active) { diagnostics.hidden = true; offline.hidden = true; return; }
   const { link, project, key } = active;
-  title.textContent = project.name; path.textContent = project.path || `${link.state!.machine.name} · last known workspace`;
   offline.hidden = link.online;
   offline.textContent = `${link.state!.machine.name} is offline. Its projects remain listed. ${link.error}`;
   diagnostics.hidden = !project.diagnostics.length;
@@ -197,8 +187,6 @@ function render(): void {
     if (!frame && link.online) { frame = new FeatureFrame(link, project, feature); frames.set(frameKey, frame); views.append(frame.element); }
     if (frame) frame.element.hidden = false;
   }
-  const running = [...jobs.values()].filter(record => record.job.status === 'running').length;
-  jobButton.hidden = !jobs.size; jobButton.textContent = running ? `${running} running` : 'Jobs';
 }
 fleet.changed = render;
 fleet.job = (link, job, recovered = false) => {
@@ -209,7 +197,6 @@ fleet.job = (link, job, recovered = false) => {
   if (jobs.size > 200) jobs.delete(jobs.keys().next().value!);
   frames.get(`${link.state?.machine.id}:${job.project}:${job.feature}`)?.job(job);
   if (!recovered && job.status === 'failed') notice(`${job.feature}: ${job.message ?? `action exited with ${job.exitCode}`}`);
-  render();
 };
 function dialog(title: string): HTMLDialogElement {
   const d = $('dialog', 'dialog'); const header = $('header', 'dialog-header'); header.append($('h2', '', title), button('×', () => d.close(), 'icon', 'Close dialog')); d.append(header); document.body.append(d);
@@ -254,18 +241,6 @@ function openPalette(): void {
     if (event.key === 'ArrowDown') { event.preventDefault(); results.querySelector('button')?.focus(); }
   };
   update(); d.showModal(); input.focus();
-}
-function showJobs(): void {
-  const d = dialog('Project jobs');
-  for (const { link, job } of [...jobs.values()].reverse()) {
-    const row = $('div', 'job-row'); row.append($('strong', '', `${job.feature} / ${job.action}`), $('small', '', `${link.state?.machine.name ?? link.config.name} · ${job.status}`));
-    if (job.message) row.append($('p', '', job.message));
-    row.append(button('Read log', () => {
-      if (!link.route) return;
-      void fetch(endpoint(link.route, `api/v1/jobs/${job.id}/log`), { credentials: 'include', cache: 'no-store' }).then(async response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); const pre = $('pre', 'job-log', await response.text()); row.querySelector('pre')?.remove(); row.append(pre); }).catch(error => notice(String(error)));
-    }, 'text-button')); d.append(row);
-  }
-  d.showModal();
 }
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); openPalette(); }
