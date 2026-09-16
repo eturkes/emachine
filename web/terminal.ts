@@ -48,6 +48,8 @@ export class TerminalPane {
   private mode: 'control' | 'observe' = 'observe';
   private generation = 0;
   private route = '';
+  private remoteSize = '';
+  private pendingSize = '';
   constructor(public link: Link, public project: Project, theme: Theme, private notice: (text: string) => void) {
     this.element.className = 'terminal-pane view';
     this.element.dataset.terminalProject = project.id;
@@ -75,6 +77,7 @@ export class TerminalPane {
       this.terminal.open(this.host);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
       this.layout();
+      this.connect();
     });
     this.terminal.onData(data => {
       data = modifiedInput(data, useCtrl, useAlt);
@@ -84,15 +87,20 @@ export class TerminalPane {
     this.terminal.onBinary(data => {
       if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(Uint8Array.from(data, character => character.charCodeAt(0) & 255));
     });
-    this.terminal.onResize(size => {
-      if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'resize', ...size }));
-    });
+    this.terminal.onResize(() => this.syncSize());
     this.observer = new ResizeObserver(() => this.layout());
     this.observer.observe(this.host);
   }
   private send(data: string): void {
     // Input is deliberately discarded while disconnected, never buffered for reconnection.
     if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(new TextEncoder().encode(data));
+  }
+  private syncSize(): void {
+    if (this.mode !== 'control' || this.ws?.readyState !== WebSocket.OPEN) return;
+    const { cols, rows } = this.terminal, size = `${cols}x${rows}`;
+    if (size === this.remoteSize || size === this.pendingSize) return;
+    this.pendingSize = size;
+    this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   }
   private async copy(): Promise<void> {
     const text = this.terminal.getSelection();
@@ -115,7 +123,7 @@ export class TerminalPane {
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
-    if (!this.visible || !this.element.isConnected || !this.host.clientWidth || this.mode === 'observe' && this.ws?.readyState === WebSocket.OPEN) return;
+    if (!this.visible || !this.element.isConnected || !this.host.clientWidth || this.mode === 'observe' && this.ws) return;
     const proposed = this.fit.proposeDimensions();
     if (proposed) this.terminal.resize(Math.max(2, Math.min(500, proposed.cols)), Math.max(2, Math.min(500, proposed.rows)));
   }
@@ -125,13 +133,15 @@ export class TerminalPane {
     if (link.online && !this.ws) this.connect();
   }
   private connect(): void {
-    if (this.closed || !this.link.online || !this.link.route || this.ws) return;
+    // Attach only after font-backed fitting; a default-sized replay can corrupt a live TUI.
+    if (this.closed || !this.terminal.element || !this.visible && !this.route || !this.link.online || !this.link.route || this.ws) return;
     window.clearTimeout(this.retry);
     this.route = this.link.route;
     const generation = ++this.generation;
     const url = new URL(socketUrl(this.route, `api/v1/terminal/${this.project.id}`));
     url.searchParams.set('cols', String(this.terminal.cols)); url.searchParams.set('rows', String(this.terminal.rows));
     this.terminal.reset();
+    this.remoteSize = this.pendingSize = '';
     this.mode = 'observe'; this.control.hidden = true;
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
     this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
@@ -144,11 +154,18 @@ export class TerminalPane {
       try {
         const message = JSON.parse(String(event.data));
         if (message.type === 'state') {
-          this.mode = message.mode === 'control' ? 'control' : 'observe';
+          const mode = message.mode === 'control' ? 'control' : 'observe';
+          this.remoteSize = `${message.cols}x${message.rows}`;
+          if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
+          this.mode = mode;
           this.element.dataset.mode = this.mode;
           this.control.hidden = this.mode === 'control';
           if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
-          else this.layout();
+          else {
+            this.layout();
+            // A fit completed before control can leave onResize silent despite a remote mismatch.
+            this.syncSize();
+          }
           this.status.hidden = this.mode === 'control';
           this.status.textContent = this.mode === 'control' ? '' : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
