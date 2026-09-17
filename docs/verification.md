@@ -5,6 +5,7 @@
 | Command | Coverage |
 | --- | --- |
 | `pnpm verify` | Type and native checking, native tests, release metadata tests, interface and IPC tests, production builds, network tests, and browser tests |
+| `pnpm test:gateway` | Real Caddy authentication, hostile headers and origins, HTTP and WebSocket proxying, native fixture terminal, and phone-sized PWA without private-route requests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, absent app-updater bridge and dependency, a real fixture machine, and zmx attachment |
 | `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
@@ -48,6 +49,9 @@ Red logs and source hashes are retained under `.work/`. These failures came from
 ## Unverified or blocked
 
 The FreeBSD public gateway is not deployed. Its jail needs a narrow NAT exception and an authenticated Caddy route. The connector blocked those changes.
+
+The host-local phone gateway has a separate [setup and verification workflow](phone-access.md).
+Local authentication and proxy tests do not prove public Funnel reachability. Verify that route after Tailscale approval.
 
 Physical iPhone and Android behavior has not been exercised. The phone test uses a 390-by-844 Chromium viewport. Browser storage eviction remains outside the application's control.
 

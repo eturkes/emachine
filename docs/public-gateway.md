@@ -1,5 +1,8 @@
 # Optional FreeBSD gateway
 
+For the host-local iPhone route, see [phone access without a VPN](phone-access.md).
+This document describes the separate FreeBSD option.
+
 ## Current state
 
 The direct server is running at `https://t25-480.tail23f28e.ts.net:4743/`. FreeBSD is not required for this route.

@@ -28,7 +28,18 @@ Install desktop runtime updates from GitHub Releases with your external update m
 Keep the filename `emachine.AppImage` when replacing it, so existing shortcuts stay valid.
 Your connection settings remain in the desktop profile. Machine servers and project views have separate update paths.
 
-For direct browser or phone access, connect Tailscale and open:
+For iPhone access without Tailscale, install the authenticated phone gateway:
+
+```sh
+pnpm phone:install
+pnpm phone:enable
+```
+
+Complete the Funnel approval when requested. Open the printed public address in Safari, then select **Share → Add to Home Screen**.
+The phone uses HTTPS and a generated password. Only the machine server needs Tailscale.
+See [phone setup and access controls](docs/phone-access.md) for the password location, verification, and shutdown commands.
+
+For direct private browser or phone access, connect Tailscale and open:
 
 ```text
 https://t25-480.tail23f28e.ts.net:4743/
@@ -38,7 +49,8 @@ On iPhone, open this address in Safari and use **Share → Add to Home Screen**.
 
 The direct route uses your Tailscale identity. It does not require another emachine login. The existing service on port 443 remains unchanged.
 
-The optional public route on FreeBSD is **not deployed**. Its jail needs a scoped Tailscale routing change and an authenticated Caddy route. See [the deployment notes](docs/public-gateway.md). The client already supports a separate gateway address for each machine.
+The separate public route on FreeBSD is **not deployed**. It is not required for the phone gateway.
+See [the FreeBSD deployment notes](docs/public-gateway.md) for that alternative.
 
 ## Work with projects
 
@@ -155,4 +167,6 @@ See [the release workflow](docs/releases.md) for SSH pushes, release assets, and
 
 Automated checks exercise real MoonBit servers, real zmx sessions, browser reconnection, independent feature activation, and the packaged desktop client. Fixtures use temporary project directories.
 
-Phone-sized Chromium testing does not replace testing on physical iPhone or Android devices. Public gateway login, native bcachefs snapshots, and future media input remain outside the completed acceptance checks.
+Phone-sized Chromium testing does not replace testing on physical iPhone or Android devices.
+The phone gateway gate covers local password authentication and real proxy traffic.
+Public Funnel reachability, physical phone behavior, native bcachefs snapshots, and future media input require separate acceptance checks.
