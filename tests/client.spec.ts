@@ -215,7 +215,7 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     for (const key of await page.locator('.terminal-keys button:visible').all()) {
       expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
     }
-    for (const name of ['Copy', 'Paste', 'Alt + Arrow Up']) {
+    for (const name of ['Enter', 'Copy', 'Paste', 'Alt + Arrow Up']) {
       const key = page.locator('.terminal-keys').getByRole('button', { name, exact: true });
       await key.scrollIntoViewIfNeeded();
       await expect(key).toBeInViewport({ ratio: 1 });
@@ -241,6 +241,8 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   const keys = page.locator('.terminal-keys');
   const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
   const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
+  const enter = keys.getByRole('button', { name: 'Enter', exact: true });
+  await expect(enter).toBeVisible();
   const received = async (value: string) => { await expect.poll(() => input.join('')).toBe(Buffer.from(value).toString('hex')); input.length = 0; };
   await alt.click(); await expect(alt).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.type('b'); await received('\u001bb');
@@ -260,12 +262,18 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     await expect(alt).toHaveAttribute('aria-pressed', 'false');
     await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
   }
-  for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
+  for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
     await keys.getByRole('button', { name, exact: true }).click(); await received(value);
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   }
+  await ctrl.click(); await enter.click(); await received('\r');
+  await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
+  await alt.click(); await enter.click(); await received('\u001b\r');
+  await expect(alt).toHaveAttribute('aria-pressed', 'false');
   send(JSON.stringify({ type: 'state', mode: 'observe', session: 'fixture', cols: 80, rows: 24 }));
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'observe');
   await expect(keys).toContainText('Observing');
+  await enter.click();
   await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click();
   await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
   await keys.getByRole('button', { name: 'Take control', exact: true }).click();
