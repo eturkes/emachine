@@ -49,6 +49,7 @@
 ## Releases
 
 - Repository = `git@github.com:eturkes/emachine.git`; source/tag pushes use SSH. GitHub release API uses authenticated `gh`.
+- AppImage-required change requests = standing authorization for version bump, acceptance, preparation, source/tag pushes + GitHub Release publication in the same task, without a separate publish request. Delivery = published, digest-verified release + link; complete `docs/releases.md` through publication. Interface-only changes retain the independent refresh path unless an AppImage is requested.
 - `pnpm release:prepare` requires clean committed source; verifies, archives HEAD, builds isolated unseeded Linux x86-64 AppImage, tests exact artifact, emits `desktop/publish/vVERSION/{*.AppImage,SHA256SUMS,release.json,latest-linux.yml}`. Keep release metadata for external update tools + older clients; metadata must match exact artifact/version.
 - `EMACHINE_CLIENT_SEED=empty` must not read machine configuration. Release packaging must preserve the installed AppImage and exclude local identities, addresses, state and credentials.
 - Version tags immutable; create annotated `vX.Y.Z` only at prepared `release.json.commit`. No forced push or asset clobber. Publish after upload/digest validation. Workflow = `docs/releases.md`.

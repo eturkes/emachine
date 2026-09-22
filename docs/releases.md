@@ -39,7 +39,8 @@ Set the version from the committed application:
 version=$(node -p 'require("./package.json").version')
 tag="v$version"
 directory="desktop/publish/$tag"
-git tag -a "$tag" -m "emachine $tag"
+commit=$(node -p "require('./$directory/release.json').commit")
+git tag -a "$tag" "$commit" -m "emachine $tag"
 git push --atomic -u origin main "refs/tags/$tag"
 gh release create "$tag" \
   "$directory/emachine-$version-x86_64.AppImage" \
@@ -71,7 +72,7 @@ chmod +x emachine.AppImage
 ```
 
 Clients without a FUSE helper can set `APPIMAGE_EXTRACT_AND_RUN=1` when launching.
-Release publication is explicit. Pushing a branch or tag does not start a separate automatic publishing workflow.
+Publish with the GitHub CLI commands above. Pushing a branch or tag does not start a separate automatic publishing workflow.
 
 ## Desktop runtime updates
 
