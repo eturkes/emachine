@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -178,6 +178,34 @@ test('phone-sized browser reaches real inventory, events, terminal, and PWA with
     assert.ok(cached.every(url => !/bootstrap\.json|\/api\/|\/features\//.test(url)));
     await mkdir(join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: join(root, 'test-results/phone-gateway.png') });
+  } finally { await close(); }
+});
+
+test('protected manifest declares document credentials', async () => {
+  const html = await readFile(join(root, 'web/index.html'), 'utf8');
+  const manifest = html.match(/<link\b[^>]*\brel="manifest"[^>]*>/)?.[0];
+  assert.ok(manifest, 'The shell must link its manifest.');
+  assert.match(manifest, /\bcrossorigin="use-credentials"/, 'The protected manifest must reuse the document credentials.');
+});
+
+test('browser manifest fetch reuses the document login', { timeout: 30000 }, async t => {
+  const listenPort = await freePort(), publicUrl = `http://127.0.0.1:${listenPort}/`;
+  const f = await fixture({ origins: [new URL(publicUrl).origin] });
+  let browser, g, closing;
+  const close = () => closing ??= (async () => { await browser?.close(); await g?.close(); await f.close(); })();
+  t.after(close); t.signal.addEventListener('abort', () => { void close(); }, { once: true });
+  try {
+    const state = await f.state();
+    g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine }, t);
+    browser = await chromium.launch({ executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim(), headless: true });
+    // Cached shell bytes must not conceal an unauthenticated browser manifest request.
+    const context = await browser.newContext({ serviceWorkers: 'block', httpCredentials: { username: 'emachine', password } });
+    const page = await context.newPage(), devtools = await context.newCDPSession(page);
+    assert.equal((await page.goto(publicUrl)).status(), 200);
+    const manifest = await devtools.send('Page.getAppManifest');
+    assert.deepEqual(manifest.errors, [], 'The browser could not fetch its protected manifest.');
+    const expected = await (await g.request('manifest.webmanifest', { headers: { Authorization: authorization, Origin: g.origin } })).json();
+    assert.deepEqual(JSON.parse(manifest.data), expected);
   } finally { await close(); }
 });
 
