@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, rename, chmod, realpath, rm, stat } from 'n
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { promisify, isDeepStrictEqual } from 'node:util';
 import { request } from 'node:http';
@@ -43,15 +43,16 @@ export function unrelated(config, authority) {
   }
   return copy;
 }
-function localRequest(installed, path, password) {
+function localRequest(installed, path, password, cookie) {
   const address = new URL(installed.publicUrl);
   return new Promise((resolve, reject) => {
     const headers = { Host: address.host, Origin: address.origin };
     if (password) headers.Authorization = 'Basic ' + Buffer.from(`emachine:${password}`).toString('base64');
+    if (cookie) headers.Cookie = cookie;
     const req = request(`http://127.0.0.1:${installed.listenPort}/${path}`, { headers, timeout: 10000 }, res => {
       const chunks = []; let size = 0;
       res.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) res.destroy(new Error('Gateway response exceeds its limit.')); else chunks.push(chunk); });
-      res.on('error', reject); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+      res.on('error', reject); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString(), cookies: res.headers['set-cookie'] ?? [] }));
     });
     req.on('error', reject); req.on('timeout', () => req.destroy(new Error('The gateway did not respond.'))); req.end();
   });
@@ -62,6 +63,12 @@ async function probe(installed, password) {
   }
   const response = await localRequest(installed, 'api/v1/state', password);
   if (response.status !== 200 || JSON.parse(response.body).machine?.id !== installed.machine.id) throw new Error('Authenticated machine access failed. Publication is blocked.');
+  if (installed.sessionSocket) {
+    const cookie = response.cookies.find(value => value.startsWith('__Host-emachine-phone='));
+    if (!cookie || !cookie.includes('; Secure') || !cookie.includes('; HttpOnly') || !cookie.includes('; SameSite=Strict')) throw new Error('The protected browser session was not established.');
+    const resumed = await localRequest(installed, 'api/v1/state', undefined, cookie.split(';')[0]);
+    if (resumed.status !== 200 || JSON.parse(resumed.body).machine?.id !== installed.machine.id) throw new Error('Cookie-only machine access failed.');
+  }
   const seed = await localRequest(installed, 'bootstrap.json', password);
   if (seed.status !== 200 || JSON.parse(seed.body).servers?.[0]?.direct !== installed.publicUrl) throw new Error('The public client seed is incorrect. Publication is blocked.');
 }
@@ -132,10 +139,17 @@ async function main(action) {
     if (!password) { password = randomBytes(32).toString('base64url'); await atomic(passwordPath, password + '\n'); }
     if (!/^[A-Za-z0-9_-]{43}$/.test(password)) throw new Error('The saved phone password is invalid.');
     const passwordHash = previous?.passwordHash || execFileSync(caddy, ['hash-password', '--algorithm', 'bcrypt'], { input: password + '\n', encoding: 'utf8' }).trim();
-    const installed = { publicUrl, listenPort, upstreamPort: config.port, upstreamOrigin, machine: { id: machine.id, name: machine.name }, passwordHash, gatewaySecret: config.gatewaySecret };
+    const installed = { publicUrl, listenPort, upstreamPort: config.port, upstreamOrigin, machine: { id: machine.id, name: machine.name }, passwordHash, gatewaySecret: config.gatewaySecret, sessionSocket: join(directory, 'session.sock') };
     const caddyConfig = JSON.stringify(gatewayConfig(installed), null, 2) + '\n';
     const previousCaddy = await optional(caddyConfigPath);
+    const runtime = fileURLToPath(new URL('./phone-runtime.mjs', import.meta.url));
+    const runtimeHash = createHash('sha256');
+    for (const file of ['phone-runtime.mjs', 'phone-session.mjs', 'phone-lock.mjs', 'caddy.mjs']) {
+      const bytes = await readFile(new URL(file, import.meta.url));
+      runtimeHash.update(`${file}\0${bytes.length}\0`).update(bytes);
+    }
     const unit = `${marker}
+# runtime-sha256=${runtimeHash.digest('hex')}
 [Unit]
 Description=emachine authenticated phone gateway
 After=emachine.service network-online.target
@@ -143,7 +157,7 @@ Wants=emachine.service
 
 [Service]
 Type=simple
-ExecStart=${unitQuote(caddy)} run --config ${unitQuote(caddyConfigPath)}
+ExecStart=${unitQuote(process.execPath)} ${unitQuote(runtime)} ${unitQuote(settingsPath)} ${unitQuote(caddyConfigPath)}
 Environment=${unitQuote('XDG_DATA_HOME=' + join(directory, 'data'))}
 Environment=${unitQuote('XDG_CONFIG_HOME=' + directory)}
 UMask=0077

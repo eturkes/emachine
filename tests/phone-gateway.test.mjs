@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
-import { chromium } from '@playwright/test';
+import { chromium, webkit } from '@playwright/test';
 import WebSocket, { WebSocketServer } from 'ws';
 import { ensureCaddy } from '../scripts/caddy.mjs';
+import { webkitOptions } from '../scripts/webkit.mjs';
+import { startSessionServer, sessionLifetime } from '../scripts/phone-session.mjs';
 import { fixture, freePort, until, root, socket } from './network-helper.mjs';
 
 const password = randomBytes(32).toString('base64url');
@@ -27,23 +30,31 @@ async function stop(child) {
 }
 async function gateway(options, t) {
   const { gatewayConfig } = await implementation();
-  const config = gatewayConfig({ passwordHash, ...options });
   const home = await mkdtemp(join(tmpdir(), 'emachine-gateway-test-'));
-  let child, closing;
-  const close = () => closing ??= (async () => { if (child) await stop(child); await rm(home, { recursive: true, force: true }); })();
+  const settings = { passwordHash, ...options, sessionSocket: join(home, 'session.sock') };
+  const config = gatewayConfig(settings);
+  let child, session, closing;
+  const close = () => closing ??= (async () => { if (child) await stop(child); await session?.close(); await rm(home, { recursive: true, force: true }); })();
   t?.after(close);
   t?.signal.addEventListener('abort', () => { void close(); }, { once: true });
   try {
+  session = await startSessionServer(settings);
+  if (options.tls) {
+    const certificate = join(home, 'certificate.pem'), key = join(home, 'key.pem');
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', key, '-out', certificate], { stdio: 'ignore' });
+    config.apps.tls = { certificates: { load_files: [{ certificate, key }] } };
+    config.apps.http.servers.phone.tls_connection_policies = [{}];
+  }
   const path = join(home, 'caddy.json');
   await writeFile(path, JSON.stringify(config), { mode: 0o600 });
   child = spawn(caddy, ['run', '--config', path], { env: { ...process.env, XDG_DATA_HOME: home, XDG_CONFIG_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.on('error', () => {});
   let logs = '';
   child.stdout.on('data', bytes => { logs += bytes; }); child.stderr.on('data', bytes => { logs += bytes; });
-  const origin = `http://127.0.0.1:${options.listenPort}`;
+  const origin = `${options.tls ? 'https' : 'http'}://127.0.0.1:${options.listenPort}`;
   // Node fetch drops Host overrides; use the wire API so hostile-host cases reach Caddy unchanged.
   const request = (path = '', init = {}) => new Promise((resolve, reject) => {
-    const req = httpRequest(`${origin}/${path}`, { method: init.method, headers: init.headers, timeout: 10000 }, res => {
+    const req = (options.tls ? httpsRequest : httpRequest)(`${origin}/${path}`, { method: init.method, headers: init.headers, timeout: 10000, ...(options.tls ? { rejectUnauthorized: false } : {}) }, res => {
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
       res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
@@ -56,7 +67,7 @@ async function gateway(options, t) {
       if (child.exitCode !== null) throw new Error(logs);
       return (await request()).status === 401;
     });
-  return { origin, request, config, get logs() { return logs; }, close };
+  return { origin, request, config, stopSessions: () => session.close(), get logs() { return logs; }, close };
   } catch (error) { await close(); throw error; }
 }
 async function rejection(url, headers) {
@@ -87,7 +98,11 @@ test('gateway configuration rejects unsafe addresses, secrets, and interpolation
 test('real Caddy authenticates every route and strips client trust headers', { timeout: 45000 }, async t => {
   await implementation();
   const received = [];
-  const upstream = createServer((req, res) => { received.push(req.headers); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ path: req.url, method: req.method, headers: req.headers })); });
+  const upstream = createServer((req, res) => {
+    received.push(req.headers); const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ path: req.url, method: req.method, headers: req.headers, body: Buffer.concat(chunks).toString() })); });
+  });
   let g, sockets, closing;
   const close = () => closing ??= (async () => {
     for (const ws of sockets?.clients ?? []) ws.terminate();
@@ -115,10 +130,13 @@ test('real Caddy authenticates every route and strips client trust headers', { t
     assert.equal((await g.request('api/v1/state', { headers: { ...headers, Origin: 'https://attacker.example' } })).status, 403);
     assert.equal((await g.request('api/v1/jobs', { method: 'POST', headers: { Authorization: authorization } })).status, 403);
     assert.equal((await g.request('api/v1/state', { headers: { ...headers, Host: 'attacker.example' } })).status, 421);
-    const response = await g.request('api/v1/jobs?limit=2', { method: 'POST', headers: { ...headers, 'Tailscale-User-Login': 'forged', 'X-Emachine-Gateway': 'forged' }, body: '{}' });
+    const response = await g.request('api/v1/jobs?limit=2', { method: 'POST', headers: { ...headers, Cookie: 'unused=fixture', 'X-Emachine-Session-Key': 'forged', 'Tailscale-User-Login': 'forged', 'X-Emachine-Gateway': 'forged' }, body: '{}' });
     assert.equal(response.status, 200);
     const echo = await response.json();
     assert.equal(echo.path, '/api/v1/jobs?limit=2');
+    assert.equal(echo.body, '{}');
+    assert.equal(echo.headers.cookie, undefined);
+    assert.equal(echo.headers['x-emachine-session-key'], undefined);
     assert.equal(echo.headers.authorization, undefined);
     assert.equal(echo.headers['tailscale-user-login'], undefined);
     assert.equal(echo.headers['x-emachine-gateway'], gatewaySecret);
@@ -181,6 +199,40 @@ test('phone-sized browser reaches real inventory, events, terminal, and PWA with
   } finally { await close(); }
 });
 
+test('WebKit document login authenticates events, terminal, and cookie-only reload', { timeout: 45000 }, async t => {
+  const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
+  const f = await fixture({ origins: [new URL(publicUrl).origin] });
+  let browser, g;
+  t.after(async () => { await browser?.close(); await g?.close(); await f.close(); });
+  const state = await f.state();
+  g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, tls: true }, t);
+  browser = await webkit.launch(webkitOptions());
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, httpCredentials: { username: 'emachine', password } });
+  const page = await context.newPage();
+  assert.equal((await page.goto(publicUrl)).status(), 200);
+  // The app already controls alpha; the independent socket must own a different fixture terminal.
+  const project = state.projects.find(project => project.name === 'beta');
+  for (const path of ['api/v1/events', `api/v1/terminal/${project.id}?cols=60&rows=20`]) {
+    const packet = await page.evaluate(path => new Promise((resolve, reject) => {
+      const ws = new WebSocket(new URL(path, location.href).href.replace(/^http/, 'ws'));
+      const finish = (error, packet) => { clearTimeout(timer); ws.close(); error ? reject(new Error(error)) : resolve(packet); };
+      const timer = setTimeout(() => finish('WebSocket response timed out.'), 8000);
+      ws.onerror = () => finish('WebSocket authentication failed.');
+      ws.onmessage = event => { if (typeof event.data === 'string') finish(undefined, JSON.parse(event.data)); };
+    }), path);
+    assert.equal(packet.type === 'inventory' || packet.mode === 'control', true);
+  }
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  const cookies = await context.cookies();
+  assert.ok(cookies.some(cookie => cookie.httpOnly && cookie.sameSite === 'Strict'));
+  const resumed = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
+  await resumed.addCookies(cookies);
+  const reload = await resumed.newPage();
+  assert.equal((await reload.goto(publicUrl)).status(), 200);
+  await reload.waitForFunction(() => document.body.textContent.includes('alpha'));
+  assert.ok(!(await reload.evaluate(() => document.cookie)).includes(cookies[0].value));
+});
+
 test('protected manifest declares document credentials', async () => {
   const html = await readFile(join(root, 'web/index.html'), 'utf8');
   const manifest = html.match(/<link\b[^>]*\brel="manifest"[^>]*>/)?.[0];
@@ -207,6 +259,42 @@ test('browser manifest fetch reuses the document login', { timeout: 30000 }, asy
     const expected = await (await g.request('manifest.webmanifest', { headers: { Authorization: authorization, Origin: g.origin } })).json();
     assert.deepEqual(JSON.parse(manifest.data), expected);
   } finally { await close(); }
+});
+
+test('session cookies preserve authentication and Origin boundaries, expire, and fail closed', { timeout: 30000 }, async t => {
+  let time = Date.now();
+  const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
+  const origin = new URL(publicUrl).origin;
+  const f = await fixture({ origins: [origin] }); t.after(() => f.close());
+  const state = await f.state();
+  const g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, now: () => time }, t);
+  const login = await g.request('api/v1/state', { headers: { Authorization: authorization, Origin: origin } });
+  assert.equal(login.status, 200);
+  const issued = login.headers.get('set-cookie');
+  assert.ok(issued?.startsWith('__Host-emachine-phone='));
+  for (const flag of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/', 'Max-Age=43200']) assert.ok(issued.includes(flag));
+  const Cookie = issued.split(';')[0];
+  const headers = { Cookie, Origin: origin };
+  assert.equal((await g.request('api/v1/state', { headers })).status, 200);
+  for (const value of [Cookie + 'x', Cookie + '; ' + Cookie, Cookie.replace('=', '=invalid')]) {
+    assert.equal((await g.request('api/v1/state', { headers: { Cookie: value, Origin: origin } })).status, 401);
+  }
+  assert.equal((await g.request('api/v1/state', { headers: { ...headers, Host: 'attacker.example' } })).status, 421);
+  assert.equal((await g.request('api/v1/state', { headers: { ...headers, Origin: 'https://attacker.example' } })).status, 403);
+  assert.equal((await g.request('api/v1/jobs', { method: 'POST', headers: { Cookie }, body: '{}' })).status, 403);
+  assert.equal((await g.request('issue', { headers: { 'X-Emachine-Session-User': 'emachine', 'X-Emachine-Session-Key': f.config.gatewaySecret, 'X-Emachine-Gateway': f.config.gatewaySecret } })).status, 401);
+  assert.equal(await rejection(g.origin + '/api/v1/events', { Cookie }), 403);
+  assert.equal(await rejection(g.origin + '/api/v1/events', { ...headers, Origin: 'https://attacker.example' }), 403);
+  const events = await socket({ origin: g.origin }, 'api/v1/events', headers);
+  await until(() => events.packets.some(packet => packet.type === 'inventory')); await events.close();
+  time += sessionLifetime;
+  assert.equal((await g.request('api/v1/state', { headers })).status, 401);
+  const refreshed = await g.request('', { headers: { Authorization: authorization, Origin: origin } });
+  assert.equal(refreshed.status, 200);
+  assert.ok(refreshed.headers.get('set-cookie'));
+  await g.stopSessions();
+  assert.equal((await g.request('api/v1/state', { headers })).status, 502);
+  assert.ok(!g.logs.includes(Cookie.split('=')[1]) && !g.logs.includes(password) && !g.logs.includes(f.config.gatewaySecret));
 });
 
 test('gateway requires the complete authority including its port', { timeout: 20000 }, async t => {

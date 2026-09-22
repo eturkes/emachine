@@ -18,7 +18,7 @@
     "check": "tsc --noEmit && cd core && moon check --target native",
     "test:core": "cd core && moon test --target native",
     "test:network": "node --test tests/network.test.mjs",
-    "test:gateway": "node --test tests/phone-gateway.test.mjs tests/phone-install.test.mjs",
+    "test:gateway": "node scripts/setup-webkit.mjs && node --test tests/phone-gateway.test.mjs tests/phone-install.test.mjs tests/phone-session.test.mjs",
     "phone:install": "node scripts/phone-access.mjs install",
     "phone:enable": "node scripts/phone-access.mjs enable",
     "phone:disable": "node scripts/phone-access.mjs disable",

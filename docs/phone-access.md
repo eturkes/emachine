@@ -64,6 +64,11 @@ Never publish the unprotected machine port `4737` directly through Funnel.
 Create the icon from the public address. An existing icon for the private address still requires Tailscale.
 The Home Screen app can request the password separately from Safari.
 
+After a successful password check, the gateway creates a 12-hour browser session.
+Subsequent requests use a protected cookie, including terminal and event connections.
+This avoids repeated password challenges when a browser omits Basic authentication from WebSocket requests.
+The password stays unchanged.
+
 ## Disable access
 
 ```sh
@@ -84,15 +89,26 @@ The underlying zmx sessions continue running.
 Caddy requires authentication for the shell, client seed, assets, API, and WebSocket upgrades.
 The gateway checks the complete Host authority, including its port.
 It requires the exact browser origin for mutations and WebSockets.
-It removes browser authentication and Tailscale identity headers before proxying.
+It removes browser credentials, cookies, private session headers, and Tailscale identity headers before proxying.
 Only the gateway supplies the separate upstream secret.
 Credentials remain in owner-only files, outside source control and client bundles.
+
+The public session cookie uses `Secure`, `HttpOnly`, `SameSite=Strict`, and a `__Host-` name.
+Sessions contain random identifiers, not the password. The helper checks expiry on each new request.
+The helper accepts requests only through an owner-only Unix socket with a separate internal credential check.
+Caddy issues that internal assertion only after authenticating the password and checking the browser origin.
+The helper keeps at most 256 sessions in memory. A gateway restart revokes every session.
+Existing upgraded connections end when the gateway stops, but the underlying terminal sessions remain available.
+The supervisor stops Caddy when the session helper fails. Authentication does not fall back to unprotected access.
 
 The public client seed contains only this public address. It never attempts a private Tailscale connection.
 The PWA caches shell assets only. It does not cache the client seed, API responses, or terminal output.
 
-Run `pnpm test:gateway` for real Caddy, native server, WebSocket, terminal, and phone-sized Chromium checks.
-The gate also covers failed installation recovery, password consistency, process-lifetime locks, and foreground route ownership.
+Run `pnpm test:gateway` for Caddy, native server, terminal, Chromium, and WebKit HTTPS and WebSocket checks.
+The WebKit check also verifies service-worker readiness and reopening with only the session cookie.
+The gate checks expiry, revocation, hostile cookies, internal assertions, Origin rejection, and supervisor ownership.
+It also checks installation recovery, password consistency, process-lifetime locks, and foreground route ownership.
+The gate prepares its pinned WebKit browser and compatibility libraries under `.tools/`. It does not install system packages.
 It runs in `pnpm verify`.
 Automated browser checks do not prove physical iPhone behavior or public Funnel reachability.
 Verify both after approving and publishing the route.
@@ -100,6 +116,7 @@ Verify both after approving and publishing the route.
 | Review boundary | Required behavior |
 | --- | --- |
 | Authentication | Anonymous and incorrect-password HTTP and WebSocket requests fail before proxying. |
+| Sessions | Unknown or altered identifiers fail. Cookies expire, stay outside JavaScript and upstream requests, and are revoked by gateway restart. |
 | Host and Origin | The complete authority and browser origin match the configured public address. |
 | Credentials | Browser credentials are stripped; the separate upstream secret stays outside client files. |
 | Network | The gateway and its upstream use loopback; Funnel targets only the authenticated gateway. |

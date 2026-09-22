@@ -11,7 +11,7 @@ export function publicAddress(value) {
   return url;
 }
 
-export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOrigin, passwordHash, gatewaySecret, machine }) {
+export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOrigin, passwordHash, gatewaySecret, machine, sessionSocket }) {
   const address = publicAddress(publicUrl);
   port(listenPort); port(upstreamPort);
   if (listenPort === upstreamPort) throw new Error('The gateway and machine server need separate ports.');
@@ -22,6 +22,18 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
   const origin = { header: { Origin: [address.origin] } };
   const response = (status, body = '') => ({ handler: 'static_response', status_code: status, body });
   const bootstrap = { servers: [{ id: machine.id, name: machine.name, direct: address.href }] };
+  if (sessionSocket !== undefined && (typeof sessionSocket !== 'string' || !sessionSocket.startsWith('/') || Buffer.byteLength(sessionSocket) > 103 || /[{}\u0000-\u001f]/.test(sessionSocket))) throw new Error('Use a short absolute path for the private session socket.');
+  const needsSession = { not: [{ vars: { phone_session: ['yes'] } }] };
+  const sessionProxy = (path, handle_response) => ({ handler: 'reverse_proxy',
+    upstreams: [{ dial: 'unix/' + sessionSocket }],
+    // Keep client queries on the original request, not on the private authentication endpoint.
+    rewrite: { method: 'GET', uri: path + '?' },
+    transport: { protocol: 'http', dial_timeout: '2s', response_header_timeout: '2s' },
+    headers: { request: {
+      delete: ['Authorization', 'Upgrade', 'Connection', 'Sec-WebSocket-*', 'Content-Length', 'Content-Type'],
+      set: { Host: ['session.internal'], 'X-Emachine-Session-Key': [gatewaySecret], 'X-Emachine-Session-User': ['{http.auth.user.id}'] },
+    } }, handle_response,
+  });
   return {
     admin: { disabled: true, config: { persist: false } },
     logging: { logs: { default: { level: 'ERROR' } } },
@@ -35,16 +47,24 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
           'X-Content-Type-Options': ['nosniff'],
         }, delete: ['Server'] } }] },
         { match: [{ expression: `{http.request.hostport} != ${JSON.stringify(address.host)}` }], handle: [response(421)] },
-        { handle: [{ handler: 'authentication', providers: { http_basic: {
+        ...(sessionSocket ? [{ handle: [sessionProxy('/check', [
+          { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'vars', phone_session: 'yes' }] }] },
+          { match: { status_code: [401] }, routes: [{ handle: [{ handler: 'vars', phone_session: 'no' }] }] },
+        ])] }] : []),
+        { ...(sessionSocket ? { match: [needsSession] } : {}), handle: [{ handler: 'authentication', providers: { http_basic: {
           hash: { algorithm: 'bcrypt' }, realm: 'emachine',
           accounts: [{ username: 'emachine', password: passwordHash }],
         } } }] },
-        // Basic credentials are ambient browser authority; require the exact origin for mutations and sockets.
+        // Both Basic credentials and session cookies are ambient authority; enforce the exact browser origin.
         { match: [
           { header: { Origin: ['*'] }, not: [origin] },
           { method: ['POST', 'PUT', 'PATCH', 'DELETE', 'CONNECT'], not: [origin] },
           { header: { Upgrade: ['websocket'] }, not: [origin] },
         ], handle: [response(403)] },
+        // Mint only after password and Origin checks. WebKit can then authenticate sockets without Basic headers.
+        ...(sessionSocket ? [{ match: [needsSession], handle: [sessionProxy('/issue', [
+          { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'headers', response: { add: { 'Set-Cookie': ['{http.reverse_proxy.header.Set-Cookie}'] } } }] }] },
+        ])] }] : []),
         // A phone opened through this origin must never probe the private Tailscale endpoint.
         { match: [{ path: ['/bootstrap.json'], method: ['GET', 'HEAD'] }], handle: [{
           ...response(200, JSON.stringify(bootstrap)), headers: { 'Content-Type': ['application/json'] },
@@ -53,7 +73,7 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
           upstreams: [{ dial: `127.0.0.1:${upstreamPort}` }],
           transport: { protocol: 'http', dial_timeout: '5s', response_header_timeout: '30s' },
           headers: { request: {
-            delete: ['Authorization', 'Tailscale-User-*', 'Tailscale-App-Capabilities'],
+            delete: ['Authorization', 'Cookie', 'X-Emachine-Session-*', 'Tailscale-User-*', 'Tailscale-App-Capabilities'],
             // Validate the browser origin above, then use the existing native origin without restarting jobs.
             set: { Host: [`127.0.0.1:${upstreamPort}`], 'X-Emachine-Gateway': [gatewaySecret], ...(upstreamOrigin ? { Origin: [upstreamOrigin] } : {}) },
           }, response: { delete: ['Access-Control-Allow-*'] } },
