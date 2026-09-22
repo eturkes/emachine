@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, mkdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import sharp from 'sharp';
 import { fixture, root } from './network-helper.mjs';
+import { neutralTheme } from './theme-contract.mjs';
 
 const f = await fixture({ name: 'Desktop acceptance' });
 const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
@@ -19,6 +21,23 @@ try {
   const page = await app.firstWindow();
   await expect(page.locator('.brand-name')).toHaveText('emachine');
   assert.equal(await app.evaluate(({ app }) => app.isPackaged), true);
+  // Read the running artifact, not the build tree: interface refresh cannot replace native launcher icons.
+  const branding = await app.evaluate(({ app }) => {
+    const { readFileSync } = process.getBuiltinModule('fs');
+    const { dirname, join } = process.getBuiltinModule('path');
+    const icons = Object.fromEntries([180, 192, 512].map(size => [size,
+      readFileSync(join(app.getAppPath(), `web/dist/icons/${size}.png`)).toString('base64')]));
+    return { icons, launcher: readFileSync(join(dirname(app.getPath('exe')), '.DirIcon')).toString('base64') };
+  });
+  for (const size of [180, 192, 512]) {
+    assert.deepEqual(Buffer.from(branding.icons[size], 'base64'), await readFile(join(root, `web/public/icons/${size}.png`)),
+      `Packaged ${size}px icon must match the PWA source.`);
+  }
+  const pixels = bytes => sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const pwa = await pixels(Buffer.from(branding.icons[512], 'base64'));
+  const launcher = await pixels(Buffer.from(branding.launcher, 'base64'));
+  assert.deepEqual(launcher.info, pwa.info, 'AppImage launcher dimensions must match the PWA icon.');
+  assert.deepEqual(launcher.data, pwa.data, 'AppImage launcher pixels must match the PWA icon.');
   const isolation = await page.evaluate(() => ({ node: typeof process, require: typeof require, url: location.href }));
   assert.equal(isolation.node, 'undefined'); assert.equal(isolation.require, 'undefined');
   assert.equal(isolation.url, 'emachine://app/index.html');
@@ -55,8 +74,18 @@ try {
   await page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
   await mkdir(join(root, 'test-results'), { recursive: true });
+  for (const theme of ['light', 'dark']) {
+    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await neutralTheme(page.locator('body'), {
+      tokens: ['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft', 'selection', 'backdrop', 'scrim'],
+      selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows', '.xterm-scrollable-element'],
+      surfaces: ['bg', 'surface', 'raised', 'hover'], semantic: ['warning', 'danger'],
+    });
+    await page.screenshot({ path: join(root, `test-results/emachine-appimage-${theme}.png`) });
+  }
   await page.screenshot({ path: join(root, 'test-results/emachine-appimage.png') });
-  console.log('AppImage passed: packaged shell, isolated renderer, real machine connection and zmx terminal.');
+  console.log('AppImage passed: PWA-matched packaged/launcher icons, neutral light/dark themes, isolated renderer, real machine connection and zmx terminal.');
 } finally {
   await app?.close(); await f.close(); await rm(profile, { recursive: true, force: true });
 }
