@@ -117,12 +117,18 @@ Views can contain arbitrary interfaces and declared server actions. They are tru
 | --- | --- |
 | Application checkout | `~/.local/app/emachine/` |
 | Configuration | `~/.config/emachine/config.json` |
+| AppImage browser databases, caches, logs, and saved interfaces | `~/.cache/emachine/` |
 | Feature source, releases, checkpoints | `~/.local/share/emachine/` |
 | Job records, artifacts, mutable state | `~/.local/state/emachine/` |
 | zmx sockets | `$ZMX_DIR`, otherwise `$XDG_RUNTIME_DIR/zmx/` when available |
 | Server lock | `$XDG_RUNTIME_DIR/emachine-runtime/` |
 
 The server rejects storage roots that overlap the managed project root. XDG variables and configuration can change these defaults.
+
+The AppImage uses `$XDG_CACHE_HOME/emachine/` when `XDG_CACHE_HOME` is an absolute path. Otherwise, it uses `~/.cache/emachine/`.
+On first launch, it moves known desktop storage from the old configuration directory. Server files and unknown configuration stay unchanged.
+Saved connections and preferences use the browser database. Clearing the entire desktop cache removes those settings and saved interfaces.
+An explicit `--user-data-dir` keeps all desktop storage in that profile. Development runs keep their existing storage paths.
 
 Older `em-<projectId>` sessions remain under the configured runtime root's `zmx/` directory. Emachine does not rename or terminate them.
 
@@ -143,6 +149,7 @@ pnpm verify
 pnpm appimage
 pnpm test:desktop
 pnpm test:desktop-interface
+pnpm test:desktop-storage
 ```
 
 The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20260904`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.

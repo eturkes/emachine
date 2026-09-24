@@ -15,6 +15,7 @@ pnpm release:prepare
 
 Preparation runs the standard acceptance gate, then builds from a separate archive of the committed source.
 It tests the exact packaged AppImage with an empty machine list and a real test server.
+Storage tests cover cache paths, legacy database migration, and retained client settings. Interface tests cover refresh and recovery.
 The existing installed AppImage is unchanged. Existing release output is never overwritten.
 
 The output directory is `desktop/publish/vVERSION/`. It contains:
@@ -86,6 +87,8 @@ Release access depends on the repository's security. No GitHub credential is emb
 A versionless filename preserves launchers across updates.
 The local installer uses `desktop/installed/emachine.AppImage`; builds and release preparation leave that copy unchanged.
 Your connection settings stay in the Electron profile. The update replaces only the desktop client.
+From `0.1.5`, browser storage and saved interfaces use `~/.cache/emachine/`, with support for absolute `XDG_CACHE_HOME` paths.
+The first launch moves known desktop files from the old configuration directory. Server configuration remains unchanged.
 Machine servers and project views have separate update paths. Server terminals and jobs survive a client restart.
 
 A source edit is not a runtime release. Each runtime update needs a higher version and all four published assets.

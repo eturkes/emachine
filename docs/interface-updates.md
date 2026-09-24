@@ -27,6 +27,8 @@ The client fetches changed files and reuses matching files from its local interf
 It verifies every file before opening the complete revision. The AppImage and application process stay unchanged.
 
 Your saved connections, selected project, and preferences stay in the same desktop profile.
+AppImage browser storage and downloaded interfaces use `~/.cache/emachine/`, or `$XDG_CACHE_HOME/emachine/` when that variable is absolute.
+The first launch migrates known desktop files from the old configuration directory. Clearing this cache also removes saved client settings.
 Server terminals and jobs keep running. The refreshed interface reconnects to them.
 Unsaved text and other temporary state inside a view can be lost during a reload.
 

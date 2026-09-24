@@ -1,6 +1,6 @@
 {
   "name": "emachine",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "A personal, multi-machine project command center",
   "author": "eturkes",
@@ -26,9 +26,11 @@
     "test:web": "playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
     "test:desktop-interface": "node tests/desktop-interface.mjs",
+    "test:storage": "node --test tests/desktop-storage.test.mjs",
+    "test:desktop-storage": "node tests/desktop-storage.mjs",
     "test:interface": "node --test tests/interface.test.mjs",
     "test:release": "node --test tests/release.test.mjs",
-    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:interface && pnpm build && pnpm test:network && pnpm test:gateway && pnpm test:web",
+    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:interface && pnpm test:storage && pnpm build && pnpm test:network && pnpm test:gateway && pnpm test:web",
     "release:prepare": "node scripts/prepare-release.mjs",
     "desktop": "electron .",
     "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"

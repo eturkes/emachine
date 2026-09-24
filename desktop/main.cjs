@@ -4,6 +4,7 @@ const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { createInterfaceController, registerInterfaceIpc } = require('./interface.cjs');
+const { configureDesktopStorage } = require('./storage.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true,
@@ -86,7 +87,7 @@ async function start() {
       contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false,
       preload: join(__dirname, 'preload.cjs') },
   });
-  ui = await createInterfaceController({ bundleRoot: root, cacheRoot: join(app.getPath('userData'), 'interface'),
+  ui = await createInterfaceController({ bundleRoot: root, cacheRoot: join(app.getPath('sessionData'), 'interface'),
     fetch: (url, options) => net.fetch(url, options),
     reload: () => main.loadURL('emachine://app/index.html'),
     notify: state => { if (!main.isDestroyed()) main.webContents.send('emachine:interface:state', state); },
@@ -120,9 +121,27 @@ async function start() {
   const checks = setInterval(() => { void ui.check(); }, 60000);
   main.on('closed', () => { clearTimeout(initialCheck); clearInterval(checks); ui.dispose(); });
 }
-if (!app.requestSingleInstanceLock()) app.quit();
+// quit() before ready still initializes Chromium's default profile in a second process.
+if (!app.requestSingleInstanceLock()) app.exit(0);
 else {
-  app.on('second-instance', () => { if (main) { if (main.isMinimized()) main.restore(); main.show(); main.focus(); } });
-  app.whenReady().then(start).catch(error => { console.error(error); app.quit(); });
-  app.on('window-all-closed', () => app.quit());
+  try {
+    const lockedProfile = app.getPath('userData');
+    configureDesktopStorage(app);
+    let ownsProfile = true;
+    // Migration owns the old profile; normal and explicit launches share the new lock.
+    if (app.getPath('userData') !== lockedProfile) {
+      app.releaseSingleInstanceLock();
+      ownsProfile = app.requestSingleInstanceLock();
+    }
+    if (!ownsProfile) app.exit(0);
+    else {
+      app.on('second-instance', () => { if (main) { if (main.isMinimized()) main.restore(); main.show(); main.focus(); } });
+      app.whenReady().then(start).catch(error => { console.error(error); app.quit(); });
+      app.on('window-all-closed', () => app.quit());
+    }
+  } catch (error) {
+    console.error(error);
+    dialog.showErrorBox('Desktop storage unavailable', `The desktop storage could not move to the cache directory.\n\n${error.message}\n\nCheck the cache path and permissions, then reopen the app.`);
+    app.exit(1);
+  }
 }

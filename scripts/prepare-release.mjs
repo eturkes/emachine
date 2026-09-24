@@ -56,6 +56,8 @@ try {
   const artifact = join(output, name);
   await validateUpdateMetadata(output, pkg.version, name);
   await run(process.execPath, ['tests/desktop.mjs', '--unseeded'], root, { EMACHINE_APPIMAGE: artifact });
+  await run(process.execPath, ['tests/desktop-storage.mjs'], root, { EMACHINE_APPIMAGE: artifact });
+  await run(process.execPath, ['tests/desktop-interface.mjs'], root, { EMACHINE_APPIMAGE: artifact });
   assert.equal(await git('rev-parse', 'HEAD'), commit, 'The checkout changed during release preparation.');
   assert.equal(await git('status', '--porcelain'), '', 'The source changed during release preparation.');
   await mkdir(ready);
