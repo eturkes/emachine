@@ -18,12 +18,24 @@ Each saved connection: `{id?: string, name: string, direct: string, gateway?: st
   protocol: 1,
   machine: {id: string, name: string, version: string, projectRoot: string},
   projects: [{id: string, name: string, path: string,
+    phase?: "PROTOTYPE" | "ITERATE" | "IMPLEMENT" | "MAINTAIN" | "UNKNOWN" | null,
     features: [{id: string, title: string, revision: string, entry: string,
                 status: "ready" | "stale", updatedAt: number}],
     diagnostics: [{feature: string, message: string, updatedAt: number}]}]
 }
 ```
 `entry` is relative to the selected server base, including a content-addressed revision. Features are project-owned; empty features means terminal only. The client supplies the terminal tab itself. The composite workspace key is machine ID + project ID. Diagnostics do not replace working features.
+
+Discovery excludes the immediate `.snapshots` directory, including previously registered identities. Clients also filter that name from older inventories and offline caches.
+
+`phase` is additive sidebar metadata. Older servers can omit it; clients then show no phase label.
+A root `CLAUDE.md` file enables the label. Without that file, `phase` is `null`.
+The source is `.agent/spec.md`, not Git history or a feature artifact.
+Its `Phase` heading starts the declaration; a standalone `Phase:` field is also accepted.
+The first phase token is authoritative. Emphasis and letter case are accepted; examples, comments, and quoted lines are ignored.
+Multiple declarations, unsupported tokens, missing files, and read failures yield `UNKNOWN`.
+Reads accept only regular spec files within the project, up to 1 MiB.
+Inventory events carry changes to the phase or eligibility without remounting project views. No source text is exposed in the inventory.
 
 `WS api/v1/events` sends `{type:"inventory", state: State}` on connection and on changes. Reconnection receives a fresh inventory; clients reconcile changed feature revisions without remounting unrelated frames or terminals. Also tolerate `{type:"job", job: Job}` and `{type:"error", message:string}`.
 

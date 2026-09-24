@@ -18,6 +18,8 @@ The native and network gates use real filesystem operations and zmx processes. B
 
 Browser tests cover route-prefix boundaries, concurrent machines, keyboard input, directory discovery, isolated feature replacement, phone layout, offline caching, fallback routing, deduplication, and reconnect behavior.
 They also cover recovered jobs, neutral light colors, explicit theme persistence, and absent app-update controls with a legacy desktop bridge.
+Project checks cover root `CLAUDE.md` eligibility, uncommitted phase changes, inventory events, unknown states, and `.snapshots` exclusion.
+Sidebar checks cover cached snapshot exclusion, terminal continuity, and readable one-word phase labels in both themes.
 Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
 Layout checks reject collapsed sidebars, decorative initials, redundant strips, and Jobs or Workspaces buttons.
 Shortcut checks compare outgoing terminal bytes, verify clipboard selection and failure handling, and retain observer control without a footer.

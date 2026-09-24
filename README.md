@@ -62,6 +62,12 @@ The terminal shortcut bar includes **Ctrl**, **Alt**, **Esc**, **Tab**, arrow ke
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
+The `.snapshots` directory is excluded because it stores filesystem snapshots.
+
+Projects with a root `CLAUDE.md` show a one-word phase beside their name: **Prototype**, **Iterate**, **Implement**, or **Maintain**.
+The label reads `.agent/spec.md` and updates automatically, including uncommitted edits.
+An unreadable, missing, unsupported, or conflicting phase shows **Unknown**. Projects without `CLAUDE.md` have no phase label.
+The label needs no feature tab and does not change project files.
 
 The zmx session name is the project name, such as `figure-verification`. Open a project to attach to that session. If the session does not exist, Emachine creates it in the project directory. An existing session retains its shell, working directory, and running commands.
 

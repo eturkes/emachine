@@ -1,5 +1,6 @@
 export interface Feature { id: string; title: string; revision: string; entry: string; status: 'ready' | 'stale'; updatedAt: number }
-export interface Project { id: string; name: string; path: string; features: Feature[]; diagnostics: { feature: string; message: string; updatedAt: number }[] }
+export type Phase = 'PROTOTYPE' | 'ITERATE' | 'IMPLEMENT' | 'MAINTAIN' | 'UNKNOWN';
+export interface Project { id: string; name: string; path: string; phase?: Phase | null; features: Feature[]; diagnostics: { feature: string; message: string; updatedAt: number }[] }
 export interface Machine { id: string; name: string; version: string; projectRoot: string }
 export interface Inventory { protocol: 1; machine: Machine; projects: Project[] }
 export interface Connection { key: string; id?: string; name: string; direct: string; gateway?: string }
@@ -40,13 +41,17 @@ export function inventory(value: unknown): Inventory {
     if (!/^[a-z0-9-]{1,48}$/.test(project.id) || typeof project.name !== 'string' || !Array.isArray(project.features) || !Array.isArray(project.diagnostics)) {
       throw new Error('The machine returned an invalid project.');
     }
+    if (project.phase != null && !['PROTOTYPE', 'ITERATE', 'IMPLEMENT', 'MAINTAIN', 'UNKNOWN'].includes(project.phase)) {
+      throw new Error('The machine returned an invalid development phase.');
+    }
     for (const feature of project.features) {
       if (!/^[a-z0-9-]{1,48}$/.test(feature.id) || typeof feature.title !== 'string' || !/^[a-f0-9]{64}$/.test(feature.revision) || typeof feature.entry !== 'string') {
         throw new Error('The machine returned an invalid feature.');
       }
     }
   }
-  return v;
+  // Old servers and offline caches can still contain the filesystem snapshot directory.
+  return { ...v, projects: v.projects.filter(project => project.name !== '.snapshots') };
 }
 function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; } catch { return fallback; }

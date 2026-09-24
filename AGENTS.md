@@ -3,7 +3,8 @@
 ## Scope
 
 - Personal Linux machine daemon = MoonBit native. Browser shell = TypeScript/DOM/xterm. Desktop = isolated Electron AppImage. No server federation.
-- Source checkout outside managed projects. Discovery = immediate project-root directories. Emachine-owned files always outside managed projects.
+- Source checkout outside managed projects. Discovery = immediate project-root directories except `.snapshots`; clients also hide old cached snapshot rows. Emachine-owned files always outside managed projects.
+- Sidebar phase = built-in project metadata, eligible only with a root `CLAUDE.md` file. Read current `.agent/spec.md` bytes, independent of Git cleanliness; no per-project name exclusions or feature jobs. One-word label; missing/invalid/conflicting/unreadable declarations = Unknown. `core/model/phase.mbt` owns bounded parsing; `tests/projects.test.mjs` + `tests/projects.spec.ts` run in the standard gate.
 - Initial project = lazy zmx terminal. Feature identity `(machine, project, feature)`; source/state/releases independently owned. `terminal` reserved.
 - Terminal session = exact project name + inherited zmx namespace; reuse manual SSH sessions. Existing sessions retain shell state/cwd. Renames affect new attachments; preserve older sessions.
 - Maintain terminal/process lifetime independently of browser component lifetime. Disconnected input is dropped; reconnect never replays uncertain input.

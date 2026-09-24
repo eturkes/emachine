@@ -47,9 +47,56 @@ pub(all) struct Project {
   id : String
   name : String
   path : String
+  phase : String?
   mut features : Array[Feature]
   mut diagnostics : Array[Diagnostic]
-} derive(ToJson, @json.FromJson)
+}
+
+///|
+pub impl @json.FromJson for Project with fn from_json(value, path) {
+  guard value is Object(_) else {
+    raise @json.JsonDecodeError((path, "Project::from_json: expected object"))
+  }
+  {
+    id: @json.from_json(field(value, "id"), path=path.add_key("id")),
+    name: @json.from_json(field(value, "name"), path=path.add_key("name")),
+    path: @json.from_json(field(value, "path"), path=path.add_key("path")),
+    phase: match field(value, "phase") {
+      Null => None
+      phase => Some(@json.from_json(phase, path=path.add_key("phase")))
+    },
+    features: @json.from_json(
+      field(value, "features"),
+      path=path.add_key("features"),
+    ),
+    diagnostics: @json.from_json(
+      field(value, "diagnostics"),
+      path=path.add_key("diagnostics"),
+    ),
+  }
+}
+
+///|
+pub extend Project with @json.FromJson::{from_json}
+
+///|
+pub impl ToJson for Project with fn to_json(self) {
+  // Ineligible projects emit null; derived optional fields would disappear.
+  {
+    "id": self.id.to_json(),
+    "name": self.name.to_json(),
+    "path": self.path.to_json(),
+    "phase": match self.phase {
+      Some(value) => value.to_json()
+      None => Json::null()
+    },
+    "features": self.features.to_json(),
+    "diagnostics": self.diagnostics.to_json(),
+  }
+}
+
+///|
+pub extend Project with ToJson::{to_json}
 
 ///|
 pub(all) struct State {
@@ -426,6 +473,9 @@ pub async fn discover(config : Config) -> Array[Project] {
   let names = @fs.readdir(config.projectRoot, sort=true)
   let mut changed = false
   for name in names {
+    if name == ".snapshots" {
+      continue
+    }
     let candidate = config.projectRoot + "/" + name
     if @fs.kind(candidate) != Directory {
       continue
@@ -454,7 +504,14 @@ pub async fn discover(config : Config) -> Array[Project] {
         id
       }
     }
-    result.push({ id, name, path, features: [], diagnostics: [], })
+    result.push({
+      id,
+      name,
+      path,
+      phase: project_phase(path),
+      features: [],
+      diagnostics: [],
+    })
   }
   if changed {
     atomic_json(registry_path, registry.to_json())

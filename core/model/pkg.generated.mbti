@@ -101,9 +101,14 @@ pub(all) struct Project {
   id : String
   name : String
   path : String
+  phase : String?
   mut features : Array[Feature]
   mut diagnostics : Array[Diagnostic]
-} derive(ToJson, @json.FromJson)
+}
+pub fn Project::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Project::to_json(Self) -> Json
+pub impl ToJson for Project
+pub impl @json.FromJson for Project
 
 type RegistryEntry derive(ToJson, @json.FromJson)
 

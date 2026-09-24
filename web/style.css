@@ -39,7 +39,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .project-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 10px; margin: 3px 0; text-align: left; border: 1px solid transparent; border-radius: 9px; }
 .project-item:hover { background: var(--hover); }
 .project-item.active { border-color: color-mix(in srgb,var(--accent) 23%,transparent); background: var(--accent-soft); }
-.project-copy { min-width: 0; display: grid; gap: 4px; }
+.project-copy { min-width: 0; display: grid; gap: 4px; width: 100%; }
+.project-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.project-phase { flex-shrink: 0; font: 11px Iosevka,monospace; color: var(--muted); }
 .project-copy strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .project-copy small { font: 11px Iosevka,monospace; color: var(--muted); }
 .rail-footer { padding: 12px 13px calc(15px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); display: grid; gap: 7px; }
