@@ -129,7 +129,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
   .drawer-open .drawer-scrim { display: block; position: fixed; inset: 0; z-index: 30; background: var(--scrim); }
   .mobile-close, .mobile-menu { display: grid; }
   .mobile-close { margin-left: auto; }
-  .mobile-menu { align-self: center; margin-left: 6px; }
+  .mobile-menu { align-self: center; place-items: center; margin-left: 6px; }
   .tab-header { display: grid; grid-template-columns: auto minmax(0,1fr); height: auto; }
   .header-actions { grid-column: 1 / -1; flex-wrap: wrap; gap: 2px; padding: 4px 8px; border-left: 0; border-top: 1px solid var(--border); }
   .tabs { padding-left: 0; min-height: 44px; }

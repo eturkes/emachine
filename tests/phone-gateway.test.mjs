@@ -14,6 +14,7 @@ import { ensureCaddy } from '../scripts/caddy.mjs';
 import { webkitOptions } from '../scripts/webkit.mjs';
 import { startSessionServer, sessionLifetime } from '../scripts/phone-session.mjs';
 import { fixture, freePort, until, root, socket } from './network-helper.mjs';
+import { alignedHeaderLabels } from './header-contract.mjs';
 
 const password = randomBytes(32).toString('base64url');
 const authorization = 'Basic ' + Buffer.from(`emachine:${password}`).toString('base64');
@@ -231,6 +232,21 @@ test('WebKit document login authenticates events, terminal, and cookie-only relo
   assert.equal((await reload.goto(publicUrl)).status(), 200);
   await reload.waitForFunction(() => document.body.textContent.includes('alpha'));
   assert.ok(!(await reload.evaluate(() => document.cookie)).includes(cookies[0].value));
+  for (const width of [320, 390, 430, 700]) {
+    await reload.setViewportSize({ width, height: 844 });
+    await alignedHeaderLabels(reload);
+  }
+  const title = 'Feature navigation with a deliberately long title';
+  await f.cli('feature', 'create', 'alpha', 'header-layout', title);
+  await f.cli('feature', 'activate', 'alpha', 'header-layout');
+  await reload.getByRole('tab', { name: title, exact: true }).waitFor();
+  for (const width of [700, 430, 390, 320]) {
+    await reload.setViewportSize({ width, height: 844 });
+    await alignedHeaderLabels(reload);
+  }
+  assert.ok(await reload.locator('.tabs').evaluate(node => node.scrollWidth > node.clientWidth));
+  await reload.getByRole('tab', { name: title, exact: true }).click();
+  await alignedHeaderLabels(reload);
 });
 
 test('protected manifest declares document credentials', async () => {

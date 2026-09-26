@@ -6,6 +6,8 @@ import { baseUrl, endpoint, socketUrl } from '../web/transport';
 import { fixture, socket } from './network-helper.mjs';
 // @ts-expect-error Shared JavaScript color assertions also run in project-owned feature gates.
 import { neutral, neutralTheme } from './theme-contract.mjs';
+// @ts-expect-error Shared JavaScript layout assertions also run in WebKit gateway tests.
+import { alignedHeaderLabels } from './header-contract.mjs';
 
 let a: any;
 let b: any;
@@ -127,7 +129,7 @@ test('top bar uses text controls without connection badges at desktop and phone 
   await expect(settings).toHaveText('Settings');
   await expect(theme).toHaveText('Light');
   await expect(header.getByRole('button', { name: 'Interface updates', exact: true })).toHaveText('Refresh');
-  for (const width of [1360, 720, 390, 320]) {
+  for (const width of [1360, 720, 700, 430, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     for (const control of await header.locator('button:visible').all()) {
       await expect(control).toBeInViewport({ ratio: 1 });
@@ -143,6 +145,7 @@ test('top bar uses text controls without connection badges at desktop and phone 
       await expect(theme).toHaveAttribute('aria-label', new RegExp(`^Theme: ${value}`));
       await expect(theme).toHaveText(value === 'dark' ? 'Dark' : 'Light');
       await page.screenshot({ path: `test-results/emachine-text-header-${width}-${value}.png`, animations: 'disabled' });
+      if (width <= 700) await alignedHeaderLabels(page);
     }
     if (width <= 700) {
       const projects = header.getByRole('button', { name: 'Open project drawer', exact: true });
@@ -152,6 +155,20 @@ test('top bar uses text controls without connection badges at desktop and phone 
       await page.getByRole('button', { name: 'Close projects', exact: true }).click();
     }
   }
+  const title = 'Feature navigation with a deliberately long title';
+  await a.cli('feature', 'create', 'alpha', 'header-layout', title);
+  try {
+    await a.cli('feature', 'activate', 'alpha', 'header-layout');
+    await page.getByRole('tab', { name: title, exact: true }).waitFor();
+    for (const width of [700, 430, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await alignedHeaderLabels(page);
+    }
+    expect(await page.locator('.tabs').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+    await page.getByRole('tab', { name: title, exact: true }).click();
+    await alignedHeaderLabels(page);
+    await page.screenshot({ path: 'test-results/emachine-header-overflow.png', animations: 'disabled' });
+  } finally { await a.cli('feature', 'remove', 'alpha', 'header-layout'); }
 });
 
 for (const environment of ['light', 'dark'] as const) {
