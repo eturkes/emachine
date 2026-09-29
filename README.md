@@ -60,6 +60,10 @@ The client saves that choice and later changes. **Settings** opens machine conne
 The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
 The terminal shortcut bar includes **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Alt + ↑**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
+Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.
+Right-click the terminal for **Copy**, **Paste**, **Select all**, and **Clear selection**.
+Use **Shift+F10** or the menu key to open the same menu from the keyboard.
+Arrow keys move between available actions. **Escape** closes the menu and returns focus to the terminal.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 The `.snapshots` directory is excluded because it stores filesystem snapshots.

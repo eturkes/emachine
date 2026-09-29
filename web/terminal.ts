@@ -3,6 +3,7 @@ import '@fontsource/jetbrains-mono/700.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { attachTerminalTouchScroll } from './terminal-touch';
+import { attachTerminalClipboard } from './terminal-clipboard';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
@@ -36,6 +37,7 @@ export class TerminalPane {
   private control: HTMLButtonElement;
   private terminal: Terminal;
   private detachTouch?: () => void;
+  private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private fit = new FitAddon();
   private ws?: WebSocket;
   private observer: ResizeObserver;
@@ -67,10 +69,13 @@ export class TerminalPane {
     for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Alt + ↑', '\u001b[1;3A']] as const) {
       keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Alt + ↑' ? 'Alt + Arrow Up' : label));
     }
-    keys.append(button('Copy', () => { void this.copy(); }), button('Paste', () => { clearModifiers(); void this.paste(); }), this.status);
+    const copy = () => { void this.copy(); };
+    const paste = () => { clearModifiers(); void this.paste(); };
+    keys.append(button('Copy', copy), button('Paste', paste), this.status);
     this.element.append(this.host, keys);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
+    this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: () => this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN });
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
@@ -120,6 +125,7 @@ export class TerminalPane {
   show(show: boolean): void {
     this.visible = show;
     this.element.hidden = !show;
+    if (!show) this.clipboard.close();
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
@@ -194,7 +200,7 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
-    this.detachTouch?.();
+    this.detachTouch?.(); this.clipboard.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }

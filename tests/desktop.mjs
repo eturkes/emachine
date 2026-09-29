@@ -66,6 +66,29 @@ try {
     await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', /^(control|observe)$/);
     console.log('Configured AppImage passed: seeded Tailscale machine and existing project terminal; no shell commands sent.');
   }
+  if (process.argv.includes('--interface')) {
+    // Exercise renderer-only delivery through the existing AppImage's native-approved loader.
+    await app.evaluate(({ dialog }) => {
+      globalThis.clipboardTestDialog = dialog.showMessageBox;
+      dialog.showMessageBox = async (window, options) => options.title === 'Trust interface source'
+        ? { response: 1, checkboxChecked: false } : globalThis.clipboardTestDialog(window, options);
+    });
+    try {
+      await page.getByRole('button', { name: 'Interface updates', exact: true }).click();
+      await page.getByLabel('Interface source', { exact: true }).fill(f.origin + '/');
+      await page.getByRole('button', { name: 'Use this source', exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.emachineInterface.getState().then(state => state.status)))
+        .toMatch(/^(available|current)$/);
+      await Promise.all([
+        page.waitForEvent('domcontentloaded', { timeout: 15000 }),
+        page.getByRole('button', { name: 'Refresh interface', exact: true }).click(),
+      ]);
+      await expect.poll(() => page.evaluate(() => window.emachineInterface.getState().then(state => state.bundled))).toBe(false);
+      await expect(page.locator('dialog[open]')).toHaveCount(0);
+    } finally {
+      await app.evaluate(({ dialog }) => { dialog.showMessageBox = globalThis.clipboardTestDialog; delete globalThis.clipboardTestDialog; });
+    }
+  }
   await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Desktop acceptance');
   await page.getByLabel('Direct address', { exact: true }).fill(f.origin + '/');
@@ -98,6 +121,17 @@ try {
       .toBe('emachineClipboardFixture');
     await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
     await expect(page.locator('.toast-region')).not.toContainText('Clipboard access was not granted.');
+    await app.evaluate(({ clipboard }) => clipboard.writeText('shortcut sentinel'));
+    await page.keyboard.press('Control+Shift+C');
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('emachineClipboardFixture');
+    await app.evaluate(({ clipboard }) => clipboard.writeText('menu sentinel'));
+    await terminal.locator('.terminal-host').click({ button: 'right', position: { x: 300, y: 100 } });
+    const menu = page.getByRole('menu', { name: 'Terminal actions', exact: true });
+    await expect(menu).toBeVisible();
+    await menu.getByRole('menuitem', { name: 'Copy', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('emachineClipboardFixture');
+    await expect(menu).toBeHidden();
+    await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
     await app.evaluate(({ clipboard }) => clipboard.writeText("printf '__CLIPBOARD''_PASTE__\\n'"));
     await terminal.getByRole('button', { name: 'Paste', exact: true }).click();
     await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
@@ -105,6 +139,21 @@ try {
     await page.keyboard.press('Enter');
     await expect(terminal.locator('.xterm-rows')).toContainText('__CLIPBOARD_PASTE__');
     await expect(page.locator('.toast-region')).not.toContainText('Clipboard access was not granted.');
+    for (const method of ['shortcut', 'menu']) {
+      const marker = method === 'shortcut' ? '__SHORTCUT_PASTE__' : '__MENU_PASTE__';
+      const command = `printf '%s\\n' '${marker}'`;
+      await app.evaluate(({ clipboard }, command) => clipboard.writeText(command), command);
+      if (method === 'shortcut') await page.keyboard.press('Control+Shift+V');
+      else {
+        await terminal.locator('.terminal-host').click({ button: 'right', position: { x: 300, y: 100 } });
+        await menu.getByRole('menuitem', { name: 'Paste', exact: true }).click();
+      }
+      await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
+      await expect(terminal.locator('.xterm-rows')).toContainText(command);
+      await page.keyboard.press('Enter');
+      await expect(terminal.locator('.xterm-rows span').filter({ hasText: new RegExp(`^${marker}$`) }).first()).toBeVisible();
+    }
+    await app.evaluate(({ clipboard }) => clipboard.writeText("printf '__CLIPBOARD''_PASTE__\\n'"));
     // Grant iframe policy explicitly so the native permission boundary, not Chromium's default policy, is tested.
     await page.route(f.origin + '/clipboard-test', route => route.fulfill({ contentType: 'text/html',
       body: '<!doctype html><button>Clipboard feature fixture</button>' }));
@@ -129,7 +178,7 @@ try {
     assert.deepEqual(denied, { read: 'NotAllowedError', write: 'NotAllowedError' });
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), "printf '__CLIPBOARD''_PASTE__\\n'");
     await page.locator('#clipboard-feature-test').evaluate(frame => frame.remove());
-    console.log('AppImage clipboard passed: empty selection preserved, real Copy/Paste, terminal focus, feature-frame read/write denied.');
+    console.log('AppImage clipboard passed: empty selection preserved, real button/shortcut/menu Copy/Paste, terminal focus, feature-frame read/write denied.');
   } finally {
     await app.evaluate(async ({ clipboard }) => {
       if (globalThis.savedTestClipboard.length) await clipboard.write(globalThis.savedTestClipboard);

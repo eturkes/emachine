@@ -8,6 +8,7 @@
 | `pnpm test:gateway` | Real Caddy authentication, hostile headers and origins, HTTP and WebSocket proxying, native fixture terminal, and phone-sized PWA without private-route requests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, absent app-updater bridge and dependency, a real fixture machine, and zmx attachment |
+| `node tests/desktop.mjs --interface` | Existing AppImage with the built interface, system clipboard buttons, shortcuts, context menu, terminal focus, and feature-frame permission denial |
 | `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
 | `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
@@ -23,6 +24,9 @@ Sidebar checks cover cached snapshot exclusion, terminal continuity, and readabl
 Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
 Layout checks reject collapsed sidebars, decorative initials, redundant strips, and Jobs or Workspaces buttons.
 Shortcut checks compare outgoing terminal bytes, verify clipboard selection and failure handling, and retain observer control without a footer.
+Clipboard checks cover Ctrl+Shift+C/V, unchanged Ctrl+C, single bracketed paste, selection actions, keyboard navigation, menu dismissal, and mouse-reporting applications.
+The browser clipboard fixture specifies Linux explicitly because ChromiumFish advertises Windows by default.
+The desktop clipboard gate saves and restores all system clipboard formats, including when a check fails.
 
 The interface gate serves temporary web files with the desktop CORS origin. Source approval still passes through the production IPC handler.
 Its native confirmation response is controlled only by the test's main-process connection.
