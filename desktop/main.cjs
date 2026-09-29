@@ -12,6 +12,18 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
 app.setName('emachine');
 let main;
 const mediaGrants = new Set();
+const clipboardPermissions = new Set(['clipboard-read', 'clipboard-sanitized-write']);
+function isShellUrl(value) {
+  try {
+    const url = new URL(value);
+    // Node's URL.origin is "null" for this custom scheme; check the authority explicitly.
+    return url.protocol === 'emachine:' && url.hostname === 'app' && !url.port && !url.username && !url.password;
+  } catch { return false; }
+}
+function shellClipboardRequest(contents, origin, details) {
+  return Boolean(contents && contents === main?.webContents && !contents.isDestroyed() && details?.isMainFrame === true &&
+    isShellUrl(contents.getURL()) && isShellUrl(origin) && isShellUrl(details.requestingUrl));
+}
 const SHELL_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; frame-src https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 app.on('login', (event, contents, details, authInfo, callback) => {
@@ -68,9 +80,13 @@ async function start() {
       return new Response(source.body, { status: source.status, headers });
     } catch { return new Response('Not found', { status: 404 }); }
   });
-  session.defaultSession.setPermissionCheckHandler((_contents, permission, origin) =>
-    permission === 'media' && mediaGrants.has(origin));
+  session.defaultSession.setPermissionCheckHandler((contents, permission, origin, details) =>
+    clipboardPermissions.has(permission) ? shellClipboardRequest(contents, origin, details)
+      : permission === 'media' && mediaGrants.has(origin));
   session.defaultSession.setPermissionRequestHandler(async (contents, permission, callback, details) => {
+    if (clipboardPermissions.has(permission)) {
+      callback(shellClipboardRequest(contents, details?.requestingUrl, details)); return;
+    }
     const origin = details.requestingUrl ? new URL(details.requestingUrl).origin : '';
     if (contents !== main?.webContents || permission !== 'media' || !origin.startsWith('https://')) { callback(false); return; }
     const result = await dialog.showMessageBox(main, { type: 'question', title: 'Media access',

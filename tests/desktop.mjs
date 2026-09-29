@@ -73,6 +73,70 @@ try {
   await expect(page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
+  // Keep the user's clipboard inside the native process; never expose its bytes to test output.
+  await app.evaluate(async ({ clipboard, ClipboardItem }) => {
+    globalThis.savedTestClipboard = await Promise.all((await clipboard.read()).map(async item =>
+      new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)]))))));
+  });
+  try {
+    await app.evaluate(({ clipboard }) => clipboard.writeText('emachineClipboardPreserve'));
+    const terminal = page.locator('.terminal-pane:not([hidden])');
+    const copy = terminal.getByRole('button', { name: 'Copy', exact: true });
+    await copy.click();
+    await expect(page.locator('.toast-region')).toContainText('Select terminal text to copy.');
+    assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'emachineClipboardPreserve');
+    await terminal.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.type("printf '\\033[2J\\033[H%s\\n' emachineClipboardFixture");
+    await page.keyboard.press('Enter');
+    const text = terminal.locator('.xterm-rows span').filter({ hasText: /^emachineClipboardFixture$/ }).first();
+    await expect(text).toBeVisible();
+    const bounds = await text.boundingBox();
+    await page.mouse.dblclick(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await copy.click();
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText()),
+      { message: 'The packaged Copy button must write the selected terminal text to the system clipboard.' })
+      .toBe('emachineClipboardFixture');
+    await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
+    await expect(page.locator('.toast-region')).not.toContainText('Clipboard access was not granted.');
+    await app.evaluate(({ clipboard }) => clipboard.writeText("printf '__CLIPBOARD''_PASTE__\\n'"));
+    await terminal.getByRole('button', { name: 'Paste', exact: true }).click();
+    await expect(terminal.locator('.xterm-helper-textarea')).toBeFocused();
+    await expect(terminal.locator('.xterm-rows')).toContainText("printf '__CLIPBOARD''_PASTE__\\n'");
+    await page.keyboard.press('Enter');
+    await expect(terminal.locator('.xterm-rows')).toContainText('__CLIPBOARD_PASTE__');
+    await expect(page.locator('.toast-region')).not.toContainText('Clipboard access was not granted.');
+    // Grant iframe policy explicitly so the native permission boundary, not Chromium's default policy, is tested.
+    await page.route(f.origin + '/clipboard-test', route => route.fulfill({ contentType: 'text/html',
+      body: '<!doctype html><button>Clipboard feature fixture</button>' }));
+    await page.evaluate(origin => {
+      const frame = document.createElement('iframe'); frame.id = 'clipboard-feature-test';
+      frame.allow = 'clipboard-read; clipboard-write'; frame.src = origin + '/clipboard-test';
+      document.body.append(frame);
+    }, f.origin);
+    const feature = page.frameLocator('#clipboard-feature-test');
+    await feature.getByRole('button', { name: 'Clipboard feature fixture' }).click();
+    const denied = await feature.locator('body').evaluate(async () => {
+      const result = {};
+      for (const action of ['read', 'write']) {
+        try {
+          if (action === 'read') await navigator.clipboard.readText();
+          else await navigator.clipboard.writeText('forbiddenFeatureClipboard');
+          result[action] = 'allowed';
+        } catch (error) { result[action] = error.name; }
+      }
+      return result;
+    });
+    assert.deepEqual(denied, { read: 'NotAllowedError', write: 'NotAllowedError' });
+    assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), "printf '__CLIPBOARD''_PASTE__\\n'");
+    await page.locator('#clipboard-feature-test').evaluate(frame => frame.remove());
+    console.log('AppImage clipboard passed: empty selection preserved, real Copy/Paste, terminal focus, feature-frame read/write denied.');
+  } finally {
+    await app.evaluate(async ({ clipboard }) => {
+      if (globalThis.savedTestClipboard.length) await clipboard.write(globalThis.savedTestClipboard);
+      else clipboard.clear();
+      delete globalThis.savedTestClipboard;
+    });
+  }
   await mkdir(join(root, 'test-results'), { recursive: true });
   for (const theme of ['light', 'dark']) {
     if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
