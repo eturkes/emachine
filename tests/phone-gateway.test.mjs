@@ -7,7 +7,7 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, X509Certificate } from 'node:crypto';
 import { chromium, webkit } from '@playwright/test';
 import WebSocket, { WebSocketServer } from 'ws';
 import { ensureCaddy } from '../scripts/caddy.mjs';
@@ -58,7 +58,7 @@ async function gateway(options, t) {
     const req = (options.tls ? httpsRequest : httpRequest)(`${origin}/${path}`, { method: init.method, headers: init.headers, timeout: 10000, ...(options.tls ? { rejectUnauthorized: false } : {}) }, res => {
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
-      res.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+      res.on('end', () => resolve(new Response([204, 205, 304].includes(res.statusCode) ? null : Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
     });
     req.on('error', reject); req.on('timeout', () => req.destroy(new Error('Gateway request timed out.')));
     req.end(init.body);
@@ -78,6 +78,14 @@ async function rejection(url, headers) {
     ws.on('open', () => { ws.terminate(); reject(new Error('An unauthorized WebSocket opened.')); });
     ws.on('unexpected-response', (_, response) => { response.resume(); resolve(response.statusCode); ws.terminate(); });
   });
+}
+
+async function documentLogin(page, url) {
+  assert.equal((await page.goto(url)).status(), 401);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  return navigation;
 }
 
 test('gateway configuration rejects unsafe addresses, secrets, and interpolation', async () => {
@@ -180,12 +188,12 @@ test('phone-sized browser reaches real inventory, events, terminal, and PWA with
     terminal.command("printf 'EMACHINE_%s_OK\\n' GATEWAY_TEST");
     await until(() => terminal.text.includes('EMACHINE_GATEWAY_TEST_OK')); await terminal.close(); terminal = undefined;
     browser = await chromium.launch({ executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim(), headless: true });
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, httpCredentials: { username: 'emachine', password } });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
     const requests = [], packets = [];
     page.on('request', request => requests.push(request.url()));
     page.on('websocket', ws => ws.on('framereceived', frame => packets.push(String(frame.payload))));
-    assert.equal((await page.goto(publicUrl)).status(), 200);
+    assert.equal((await documentLogin(page, publicUrl)).status(), 200);
     await page.waitForFunction(() => document.body.textContent.includes('alpha'));
     await until(() => packets.some(packet => packet.includes('inventory')));
     const connections = await page.evaluate(() => JSON.parse(localStorage.getItem('emachine:connections:v1')));
@@ -208,9 +216,9 @@ test('WebKit document login authenticates events, terminal, and cookie-only relo
   const state = await f.state();
   g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, tls: true }, t);
   browser = await webkit.launch(webkitOptions());
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, httpCredentials: { username: 'emachine', password } });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  assert.equal((await page.goto(publicUrl)).status(), 200);
+  assert.equal((await documentLogin(page, publicUrl)).status(), 200);
   // The app already controls alpha; the independent socket must own a different fixture terminal.
   const project = state.projects.find(project => project.name === 'beta');
   for (const path of ['api/v1/events', `api/v1/terminal/${project.id}?cols=60&rows=20`]) {
@@ -267,9 +275,9 @@ test('browser manifest fetch reuses the document login', { timeout: 30000 }, asy
     g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine }, t);
     browser = await chromium.launch({ executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim(), headless: true });
     // Cached shell bytes must not conceal an unauthenticated browser manifest request.
-    const context = await browser.newContext({ serviceWorkers: 'block', httpCredentials: { username: 'emachine', password } });
+    const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage(), devtools = await context.newCDPSession(page);
-    assert.equal((await page.goto(publicUrl)).status(), 200);
+    assert.equal((await documentLogin(page, publicUrl)).status(), 200);
     const manifest = await devtools.send('Page.getAppManifest');
     assert.deepEqual(manifest.errors, [], 'The browser could not fetch its protected manifest.');
     const expected = await (await g.request('manifest.webmanifest', { headers: { Authorization: authorization, Origin: g.origin } })).json();
@@ -347,4 +355,99 @@ test('gateway maps only validated public origins to an existing native origin', 
   await until(() => events.packets.some(packet => packet.type === 'inventory'));
   const { gatewayConfig } = await implementation();
   assert.throws(() => gatewayConfig({ publicUrl, listenPort, upstreamPort: f.port, upstreamOrigin: 'https://attacker.example', passwordHash, gatewaySecret: f.config.gatewaySecret, machine: state.machine }));
+});
+
+test('phone sign-in responses are renderable and keep the credential exchange private', { timeout: 30000 }, async t => {
+  const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
+  const g = await gateway({ publicUrl, listenPort, upstreamPort: await freePort(), gatewaySecret: randomBytes(32).toString('hex'), machine: { id: 'fixture', name: 'Fixture' } }, t);
+  const origin = new URL(publicUrl).origin;
+  for (const path of ['', 'index.html']) {
+    const response = await g.request(path, { headers: { Accept: 'text/html' } });
+    assert.equal(response.status, 401);
+    assert.match(response.headers.get('content-type') ?? '', /^text\/html; charset=utf-8$/);
+    assert.equal(response.headers.get('www-authenticate'), null, 'HTML navigation must not require a browser credential dialog.');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('content-disposition'), null);
+    assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
+    assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+    const html = await response.text();
+    assert.match(html, /Sign in to emachine/);
+    assert.ok(!html.includes(password) && !html.includes(authorization));
+  }
+  const path = '_emachine/phone/session';
+  for (const Authorization of [undefined, 'Basic ' + Buffer.from('emachine:wrong').toString('base64')]) {
+    const response = await g.request(path, { method: 'POST', headers: { Origin: origin, ...(Authorization ? { Authorization } : {}) } });
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get('www-authenticate'), null, 'A failed form submission must not trigger a browser credential dialog.');
+    assert.equal(response.headers.get('set-cookie'), null);
+  }
+  for (const Origin of [undefined, 'https://attacker.example']) {
+    const response = await g.request(path, { method: 'POST', headers: { Authorization: authorization, ...(Origin ? { Origin } : {}) } });
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get('set-cookie'), null);
+  }
+  const headers = { Authorization: authorization, Origin: origin };
+  assert.equal((await g.request(path, { headers })).status, 405);
+  assert.equal((await g.request(path, { method: 'POST', headers: { ...headers, Host: 'attacker.example' } })).status, 421);
+  const response = await g.request(path, { method: 'POST', headers });
+  assert.equal(response.status, 204, 'Sign-in must not proxy to the unavailable native upstream.');
+  const cookie = response.headers.get('set-cookie');
+  assert.ok(cookie?.startsWith('__Host-emachine-phone='));
+  for (const flag of ['Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/', 'Max-Age=43200']) assert.ok(cookie.includes(flag));
+  const rejected = await g.request(path, { method: 'POST', headers: { ...headers, Cookie: cookie.split(';')[0], Authorization: 'Basic ' + Buffer.from('emachine:wrong').toString('base64') } });
+  assert.equal(rejected.status, 401, 'The sign-in endpoint always verifies the submitted password.');
+  assert.equal(rejected.headers.get('set-cookie'), null);
+});
+
+for (const engine of ['chromium', 'webkit']) test(`${engine} sign-in form recovers an expired service-worker navigation without browser credentials`, { timeout: 60000 }, async t => {
+  let time = Date.now();
+  const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
+  const f = await fixture({ origins: [new URL(publicUrl).origin] });
+  let browser, g;
+  t.after(async () => { await browser?.close(); await g?.close(); await f.close(); });
+  const state = await f.state();
+  g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, tls: true, now: () => time }, t);
+  // Chromium's worker fetch does not inherit context-level ignoreHTTPSErrors. Trust only this fixture's key.
+  const certificate = new X509Certificate(await readFile(g.config.apps.tls.certificates.load_files[0].certificate));
+  const spki = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
+  browser = engine === 'webkit' ? await webkit.launch(webkitOptions()) : await chromium.launch({ executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim(), headless: true, args: [`--ignore-certificate-errors-spki-list=${spki}`] });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
+  const page = await context.newPage(), downloads = [], packets = [], errors = [];
+  page.on('download', download => downloads.push(download.suggestedFilename()));
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('websocket', ws => ws.on('framereceived', frame => packets.push(String(frame.payload))));
+  assert.equal((await page.goto(publicUrl)).status(), 401);
+  await page.getByRole('heading', { name: 'Sign in to emachine' }).waitFor();
+  await mkdir(join(root, 'test-results'), { recursive: true });
+  await page.screenshot({ path: join(root, `test-results/phone-signin-${engine}.png`) });
+  await page.getByLabel('Password', { exact: true }).fill('wrong');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'The password is incorrect.' }).waitFor();
+  assert.equal((await context.cookies()).length, 0);
+  const signIn = async () => {
+    await page.getByLabel('Password', { exact: true }).fill(password);
+    const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    assert.equal((await navigation).status(), 200);
+    await page.waitForFunction(() => document.body.textContent.includes('alpha'));
+    await until(() => packets.some(packet => packet.includes('inventory')));
+    await until(() => packets.some(packet => packet.includes('"mode":"control"')));
+  };
+  await signIn();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const cookie = (await context.cookies()).find(cookie => cookie.name === '__Host-emachine-phone');
+  assert.ok(cookie?.httpOnly && cookie.secure && cookie.sameSite === 'Strict');
+  assert.ok(!(await page.evaluate(() => document.cookie)).includes(cookie.value));
+  time += sessionLifetime;
+  packets.length = 0;
+  assert.equal((await page.reload()).status(), 401);
+  await page.getByRole('heading', { name: 'Sign in to emachine' }).waitFor();
+  await signIn();
+  assert.deepEqual(downloads, []);
+  assert.deepEqual(errors, []);
+  const cached = await page.evaluate(async () => (await Promise.all((await caches.keys()).map(async name => (await (await caches.open(name)).keys()).map(request => request.url)))).flat());
+  assert.ok(cached.length > 0);
+  assert.ok(cached.every(url => !/bootstrap\.json|\/api\/|\/features\/|\/_emachine\//.test(url)));
+  await page.screenshot({ path: join(root, `test-results/phone-recovered-${engine}.png`) });
 });

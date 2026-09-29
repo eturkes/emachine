@@ -1,3 +1,5 @@
+import { phoneLoginResponse, phoneSessionPath } from './phone-login.mjs';
+
 const port = value => {
   if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error('Use an integer port from 1 to 65535.');
   return value;
@@ -24,6 +26,8 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
   const bootstrap = { servers: [{ id: machine.id, name: machine.name, direct: address.href }] };
   if (sessionSocket !== undefined && (typeof sessionSocket !== 'string' || !sessionSocket.startsWith('/') || Buffer.byteLength(sessionSocket) > 103 || /[{}\u0000-\u001f]/.test(sessionSocket))) throw new Error('Use a short absolute path for the private session socket.');
   const needsSession = { not: [{ vars: { phone_session: ['yes'] } }] };
+  const login = { path: [phoneSessionPath] };
+  const needsPassword = [needsSession, login];
   const sessionProxy = (path, handle_response) => ({ handler: 'reverse_proxy',
     upstreams: [{ dial: 'unix/' + sessionSocket }],
     // Keep client queries on the original request, not on the private authentication endpoint.
@@ -41,6 +45,19 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
       listen: [`127.0.0.1:${listenPort}`],
       read_header_timeout: '10s', idle_timeout: '1m',
       automatic_https: { disable: true },
+      errors: { routes: [
+        ...(sessionSocket ? [
+          { match: [{ expression: '{http.error.status_code} == 401', path: ['/', '/index.html'], method: ['GET', 'HEAD'], header: { Accept: ['*text/html*'] } }], handle: [
+            // Native Basic dialogs do not reliably survive a PWA/service-worker navigation.
+            { handler: 'headers', response: { delete: ['Www-Authenticate'] } }, phoneLoginResponse,
+          ] },
+          { match: [{ expression: '{http.error.status_code} == 401', ...login }], handle: [
+            { handler: 'headers', response: { delete: ['Www-Authenticate'] } },
+            { ...response(401, 'The password is incorrect.'), headers: { 'Content-Type': ['text/plain; charset=utf-8'] } },
+          ] },
+        ] : []),
+        { handle: [{ ...response('{http.error.status_code}', 'The request failed.'), headers: { 'Content-Type': ['text/plain; charset=utf-8'], 'Cache-Control': ['no-store'] } }] },
+      ] },
       routes: [
         { handle: [{ handler: 'headers', response: { set: {
           'Cache-Control': ['no-store'], 'Referrer-Policy': ['no-referrer'],
@@ -51,7 +68,7 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
           { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'vars', phone_session: 'yes' }] }] },
           { match: { status_code: [401] }, routes: [{ handle: [{ handler: 'vars', phone_session: 'no' }] }] },
         ])] }] : []),
-        { ...(sessionSocket ? { match: [needsSession] } : {}), handle: [{ handler: 'authentication', providers: { http_basic: {
+        { ...(sessionSocket ? { match: needsPassword } : {}), handle: [{ handler: 'authentication', providers: { http_basic: {
           hash: { algorithm: 'bcrypt' }, realm: 'emachine',
           accounts: [{ username: 'emachine', password: passwordHash }],
         } } }] },
@@ -61,10 +78,12 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
           { method: ['POST', 'PUT', 'PATCH', 'DELETE', 'CONNECT'], not: [origin] },
           { header: { Upgrade: ['websocket'] }, not: [origin] },
         ], handle: [response(403)] },
+        ...(sessionSocket ? [{ match: [{ ...login, not: [{ method: ['POST'] }] }], handle: [{ ...response(405), headers: { Allow: ['POST'] } }] }] : []),
         // Mint only after password and Origin checks. WebKit can then authenticate sockets without Basic headers.
-        ...(sessionSocket ? [{ match: [needsSession], handle: [sessionProxy('/issue', [
+        ...(sessionSocket ? [{ match: needsPassword, handle: [sessionProxy('/issue', [
           { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'headers', response: { add: { 'Set-Cookie': ['{http.reverse_proxy.header.Set-Cookie}'] } } }] }] },
         ])] }] : []),
+        ...(sessionSocket ? [{ match: [login], handle: [response(204)] }] : []),
         // A phone opened through this origin must never probe the private Tailscale endpoint.
         { match: [{ path: ['/bootstrap.json'], method: ['GET', 'HEAD'] }], handle: [{
           ...response(200, JSON.stringify(bootstrap)), headers: { 'Content-Type': ['application/json'] },

@@ -57,17 +57,22 @@ Never publish the unprotected machine port `4737` directly through Funnel.
 
 1. Turn off Tailscale on the iPhone.
 2. Open the public address in Safari.
-3. Enter `emachine` and the generated password.
+3. Enter the generated password on the sign-in page. The username is `emachine`.
 4. Confirm that the project list and a terminal work.
 5. Select **Share**, then **Add to Home Screen**.
 
 Create the icon from the public address. An existing icon for the private address still requires Tailscale.
 The Home Screen app can request the password separately from Safari.
+The sign-in page opens inside the app. It does not require a browser authentication dialog.
 
 After a successful password check, the gateway creates a 12-hour browser session.
 Subsequent requests use a protected cookie, including terminal and event connections.
 This avoids repeated password challenges when a browser omits Basic authentication from WebSocket requests.
 The password stays unchanged.
+
+When the session expires, reopen the app and enter the same password.
+If an older app shows an empty download, close it from the app switcher and reopen it.
+Do not download or open that file.
 
 ## Disable access
 
@@ -87,6 +92,10 @@ The underlying zmx sessions continue running.
 ## Security and verification
 
 Caddy requires authentication for the shell, client seed, assets, API, and WebSocket upgrades.
+An unauthenticated HTML navigation receives a separate sign-in document, not the shell or project data.
+The document has an explicit HTML content type and a restrictive content security policy.
+It sends the password only in a same-origin POST authentication header. It does not store the password.
+The session endpoint checks the password, complete authority, and exact Origin before issuing its cookie.
 The gateway checks the complete Host authority, including its port.
 It requires the exact browser origin for mutations and WebSockets.
 It removes browser credentials, cookies, private session headers, and Tailscale identity headers before proxying.
@@ -105,6 +114,8 @@ The public client seed contains only this public address. It never attempts a pr
 The PWA caches shell assets only. It does not cache the client seed, API responses, or terminal output.
 
 Run `pnpm test:gateway` for Caddy, native server, terminal, Chromium, and WebKit HTTPS and WebSocket checks.
+The browser checks enter the password through the sign-in form, without preconfigured browser credentials.
+Chromium and WebKit checks expire a live session and sign in again through the installed service worker.
 The WebKit check also verifies service-worker readiness and reopening with only the session cookie.
 The gate checks expiry, revocation, hostile cookies, internal assertions, Origin rejection, and supervisor ownership.
 It also checks installation recovery, password consistency, process-lifetime locks, and foreground route ownership.
