@@ -19,6 +19,7 @@ Each saved connection: `{id?: string, name: string, direct: string, gateway?: st
   machine: {id: string, name: string, version: string, projectRoot: string},
   projects: [{id: string, name: string, path: string,
     phase?: "PROTOTYPE" | "ITERATE" | "IMPLEMENT" | "MAINTAIN" | "UNKNOWN" | null,
+    claudeStatus?: "working" | "completed" | "waiting" | null,
     features: [{id: string, title: string, revision: string, entry: string,
                 status: "ready" | "stale", updatedAt: number}],
     diagnostics: [{feature: string, message: string, updatedAt: number}]}]
@@ -36,6 +37,20 @@ The first phase token is authoritative. Emphasis and letter case are accepted; e
 Multiple declarations, unsupported tokens, missing files, and read failures yield `UNKNOWN`.
 Reads accept only regular spec files within the project, up to 1 MiB.
 Inventory events carry changes to the phase or eligibility without remounting project views. No source text is exposed in the inventory.
+
+`claudeStatus` is optional live sidebar metadata, independent of `phase` and `CLAUDE.md`.
+The server reads Claude Code's local `sessions/<pid>.json` registry under `CLAUDE_CONFIG_DIR` or `~/.claude`.
+Interactive sessions map `busy` to `working`, `idle` to `completed`, and `waiting` to `waiting`.
+Completed means Claude Code is idle and ready for another prompt; it is not a claim that the task succeeded.
+Match canonical session working directories to a project or its descendants.
+For multiple sessions, waiting takes priority over working, then completed.
+Validate the process owner, kernel start stamp, and supplied PID domain before showing a session.
+Dead processes, absent or unsupported metadata, and unreadable records produce no indicator.
+Read at most 512 records of 64 KiB each; accept only regular files inside the session directory.
+No transcripts, key files, prompts, tool output, or socket credentials are exposed.
+Inventory polling updates all projects without terminal attachments or configuration changes.
+Clients hide indicators while disconnected and exclude live status from offline caches.
+Older servers can omit the field; their sidebar appearance stays unchanged.
 
 `WS api/v1/events` sends `{type:"inventory", state: State}` on connection and on changes. Reconnection receives a fresh inventory; clients reconcile changed feature revisions without remounting unrelated frames or terminals. Also tolerate `{type:"job", job: Job}` and `{type:"error", message:string}`.
 

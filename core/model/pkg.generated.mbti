@@ -102,6 +102,7 @@ pub(all) struct Project {
   name : String
   path : String
   phase : String?
+  claudeStatus : String?
   mut features : Array[Feature]
   mut diagnostics : Array[Diagnostic]
 }

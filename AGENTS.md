@@ -5,6 +5,7 @@
 - Personal Linux machine daemon = MoonBit native. Browser shell = TypeScript/DOM/xterm. Desktop = isolated Electron AppImage. No server federation.
 - Source checkout outside managed projects. Discovery = immediate project-root directories except `.snapshots`; clients also hide old cached snapshot rows. Emachine-owned files always outside managed projects.
 - Sidebar phase = built-in project metadata, eligible only with a root `CLAUDE.md` file. Read current `.agent/spec.md` bytes, independent of Git cleanliness; no per-project name exclusions or feature jobs. One-word label; missing/invalid/conflicting/unreadable declarations = Unknown. `core/model/phase.mbt` owns bounded parsing; `tests/projects.test.mjs` + `tests/projects.spec.ts` run in the standard gate.
+- Sidebar Claude activity = read-only local session registry, independent of phase eligibility and terminal attachment. `core/model/claude.mbt` validates bounded metadata + live process identity; waiting > working > completed. No session or offline machine = unchanged sidebar. Never read transcripts/keys or install hooks for activity. Protocol details = `docs/protocol.md`; regression gates = `tests/projects.test.mjs` + `tests/projects.spec.ts`.
 - Initial project = lazy zmx terminal. Feature identity `(machine, project, feature)`; source/state/releases independently owned. `terminal` reserved.
 - Terminal session = exact project name + inherited zmx namespace; reuse manual SSH sessions. Existing sessions retain shell state/cwd. Renames affect new attachments; preserve older sessions.
 - Maintain terminal/process lifetime independently of browser component lifetime. Disconnected input is dropped; reconnect never replays uncertain input.
@@ -32,7 +33,7 @@
 - Installed deployment: `node scripts/check-installation.mjs`; `--terminal PROJECT` additionally proves reuse of an existing manual zmx daemon without sending input. Optional live-client gate `node tests/desktop.mjs --configured` opens the seeded project's terminal without sending commands.
 - Core edits: `cd core && moon info --target native && moon fmt`; preserve generated public interfaces. Pinned module graph owns async APIs.
 - Regression tests need an observed failure on the pre-fix source. Preserve red command/source hash, keep grading check unchanged, record evidence in commit body.
-- Theme gate = `pnpm test:web`; neutral surface/contrast, SDK/authentication, pixel-level icons + starter propagation. `tests/theme-contract.mjs` can be copied into independent feature gates. Icon replay = `node scripts/icons.mjs && git diff --exit-code -- web/public/icons/`; tracked PNG bytes must remain identical.
+- Theme gate = `pnpm test:web`; neutral surface/contrast, SDK/authentication, pixel-level icons + starter propagation. This gate also prepares pinned WebKit for reduced-motion checks; ChromiumFish pins that preference. `tests/theme-contract.mjs` can be copied into independent feature gates. Icon replay = `node scripts/icons.mjs && git diff --exit-code -- web/public/icons/`; tracked PNG bytes must remain identical.
 - Tests use temporary project roots and clean exact fixture zmx sessions. User projects are not test fixtures.
 - Final claimed gates rerun from committed source. Never label physical mobile, native snapshots, or public login verified without direct evidence.
 

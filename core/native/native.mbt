@@ -23,6 +23,32 @@ extern "C" fn equal_ffi(a : Bytes, b : Bytes, len : Int) -> Int = "em_equal"
 pub extern "C" fn now_ms() -> Int64 = "em_now_ms"
 
 ///|
+#borrow(start, domain)
+extern "C" fn process_matches_ffi(
+  pid : Int,
+  start : Bytes,
+  domain : Bytes,
+) -> Int = "em_process_matches"
+
+///|
+pub fn process_matches(pid : Int, start : String, domain : String) -> Bool {
+  if start.length() > 32 || domain.length() > 512 {
+    return false
+  }
+  for byte in @utf8.encode(start) {
+    if byte < 48 || byte > 57 {
+      return false
+    }
+  }
+  for byte in @utf8.encode(domain) {
+    if byte == 0 {
+      return false
+    }
+  }
+  process_matches_ffi(pid, c_string(start), c_string(domain)) == 1
+}
+
+///|
 #borrow(out)
 extern "C" fn hostname_ffi(out : FixedArray[Byte], len : Int) -> Int = "em_hostname"
 

@@ -12,6 +12,8 @@ pub fn now_ms() -> Int64
 
 pub fn open_pty(Int, Int) -> (Int, String) raise
 
+pub fn process_matches(Int, String, String) -> Bool
+
 pub fn random_id() -> String raise
 
 pub fn resize_pty(Int, Int, Int) -> Unit raise

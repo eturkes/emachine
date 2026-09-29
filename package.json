@@ -23,7 +23,7 @@
     "phone:enable": "node scripts/phone-access.mjs enable",
     "phone:disable": "node scripts/phone-access.mjs disable",
     "phone:status": "node scripts/phone-access.mjs status",
-    "test:web": "playwright test --config tests/playwright.config.ts",
+    "test:web": "node scripts/setup-webkit.mjs && playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
     "test:desktop-interface": "node tests/desktop-interface.mjs",
     "test:storage": "node --test tests/desktop-storage.test.mjs",

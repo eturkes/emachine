@@ -5,6 +5,7 @@
   --bg: #151515; --surface: #1c1c1c; --raised: #262626; --hover: #303030;
   --text: #e7e7e7; --muted: #ababab; --border: #3a3a3a; --accent: #d6d6d6;
   --accent-soft: #d6d6d612; --warning: #ecc780; --danger: #ed7985;
+  --claude-working: #8cbaff; --claude-completed: #8ac79c;
   --selection: #d6d6d633; --backdrop: #080808b0; --scrim: #080808aa;
   --rail: 252px; --bar: 56px; --radius: 10px;
   background: var(--bg); color: var(--text); font-size: 15px;
@@ -14,6 +15,7 @@
   --bg: #f7f7f7; --surface: #f0f0f0; --raised: #ffffff; --hover: #e5e5e5;
   --text: #292929; --muted: #666666; --border: #d0d0d0; --accent: #454545;
   --accent-soft: #4545450d; --warning: #88621a; --danger: #a73748;
+  --claude-working: #315c9b; --claude-completed: #287341;
   --selection: #45454533; --backdrop: #111111b0; --scrim: #111111aa;
 }
 :root[data-theme='dark'] { color-scheme: dark; }
@@ -44,6 +46,19 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .project-phase { flex-shrink: 0; font: 11px Iosevka,monospace; color: var(--muted); }
 .project-copy strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .project-copy small { font: 11px Iosevka,monospace; color: var(--muted); }
+.project-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.project-meta small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.claude-status { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; font: 11px Iosevka,monospace; white-space: nowrap; }
+.claude-status-icon { display: inline-block; position: relative; width: 12px; height: 12px; flex-shrink: 0; }
+[data-claude-status='working'] .claude-status { color: var(--claude-working); }
+[data-claude-status='working'] .claude-status-icon { border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: claude-spin 1s linear infinite; }
+[data-claude-status='completed'] .claude-status { color: var(--claude-completed); }
+[data-claude-status='completed'] .claude-status-icon::after { content: ''; position: absolute; left: 1px; top: 2px; width: 9px; height: 5px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); }
+[data-claude-status='waiting'] .claude-status { color: var(--warning); }
+[data-claude-status='waiting'] .claude-status-icon { border: 1px solid currentColor; border-radius: 50%; }
+[data-claude-status='waiting'] .claude-status-icon::after { content: '!'; position: absolute; inset: 0; text-align: center; font: bold 9px/10px Iosevka,monospace; }
+@keyframes claude-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { [data-claude-status='working'] .claude-status-icon { animation: none; } }
 .rail-footer { padding: 12px 13px calc(15px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); display: grid; gap: 7px; }
 .manage-machines { text-align: left; font-size: 13px; padding: 6px 0; }
 .machine-count { grid-row: 2; font-size: 10px; color: var(--muted); }

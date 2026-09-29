@@ -83,7 +83,10 @@ function renderRail(): void {
   const items = entries().filter(({ project, link }) => `${project.name} ${link.state?.machine.name} ${link.config.name}`.toLowerCase().includes(filter.toLowerCase()));
   for (const item of items) {
     const phase = item.project.phase ? item.project.phase[0] + item.project.phase.slice(1).toLowerCase() : '';
-    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}${phase ? `, phase: ${phase}` : ''}`);
+    const status = item.link.online ? item.project.claudeStatus : null;
+    const activity = status ? { working: 'Working', completed: 'Completed', waiting: 'Waiting' }[status] : '';
+    const description = status ? { working: 'Claude Code is working.', completed: 'Claude Code is idle and ready for another prompt.', waiting: 'Claude Code is waiting for input.' }[status] : '';
+    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}${phase ? `, phase: ${phase}` : ''}${status ? `, Claude Code: ${activity}${status === 'waiting' ? ' for input' : ''}` : ''}`);
     b.dataset.projectKey = item.key; b.setAttribute('aria-current', item.key === selected ? 'page' : 'false'); b.draggable = true;
     const copy = $('span', 'project-copy');
     const heading = $('span', 'project-heading'); heading.append($('strong', '', item.project.name));
@@ -92,7 +95,16 @@ function renderRail(): void {
       label.title = phase === 'Unknown' ? 'No single supported phase is readable in .agent/spec.md.' : `Recorded phase in .agent/spec.md: ${phase}`;
       heading.append(label);
     }
-    copy.append(heading, $('small', '', item.link.state!.machine.name));
+    const machine = $('small', '', item.link.state!.machine.name);
+    copy.append(heading);
+    if (status) {
+      b.dataset.claudeStatus = status;
+      const meta = $('span', 'project-meta');
+      const indicator = $('span', 'claude-status'); indicator.title = description;
+      const icon = $('span', 'claude-status-icon'); icon.setAttribute('aria-hidden', 'true');
+      indicator.append(icon, $('span', '', activity));
+      meta.append(machine, indicator); copy.append(meta);
+    } else copy.append(machine);
     b.append(copy);
     b.ondragstart = event => { draggedProject = item.key; event.dataTransfer?.setData('text/plain', item.key); };
     b.ondragover = event => event.preventDefault();

@@ -1,12 +1,84 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile, rm, rename, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fixture, socket, until } from './network-helper.mjs';
+import { claudeSession } from './claude-helper.mjs';
 
 const exec = promisify(execFile);
+
+test('Claude status follows live sessions without opening terminals or reading transcripts', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const current = () => events.packets.filter(p => p.type === 'inventory').at(-1)?.state.projects.find(p => p.name === 'alpha');
+  await until(() => current());
+  assert.equal(current().claudeStatus, null);
+  for (const [source, expected] of [['busy', 'working'], ['waiting', 'waiting'], ['idle', 'completed'], ['busy', 'working']]) {
+    await claudeSession(f, source);
+    await until(() => current()?.claudeStatus === expected);
+    assert.deepEqual(current().features, []);
+    assert.equal((await f.state()).projects.find(p => p.name === 'beta').claudeStatus, null);
+  }
+  await f.stop(); await f.start();
+  assert.equal((await f.state()).projects.find(p => p.name === 'alpha').claudeStatus, 'working');
+  await rm(join(f.home, `.claude/sessions/${process.pid}.json`));
+  await until(async () => (await f.state()).projects.find(p => p.name === 'alpha').claudeStatus === null);
+  assert.equal((await exec('zmx', ['list', '--short'], { env: f.env }).catch(() => ({ stdout: '' }))).stdout.trim(), '');
+});
+
+test('Claude status prioritizes waiting, validates process identity, and clears dead sessions', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const child = spawn('sleep', ['120']); t.after(() => child.kill());
+  const status = async () => JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'alpha').claudeStatus;
+  await mkdir(join(f.config.projectRoot, 'alpha/nested'));
+  await claudeSession(f, 'busy', { cwd: join(f.config.projectRoot, 'alpha/nested') });
+  await claudeSession(f, 'waiting', { pid: child.pid });
+  assert.equal(await status(), 'waiting');
+  await claudeSession(f, 'idle', { pid: child.pid });
+  assert.equal(await status(), 'working');
+  await claudeSession(f, 'idle');
+  assert.equal(await status(), 'completed');
+  const { path, record } = await claudeSession(f, 'waiting', { pid: child.pid });
+  await writeFile(path, JSON.stringify({ ...record, procStart: '0' }));
+  assert.equal(await status(), 'completed');
+  await writeFile(path, JSON.stringify({ ...record, pidDomain: 'linux:another-host:pid:[1]' }));
+  assert.equal(await status(), 'completed');
+  await writeFile(path, JSON.stringify(record));
+  await new Promise(resolve => { child.once('exit', resolve); child.kill(); });
+  assert.equal(await status(), 'completed');
+  await rm(join(f.home, `.claude/sessions/${process.pid}.json`));
+  assert.equal(await status(), null);
+});
+
+test('Claude metadata is bounded, optional, isolated, and never exposes session contents', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const current = async () => JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'alpha');
+  const { path, record } = await claudeSession(f, 'busy');
+  for (const change of [
+    { status: 'unknown' }, { procStart: '' }, { pid: 1.5 }, { pid: 1 },
+    { procStart: record.procStart + '\u0000ignored' }, { pidDomain: record.pidDomain + '\u0000ignored' },
+    { kind: 'daemon' }, { kind: 'bg' }, { sessionId: '' },
+    { cwd: join(f.config.projectRoot, 'alpha-other') },
+  ]) {
+    await writeFile(path, JSON.stringify({ ...record, ...change }));
+    assert.equal((await current()).claudeStatus, null, JSON.stringify(change));
+  }
+  for (const text of ['{', 'x'.repeat(65537), Buffer.from([255])]) {
+    await writeFile(path, text);
+    assert.equal((await current()).claudeStatus, null);
+  }
+  await writeFile(path, JSON.stringify({ ...record, waitingFor: 'PRIVATE INPUT', peerToken: 'PRIVATE TOKEN' }));
+  const project = await current();
+  assert.equal(project.claudeStatus, 'working');
+  assert.doesNotMatch(JSON.stringify(project), /PRIVATE|peerToken|sessionId|procStart/);
+  const outside = join(f.home, 'outside-session.json');
+  await rename(path, outside); await symlink(outside, path);
+  assert.equal((await current()).claudeStatus, null);
+  await rm(path); await mkdir(path);
+  assert.equal((await current()).claudeStatus, null);
+});
 
 test('discovery excludes filesystem snapshots, including cached identities', async t => {
   const f = await fixture(); t.after(() => f.close());

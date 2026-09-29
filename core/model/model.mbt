@@ -48,6 +48,7 @@ pub(all) struct Project {
   name : String
   path : String
   phase : String?
+  claudeStatus : String?
   mut features : Array[Feature]
   mut diagnostics : Array[Diagnostic]
 }
@@ -64,6 +65,10 @@ pub impl @json.FromJson for Project with fn from_json(value, path) {
     phase: match field(value, "phase") {
       Null => None
       phase => Some(@json.from_json(phase, path=path.add_key("phase")))
+    },
+    claudeStatus: match field(value, "claudeStatus") {
+      Null => None
+      status => Some(@json.from_json(status, path=path.add_key("claudeStatus")))
     },
     features: @json.from_json(
       field(value, "features"),
@@ -87,6 +92,10 @@ pub impl ToJson for Project with fn to_json(self) {
     "name": self.name.to_json(),
     "path": self.path.to_json(),
     "phase": match self.phase {
+      Some(value) => value.to_json()
+      None => Json::null()
+    },
+    "claudeStatus": match self.claudeStatus {
       Some(value) => value.to_json()
       None => Json::null()
     },
@@ -471,6 +480,7 @@ pub async fn discover(config : Config) -> Array[Project] {
     return result
   }
   let names = @fs.readdir(config.projectRoot, sort=true)
+  let sessions = claude_sessions()
   let mut changed = false
   for name in names {
     if name == ".snapshots" {
@@ -509,6 +519,7 @@ pub async fn discover(config : Config) -> Array[Project] {
       name,
       path,
       phase: project_phase(path),
+      claudeStatus: project_claude_status(path, sessions),
       features: [],
       diagnostics: [],
     })

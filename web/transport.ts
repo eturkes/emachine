@@ -1,6 +1,7 @@
 export interface Feature { id: string; title: string; revision: string; entry: string; status: 'ready' | 'stale'; updatedAt: number }
 export type Phase = 'PROTOTYPE' | 'ITERATE' | 'IMPLEMENT' | 'MAINTAIN' | 'UNKNOWN';
-export interface Project { id: string; name: string; path: string; phase?: Phase | null; features: Feature[]; diagnostics: { feature: string; message: string; updatedAt: number }[] }
+export type ClaudeStatus = 'working' | 'completed' | 'waiting';
+export interface Project { id: string; name: string; path: string; phase?: Phase | null; claudeStatus?: ClaudeStatus | null; features: Feature[]; diagnostics: { feature: string; message: string; updatedAt: number }[] }
 export interface Machine { id: string; name: string; version: string; projectRoot: string }
 export interface Inventory { protocol: 1; machine: Machine; projects: Project[] }
 export interface Connection { key: string; id?: string; name: string; direct: string; gateway?: string }
@@ -44,6 +45,9 @@ export function inventory(value: unknown): Inventory {
     if (project.phase != null && !['PROTOTYPE', 'ITERATE', 'IMPLEMENT', 'MAINTAIN', 'UNKNOWN'].includes(project.phase)) {
       throw new Error('The machine returned an invalid development phase.');
     }
+    if (project.claudeStatus != null && !['working', 'completed', 'waiting'].includes(project.claudeStatus)) {
+      throw new Error('The machine returned an invalid Claude Code status.');
+    }
     for (const feature of project.features) {
       if (!/^[a-z0-9-]{1,48}$/.test(feature.id) || typeof feature.title !== 'string' || !/^[a-f0-9]{64}$/.test(feature.revision) || typeof feature.entry !== 'string') {
         throw new Error('The machine returned an invalid feature.');
@@ -79,8 +83,8 @@ export class Link {
     if (this.config.id && this.config.id !== next.machine.id) throw new Error('The machine identity changed. Remove and re-add this connection after checking the address.');
     this.config.id = next.machine.id;
     this.state = next;
-    // Keep only sidebar metadata. Never retain terminal output, errors, source, or job results.
-    store(CACHE + this.config.key, { ...next, projects: next.projects.map(p => ({ ...p, path: '', diagnostics: [] })) });
+    // Live activity must never survive as a stale offline indicator.
+    store(CACHE + this.config.key, { ...next, projects: next.projects.map(p => ({ ...p, path: '', claudeStatus: undefined, diagnostics: [] })) });
     this.changed();
   }
   async connect(): Promise<void> {

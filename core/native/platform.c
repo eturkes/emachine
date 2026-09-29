@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/random.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -63,4 +64,41 @@ int em_sync_dir(const uint8_t *path) {
     int rc = fsync(fd) == 0 ? 0 : errno;
     close(fd);
     return rc;
+}
+
+/* Session records can outlive their process. Match the kernel birth stamp,
+   owner and PID domain, not kill(pid, 0) or an age-based activity timeout. */
+int em_process_matches(int32_t pid, const uint8_t *start, const uint8_t *domain) {
+    if (pid <= 1 || !start[0]) return 0;
+    for (const uint8_t *p = start; *p; p++) if (*p < '0' || *p > '9') return 0;
+    char path[64], buffer[4096];
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    FILE *file = fopen(path, "re");
+    if (!file) return 0;
+    struct stat info;
+    int owned = fstat(fileno(file), &info) == 0 && info.st_uid == getuid();
+    int read = owned && fgets(buffer, sizeof(buffer), file) != NULL;
+    fclose(file);
+    if (!read) return 0;
+    char *end = strrchr(buffer, ')');
+    if (!end || end[1] != ' ') return 0;
+    char *save = NULL, *token = strtok_r(end + 2, " \n", &save);
+    if (!token || token[0] == 'Z' || token[0] == 'X') return 0;
+    for (int field = 4; field <= 22 && token; field++) token = strtok_r(NULL, " \n", &save);
+    if (!token || strcmp(token, (const char *)start) != 0) return 0;
+    if (domain[0]) {
+        char machine[64], ns[64], expected[160];
+        file = fopen("/etc/machine-id", "re");
+        if (!file) return 0;
+        read = fgets(machine, sizeof(machine), file) != NULL;
+        fclose(file);
+        if (!read) return 0;
+        machine[strcspn(machine, "\r\n")] = 0;
+        ssize_t n = readlink("/proc/self/ns/pid", ns, sizeof(ns) - 1);
+        if (n < 0) return 0;
+        ns[n] = 0;
+        snprintf(expected, sizeof(expected), "linux:%s:%s", machine, ns);
+        if (strcmp(expected, (const char *)domain) != 0) return 0;
+    }
+    return 1;
 }

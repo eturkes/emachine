@@ -71,6 +71,7 @@ test "project phase JSON round trips null and known values" {
       name: "test",
       path: "/test",
       phase,
+      claudeStatus: None,
       features: [],
       diagnostics: [],
     }
