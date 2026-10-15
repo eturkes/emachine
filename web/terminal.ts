@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
+import { attachTerminalInput } from './terminal-input';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
@@ -37,6 +38,7 @@ export class TerminalPane {
   private control: HTMLButtonElement;
   private terminal: Terminal;
   private detachTouch?: () => void;
+  private detachInput?: () => void;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private fit = new FitAddon();
   private ws?: WebSocket;
@@ -80,6 +82,7 @@ export class TerminalPane {
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
       this.terminal.open(this.host);
+      this.detachInput = attachTerminalInput(this.host, this.terminal);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
       this.layout();
       this.connect();
@@ -200,7 +203,7 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
-    this.detachTouch?.(); this.clipboard.dispose();
+    this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }
