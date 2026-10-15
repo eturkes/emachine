@@ -19,6 +19,16 @@ test('inventory hides snapshots from old servers and offline caches', () => {
   expect(() => inventory({ ...state, projects: [{ ...project, phase: '<img>' }] })).toThrow();
 });
 
+test('inventory hides .pnpm-store from old servers and offline caches without hiding other directories', () => {
+  const names = ['alpha', '.snapshots', '.pnpm-store', '.visible', '.pnpm-store-backup', 'pnpm-store'];
+  const state = {
+    protocol: 1, machine: { id: 'test', name: 'Test', version: '0.1.0', projectRoot: '' },
+    projects: names.map((name, i) => ({ id: `project-${i}`, name, path: '', features: [], diagnostics: [] })),
+  };
+  expect(inventory(state).projects.map(p => p.name)).toEqual(['alpha', '.visible', '.pnpm-store-backup', 'pnpm-store']);
+  expect(state.projects.map(p => p.name)).toEqual(names);
+});
+
 test('sidebar phases update with eligibility and preserve the active terminal', async ({ page }) => {
   const f = await fixture();
   try {
@@ -27,6 +37,7 @@ test('sidebar phases update with eligibility and preserve the active terminal', 
     await writeFile(join(root, '.agent/spec.md'), '## Phase\nITERATE. IMPLEMENT is suspended.\n');
     await writeFile(join(root, 'CLAUDE.md'), '@.agent/spec.md\n');
     await mkdir(join(f.config.projectRoot, '.snapshots'));
+    await mkdir(join(f.config.projectRoot, '.pnpm-store'));
     await page.goto(f.origin);
     const row = page.locator('.project-item').filter({ has: page.locator('strong', { hasText: /^alpha$/ }) });
     const beta = page.locator('.project-item').filter({ has: page.locator('strong', { hasText: /^beta$/ }) });
@@ -34,6 +45,7 @@ test('sidebar phases update with eligibility and preserve the active terminal', 
     await expect(row).toHaveAccessibleName(/phase: Iterate/);
     await expect(beta.locator('.project-phase')).toHaveCount(0);
     await expect(page.locator('.project-list')).not.toContainText('.snapshots');
+    await expect(page.locator('.project-list')).not.toContainText('.pnpm-store');
     await expect(page.getByRole('tab')).toHaveText(['Terminal']);
     await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
     await page.locator('.terminal-pane').evaluate(node => { (node as HTMLElement).dataset.continuity = 'kept'; });

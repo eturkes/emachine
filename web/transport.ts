@@ -54,8 +54,8 @@ export function inventory(value: unknown): Inventory {
       }
     }
   }
-  // Old servers and offline caches can still contain the filesystem snapshot directory.
-  return { ...v, projects: v.projects.filter(project => project.name !== '.snapshots') };
+  // Old servers and offline caches can still contain these non-project directories.
+  return { ...v, projects: v.projects.filter(project => project.name !== '.snapshots' && project.name !== '.pnpm-store') };
 }
 function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; } catch { return fallback; }

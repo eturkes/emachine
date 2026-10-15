@@ -66,7 +66,7 @@ Use **Shift+F10** or the menu key to open the same menu from the keyboard.
 Arrow keys move between available actions. **Escape** closes the menu and returns focus to the terminal.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
-The `.snapshots` directory is excluded because it stores filesystem snapshots.
+The `.snapshots` and `.pnpm-store` directories are excluded because they store filesystem snapshots and pnpm packages, not projects. Other dot-prefixed directories remain visible.
 
 Projects with a root `CLAUDE.md` show a one-word phase beside their name: **Prototype**, **Iterate**, **Implement**, or **Maintain**.
 The label reads `.agent/spec.md` and updates automatically, including uncommitted edits.

@@ -27,7 +27,7 @@ Each saved connection: `{id?: string, name: string, direct: string, gateway?: st
 ```
 `entry` is relative to the selected server base, including a content-addressed revision. Features are project-owned; empty features means terminal only. The client supplies the terminal tab itself. The composite workspace key is machine ID + project ID. Diagnostics do not replace working features.
 
-Discovery excludes the immediate `.snapshots` directory, including previously registered identities. Clients also filter that name from older inventories and offline caches.
+Discovery excludes the immediate `.snapshots` and `.pnpm-store` directories, including previously registered identities. Clients also filter those exact names from older inventories and offline caches. Other dot-prefixed directories remain eligible.
 
 `phase` is additive sidebar metadata. Older servers can omit it; clients then show no phase label.
 A root `CLAUDE.md` file enables the label. Without that file, `phase` is `null`.

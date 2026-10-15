@@ -95,6 +95,26 @@ test('discovery excludes filesystem snapshots, including cached identities', asy
   await until(async () => !(await f.state()).projects.some(p => p.id === prior.id));
 });
 
+test('discovery excludes .pnpm-store, including cached identities, without hiding other directories', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const root = f.config.projectRoot;
+  for (const name of ['ordinary', '.visible', '.pnpm-store-backup', 'pnpm-store']) await mkdir(join(root, name));
+  const prior = JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'ordinary');
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const current = () => events.packets.filter(p => p.type === 'inventory').at(-1)?.state;
+  await until(() => current()?.projects.some(p => p.id === prior.id));
+  await rename(join(root, 'ordinary'), join(root, '.pnpm-store'));
+  const expected = ['.pnpm-store-backup', '.visible', 'alpha', 'beta', 'pnpm-store'];
+  assert.deepEqual(JSON.parse(await f.cli('projects')).projects.map(p => p.name).sort(), expected);
+  for (const target of [prior.id, '.pnpm-store', join(root, '.pnpm-store')]) await assert.rejects(f.cli('diagnostics', target));
+  await until(() => current() && !current().projects.some(p => p.id === prior.id));
+  assert.deepEqual((await f.state()).projects.map(p => p.name).sort(), expected);
+  await rename(join(root, '.pnpm-store'), join(root, 'ordinary'));
+  assert.equal(JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'ordinary').id, prior.id);
+  await mkdir(join(root, '.pnpm-store'));
+  assert.deepEqual(JSON.parse(await f.cli('projects')).projects.map(p => p.name).sort(), [...expected, 'ordinary'].sort());
+});
+
 test('phases follow root CLAUDE.md and current worktree bytes, not project names', async t => {
   const f = await fixture(); t.after(() => f.close());
   const root = f.config.projectRoot;

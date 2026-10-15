@@ -3,7 +3,7 @@
 ## Scope
 
 - Personal Linux machine daemon = MoonBit native. Browser shell = TypeScript/DOM/xterm. Desktop = isolated Electron AppImage. No server federation.
-- Source checkout outside managed projects. Discovery = immediate project-root directories except `.snapshots`; clients also hide old cached snapshot rows. Emachine-owned files always outside managed projects.
+- Source checkout outside managed projects. Discovery = immediate project-root directories except `.snapshots` + `.pnpm-store`; clients also hide these names in older inventories + offline caches. Other dot-prefixed directories remain eligible. Emachine-owned files always outside managed projects.
 - Sidebar phase = built-in project metadata, eligible only with a root `CLAUDE.md` file. Read current `.agent/spec.md` bytes, independent of Git cleanliness; no per-project name exclusions or feature jobs. One-word label; missing/invalid/conflicting/unreadable declarations = Unknown. `core/model/phase.mbt` owns bounded parsing; `tests/projects.test.mjs` + `tests/projects.spec.ts` run in the standard gate.
 - Sidebar Claude activity = read-only local session registry, independent of phase eligibility and terminal attachment. `core/model/claude.mbt` validates bounded metadata + live process identity; waiting > working > completed. No session or offline machine = unchanged sidebar. Never read transcripts/keys or install hooks for activity. Protocol details = `docs/protocol.md`; regression gates = `tests/projects.test.mjs` + `tests/projects.spec.ts`.
 - Initial project = lazy zmx terminal. Feature identity `(machine, project, feature)`; source/state/releases independently owned. `terminal` reserved.

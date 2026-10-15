@@ -483,7 +483,7 @@ pub async fn discover(config : Config) -> Array[Project] {
   let sessions = claude_sessions()
   let mut changed = false
   for name in names {
-    if name == ".snapshots" {
+    if name == ".snapshots" || name == ".pnpm-store" {
       continue
     }
     let candidate = config.projectRoot + "/" + name
