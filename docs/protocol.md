@@ -33,8 +33,10 @@ Discovery excludes the immediate `.snapshots` and `.pnpm-store` directories, inc
 A root `CLAUDE.md` file enables the label. Without that file, `phase` is `null`.
 The source is `.agent/spec.md`, not Git history or a feature artifact.
 Its `Phase` heading starts the declaration; a standalone `Phase:` field is also accepted.
-The first phase token is authoritative. Emphasis and letter case are accepted; examples, comments, and quoted lines are ignored.
-Multiple declarations, unsupported tokens, missing files, and read failures yield `UNKNOWN`.
+The current scoped form is `<PHASE> — <scope>`. The scope must be nonempty, with whitespace on both sides of the dash.
+The active line sets the label. Later unquoted lines in that section must be valid `Suspended: <PHASE> — <scope>` entries. Suspended scopes do not change the label, even when they name the same phase.
+Older bare phase tokens and narrative declarations remain supported. Emphasis and letter case are accepted; examples, comments, and quoted request lines are ignored.
+Multiple active declarations, malformed scoped state, unsupported tokens, missing files, and read failures yield `UNKNOWN`.
 Reads accept only regular spec files within the project, up to 1 MiB.
 Inventory events carry changes to the phase or eligibility without remounting project views. No source text is exposed in the inventory.
 

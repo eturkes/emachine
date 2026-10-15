@@ -29,12 +29,42 @@ fn phase_heading(text : String) -> (Int, String)? {
 }
 
 ///|
+fn phase_value(text : String) -> (String, Bool) {
+  let value = phase_plain(text).to_upper()
+  for name in ["PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"] {
+    if value == name {
+      return (name, false)
+    }
+    if value.has_prefix(name) {
+      let suffix = value[name.length():]
+      let scoped = suffix.trim_start()
+      if scoped.has_prefix("\u2014") {
+        let scope = scoped[1:]
+        if suffix.length() == scoped.length() ||
+          !(scope.has_prefix(" ") || scope.has_prefix("\t")) ||
+          scope.trim().is_empty() {
+          return ("UNKNOWN", true)
+        }
+        return (name, true)
+      }
+      for delimiter in [" ", "\t", "\r", ".", ",", ":", ";", "("] {
+        if suffix.has_prefix(delimiter) {
+          return (name, false)
+        }
+      }
+    }
+  }
+  ("UNKNOWN", false)
+}
+
+///|
 fn phase_from_spec(text : String) -> String {
   let declarations : Array[String] = []
   let mut comment = false
   let mut fence = ""
   let mut section = 0
   let mut waiting = false
+  let mut scoped = false
   for raw in text.trim_start(chars="\uFEFF").split("\n") {
     let line = raw.trim().to_owned()
     if fence != "" {
@@ -89,44 +119,46 @@ fn phase_from_spec(text : String) -> String {
       continue
     }
     if phase_heading(line) is Some((level, title)) {
-      if level <= section {
+      if section == 0 || level <= section {
         section = 0
         waiting = false
+        scoped = false
       }
       if title.to_upper() == "PHASE" {
         declarations.push("")
         section = level
         waiting = true
+        scoped = false
         continue
       }
     }
     if waiting {
-      declarations[declarations.length() - 1] = phase_field(line).unwrap_or(
-        line,
-      )
+      let value = phase_field(line).unwrap_or(line)
+      declarations[declarations.length() - 1] = value
+      let (_, has_scope) = phase_value(value)
+      scoped = has_scope
       waiting = false
     } else if phase_field(line) is Some(value) {
       declarations.push(value)
+      let (_, has_scope) = phase_value(value)
+      scoped = has_scope
+    } else if scoped {
+      // Scoped state has one active line; other unquoted lines must suspend work.
+      let plain = phase_plain(line)
+      if !plain.to_upper().has_prefix("SUSPENDED:") {
+        return "UNKNOWN"
+      }
+      let (phase, has_scope) = phase_value(plain[10:].to_owned())
+      if phase == "UNKNOWN" || !has_scope {
+        return "UNKNOWN"
+      }
     }
   }
   if declarations.length() != 1 {
     return "UNKNOWN"
   }
-  let value = phase_plain(declarations[0]).to_upper()
-  for name in ["PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"] {
-    if value == name {
-      return name
-    }
-    if value.has_prefix(name) {
-      let suffix = value[name.length():]
-      for delimiter in [" ", "\t", "\r", ".", ",", ":", ";", "("] {
-        if suffix.has_prefix(delimiter) {
-          return name
-        }
-      }
-    }
-  }
-  "UNKNOWN"
+  let (phase, _) = phase_value(declarations[0])
+  phase
 }
 
 ///|

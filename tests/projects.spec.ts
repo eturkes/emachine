@@ -52,6 +52,17 @@ test('sidebar phases update with eligibility and preserve the active terminal', 
     await writeFile(join(root, '.agent/spec.md'), 'Phase: MAINTAIN\n');
     await expect(row.locator('.project-phase')).toHaveText('Maintain');
     await expect(page.locator('.terminal-pane')).toHaveAttribute('data-continuity', 'kept');
+    await writeFile(join(root, '.agent/spec.md'), '## Phase\nITERATE \u2014 dashboard\n> Phase: PROTOTYPE\nSuspended: IMPLEMENT \u2014 whole product\n');
+    await expect(row.locator('.project-phase')).toHaveText('Iterate');
+    await writeFile(join(root, '.agent/spec.md'), '## Phase\nITERATE \u2014 \n');
+    await expect(row.locator('.project-phase')).toHaveText('Unknown');
+    await writeFile(join(root, '.agent/spec.md'), '## Phase\nIMPLEMENT \u2014 API\nSuspended: MAINTAIN \u2014 CLI\n');
+    await expect(row.locator('.project-phase')).toHaveText('Implement');
+    await writeFile(join(root, '.agent/spec.md'), '## Phase\nIMPLEMENT \u2014 API\nMAINTAIN \u2014 CLI\n');
+    await expect(row.locator('.project-phase')).toHaveText('Unknown');
+    await expect(page.locator('.terminal-pane')).toHaveAttribute('data-continuity', 'kept');
+    await writeFile(join(root, '.agent/spec.md'), '## Phase\nMAINTAIN \u2014 whole product\n');
+    await expect(row.locator('.project-phase')).toHaveText('Maintain');
     await rm(join(root, '.agent/spec.md'));
     await expect(row.locator('.project-phase')).toHaveText('Unknown');
     await rm(join(root, 'CLAUDE.md'));

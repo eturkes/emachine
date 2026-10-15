@@ -87,3 +87,60 @@ test "project phase JSON round trips null and known values" {
   })
   assert_eq(old.phase, None)
 }
+
+///|
+test "scoped phase declarations require a separated nonempty scope" {
+  for name in ["PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"] {
+    for prefix in ["Phase: ", "## Phase\n", "## Phase\nPhase: "] {
+      for scope in ["", " ", "\t", "** **", "<!-- scope pending -->"] {
+        assert_eq(
+          phase_from_spec(prefix + name + " \u2014 " + scope),
+          "UNKNOWN",
+        )
+      }
+      for suffix in ["\u2014scope", " \u2014scope", "\u2014 scope"] {
+        assert_eq(phase_from_spec(prefix + name + suffix), "UNKNOWN")
+      }
+      for scope in ["the whole product", "dashboard; IMPLEMENT stays suspended"] {
+        assert_eq(phase_from_spec(prefix + name + " \u2014 " + scope), name)
+      }
+    }
+  }
+  assert_eq(
+    phase_from_spec(
+      "\uFEFF## Phase\r\n**Phase:** `iterate` \u2014 **dashboard**\r\n",
+    ),
+    "ITERATE",
+  )
+}
+
+///|
+test "scoped phase state contains one active declaration and suspended scopes" {
+  let active = "## Phase\nITERATE \u2014 dashboard\n"
+  for
+    extra in [
+      "IMPLEMENT \u2014 backend", "ITERATE \u2014 another surface", "MAINTAIN", "Phase: IMPLEMENT \u2014 backend",
+      "Finished M1; IMPLEMENT next.", "Suspended: IMPLEMENT", "Suspended: IMPLEMENT \u2014 ",
+      "Suspended: RESEARCH \u2014 backend",
+    ] {
+    assert_eq(phase_from_spec(active + extra), "UNKNOWN")
+  }
+  for
+    extra in [
+      "", "> Phase: IMPLEMENT\n> ## Phase\n> MAINTAIN \u2014 a quoted request", "Suspended: IMPLEMENT \u2014 backend\nSuspended: MAINTAIN \u2014 CLI",
+      "Suspended: ITERATE \u2014 another surface", "```markdown\nPhase: IMPLEMENT\n```\n<!-- Phase: MAINTAIN -->",
+    ] {
+    assert_eq(phase_from_spec(active + extra), "ITERATE")
+  }
+  assert_eq(
+    phase_from_spec(
+      active +
+      "Suspended: IMPLEMENT \u2014 backend\n## Notes\nHistory outside the phase.",
+    ),
+    "ITERATE",
+  )
+  assert_eq(
+    phase_from_spec("Phase: ITERATE \u2014 dashboard\nIMPLEMENT \u2014 backend"),
+    "UNKNOWN",
+  )
+}

@@ -179,3 +179,33 @@ test('unavailable or invalid phase sources stay unknown without failing discover
   await symlink(outside, join(root, '.agent/spec.md'));
   assert.equal(await phase(), 'UNKNOWN');
 });
+
+test('scoped phase routes validate active state over CLI, API, and inventory events', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const root = join(f.config.projectRoot, 'alpha');
+  await mkdir(join(root, '.agent'));
+  await writeFile(join(root, 'CLAUDE.md'), '@.agent/spec.md\n');
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const current = () => events.packets.filter(p => p.type === 'inventory').at(-1)?.state.projects.find(p => p.name === 'alpha');
+  const cases = [
+    ['ITERATE \u2014 ', 'UNKNOWN'],
+    ...['PROTOTYPE', 'ITERATE', 'IMPLEMENT', 'MAINTAIN'].map(phase => [
+      `${phase} \u2014 private active scope\n> Phase: ITERATE \u2014 private request\nSuspended: IMPLEMENT \u2014 private suspended scope\nSuspended: MAINTAIN \u2014 CLI`, phase,
+    ]),
+    ['ITERATE \u2014 dashboard\nIMPLEMENT \u2014 backend', 'UNKNOWN'],
+    ['Phase: IMPLEMENT \u2014 API\nSuspended: MAINTAIN \u2014 CLI', 'IMPLEMENT'],
+    ['IMPLEMENT \u2014 API\nSuspended: MAINTAIN \u2014 ', 'UNKNOWN'],
+    ['MAINTAIN \u2014 whole product', 'MAINTAIN'],
+  ];
+  for (const [state, expected] of cases) {
+    const spec = `# Project\n\n## Intent\nBuild the product.\n\n## Artifacts\n\n## Decisions\n\n## Tasks\n- Queue: .agent/deferred.md\n\n## Phase\n${state}\n`;
+    await writeFile(join(root, '.agent/spec.md'), spec);
+    const cli = JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'alpha');
+    assert.equal(cli.phase, expected, state);
+    assert.doesNotMatch(JSON.stringify(cli), /private active scope|private request|private suspended scope/);
+    await until(() => current()?.phase === expected);
+    assert.equal((await f.state()).projects.find(p => p.name === 'alpha').phase, expected, state);
+    assert.deepEqual(current().features, []);
+    assert.equal(await readFile(join(root, '.agent/spec.md'), 'utf8'), spec);
+  }
+});
