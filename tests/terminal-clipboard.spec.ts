@@ -39,8 +39,11 @@ async function terminal(page: Page) {
   const host = pane.locator('.terminal-host'), textarea = pane.locator('.xterm-helper-textarea');
   const menu = page.getByRole('menu', { name: 'Terminal actions', exact: true });
   const select = async () => {
-    const bounds = (await pane.locator('.xterm-rows span').filter({ hasText: /^clipboardFixture$/ }).first().boundingBox())!;
-    await page.mouse.dblclick(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    const target = pane.locator('.xterm-rows span').filter({ hasText: /^clipboardFixture$/ }).first();
+    let bounds: { x: number; y: number; width: number; height: number } | null = null;
+    // Resize can replace the span; xterm's screen layer, not the span, receives the click.
+    await expect.poll(async () => (bounds = await target.boundingBox())).not.toBeNull();
+    await page.mouse.dblclick(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   };
   const open = async () => {
     await host.click({ button: 'right', position: { x: 240, y: 70 } });
