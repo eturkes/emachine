@@ -73,6 +73,7 @@ export class TerminalPane {
     for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Alt + ↑', '\u001b[1;3A']] as const) {
       keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Alt + ↑' ? 'Alt + Arrow Up' : label));
     }
+    keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
     const copy = () => { void this.copy(); };
     const paste = () => { clearModifiers(); void this.paste(); };
     keys.append(button('Copy', copy), button('Paste', paste), this.status);

@@ -232,7 +232,7 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     for (const key of await page.locator('.terminal-keys button:visible').all()) {
       expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
     }
-    for (const name of ['Enter', 'Copy', 'Paste', 'Alt + Arrow Up']) {
+    for (const name of ['Enter', 'Copy', 'Paste', 'Alt + Arrow Up', 'Ctrl+X then Ctrl+S']) {
       const key = page.locator('.terminal-keys').getByRole('button', { name, exact: true });
       await key.scrollIntoViewIfNeeded();
       await expect(key).toBeInViewport({ ratio: 1 });
@@ -244,8 +244,10 @@ test('streamlined layout ignores old collapse state and removes decorative strip
 test('terminal shortcuts encode modifiers and retain observer control without a footer', async ({ page }) => {
   const input: string[] = [];
   let send!: (data: string | Buffer) => void;
+  let disconnect!: () => void;
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     send = data => ws.send(data);
+    disconnect = () => ws.close();
     ws.onMessage(data => {
       if (Buffer.isBuffer(data)) input.push(data.toString('hex'));
       else if (JSON.parse(data).type === 'claim') send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
@@ -259,7 +261,9 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
   const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
   const enter = keys.getByRole('button', { name: 'Enter', exact: true });
+  const sequence = keys.getByRole('button', { name: 'Ctrl+X then Ctrl+S', exact: true });
   await expect(enter).toBeVisible();
+  await expect(sequence).toHaveText('Ctrl-X Ctrl-S');
   const received = async (value: string) => { await expect.poll(() => input.join('')).toBe(Buffer.from(value).toString('hex')); input.length = 0; };
   await alt.click(); await expect(alt).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.type('b'); await received('\u001bb');
@@ -287,10 +291,23 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
   await alt.click(); await enter.click(); await received('\u001b\r');
   await expect(alt).toHaveAttribute('aria-pressed', 'false');
+  for (const modifiers of [[], [ctrl], [alt], [ctrl, alt]]) {
+    for (const modifier of modifiers) await modifier.click();
+    await sequence.click(); await received('\u0018\u0013');
+    await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
+    await expect(alt).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+    await page.keyboard.type('s'); await received('s');
+  }
+  for (const key of ['Enter', 'Space']) {
+    await sequence.focus(); await page.keyboard.press(key); await received('\u0018\u0013');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  }
   send(JSON.stringify({ type: 'state', mode: 'observe', session: 'fixture', cols: 80, rows: 24 }));
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'observe');
   await expect(keys).toContainText('Observing');
   await enter.click();
+  await sequence.click();
   await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click();
   await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
   await keys.getByRole('button', { name: 'Take control', exact: true }).click();
@@ -298,6 +315,12 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   await page.keyboard.type('retained'); await received('retained');
   await expect(keys).not.toContainText(/Observing|Live shell/);
   await expect(page.locator('.terminal-footer')).toHaveCount(0);
+  disconnect();
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'disconnected');
+  await sequence.evaluate((element: HTMLButtonElement) => element.click());
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('reconnected'); await received('reconnected');
 });
 
 test('terminal Copy uses the selected text and reports unavailable clipboard access', async ({ page, context }) => {
