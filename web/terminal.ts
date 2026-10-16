@@ -4,7 +4,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
-import { attachTerminalInput } from './terminal-input';
+import { attachTerminalInput, isIOS } from './terminal-input';
+import { TerminalTextInput } from './terminal-text';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
@@ -39,6 +40,7 @@ export class TerminalPane {
   private terminal: Terminal;
   private detachTouch?: () => void;
   private detachInput?: () => void;
+  private textInput?: TerminalTextInput;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private fit = new FitAddon();
   private ws?: WebSocket;
@@ -77,7 +79,19 @@ export class TerminalPane {
     this.element.append(this.host, keys);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
-    this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: () => this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN });
+    const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
+    this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
+    if (isIOS()) {
+      this.textInput = new TerminalTextInput({
+        canSend: canInput,
+        send: text => {
+          if (!canInput()) return false;
+          clearModifiers(); this.terminal.paste(text); return true;
+        },
+        focusTerminal: () => this.terminal.focus(),
+      });
+      this.host.after(this.textInput.element); keys.prepend(this.textInput.button);
+    }
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
@@ -153,6 +167,7 @@ export class TerminalPane {
     this.remoteSize = this.pendingSize = '';
     this.mode = 'observe'; this.control.hidden = true;
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
+    this.textInput?.refresh();
     this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
     this.seen = Date.now();
     ws.onopen = () => { this.reconnects = 0; this.seen = Date.now(); };
@@ -167,6 +182,7 @@ export class TerminalPane {
           this.remoteSize = `${message.cols}x${message.rows}`;
           if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
           this.mode = mode;
+          this.textInput?.refresh();
           this.element.dataset.mode = this.mode;
           this.control.hidden = this.mode === 'control';
           if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
@@ -183,6 +199,7 @@ export class TerminalPane {
     ws.onclose = () => {
       if (this.closed || generation !== this.generation) return;
       this.ws = undefined; this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
+      this.textInput?.refresh();
       this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
       window.clearInterval(this.heartbeat);
       this.retry = window.setTimeout(() => this.connect(), Math.min(12000, 750 * 2 ** this.reconnects++));
@@ -203,7 +220,7 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
-    this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose();
+    this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }

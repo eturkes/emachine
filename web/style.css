@@ -27,7 +27,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; }
 button:disabled { cursor: default; opacity: .5; }
 input { min-width: 0; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 11px 12px; }
-button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 ::selection { background: var(--selection); }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
@@ -91,6 +91,13 @@ button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visibl
 .terminal-status { flex-shrink: 0; max-width: min(320px,70vw); margin-left: auto; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px Iosevka,monospace; color: var(--muted); }
 .terminal-keys button { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
 .terminal-keys button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
+.terminal-keys button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
+.terminal-text { flex-shrink: 0; min-width: 0; padding: 8px 6px 0; border-top: 1px solid var(--border); }
+.terminal-text label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.terminal-text textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; resize: none; font-size: 16px; line-height: 1.4; color: var(--text); background: var(--surface); }
+.terminal-text-footer { display: flex; align-items: center; gap: 12px; padding-top: 4px; }
+.terminal-text-footer p { flex: 1; min-width: 0; margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.terminal-text-footer button { flex-shrink: 0; min-height: 44px; border: 1px solid var(--border); background: var(--surface); }
 .terminal-menu { position: fixed; z-index: 40; min-width: min(260px,calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--raised); box-shadow: 0 8px 28px #0004; }
 .terminal-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; padding: 9px 10px; border-radius: 4px; text-align: left; font-size: 13px; white-space: nowrap; }
 .terminal-menu button:not(:disabled):is(:hover,:focus) { background: var(--hover); outline: none; }

@@ -74,6 +74,28 @@ When the session expires, reopen the app and enter the same password.
 If an older app shows an empty download, close it from the app switcher and reopen it.
 Do not download or open that file.
 
+## Type with native spelling tools
+
+On iPhone or iPad, select **Text** in the terminal keyboard bar.
+Type in the **Terminal text** field and use the keyboard's spelling corrections.
+Select **Send text** to paste the completed draft into the terminal.
+
+The field enables native spell checking and autocorrection. It does not add automatic capitalization.
+To enable system autocorrection, open **Settings > General > Keyboard** and turn on **Auto-Correction**.
+The available corrections depend on your keyboard, language, and device settings.
+See [Apple's autocorrection instructions](https://support.apple.com/104995).
+
+Typing and pressing Return in the field only edit the draft. **Send text** does not add an Enter key.
+Embedded line breaks follow normal terminal paste behavior. They can execute commands when the receiving program does not use bracketed paste.
+To type commands without spelling changes, select **Text** again or tap the terminal directly.
+The existing terminal keys and clipboard controls keep their normal behavior.
+
+Send is unavailable during composition, observation, or disconnection.
+Reconnecting does not send a draft. Select **Send text** when you are ready.
+Each project keeps its own draft while its terminal remains mounted.
+Hiding the field retains the draft. Reloading or closing the page discards it.
+Emachine does not store drafts in browser storage or send them to a spelling service.
+
 ## Disable access
 
 ```sh

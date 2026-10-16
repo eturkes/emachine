@@ -2,10 +2,13 @@ import type { Terminal } from '@xterm/xterm';
 
 const backwardEdit = /^delete(?:Content|Word|SoftLine|HardLine)Backward$/;
 
+export function isIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}
+
 export function attachTerminalInput(host: HTMLElement, terminal: Terminal): () => void {
-  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
   const textarea = terminal.textarea;
-  if (!ios || !textarea) return () => {};
+  if (!isIOS() || !textarea) return () => {};
   const lifetime = new AbortController(), { signal } = lifetime;
   let composing = false, settling = false, timer: number | undefined;
   const ready = () => !signal.aborted && !composing && !settling && document.activeElement === textarea;

@@ -32,9 +32,18 @@ async function terminal(page: Page, platform = 'iPhone') {
   const pane = page.locator('.terminal-pane:not([hidden])');
   await expect(pane).toHaveAttribute('data-mode', 'control');
   await expect(pane.locator('.xterm-rows')).toContainText('input ready');
-  const textarea = pane.locator('textarea');
+  const textarea = pane.locator('.xterm-helper-textarea');
   await textarea.focus();
   return { input, send, disconnect, pane, textarea };
+}
+
+async function openText(pane: Locator) {
+  const toggle = pane.getByRole('button', { name: 'Text', exact: true });
+  expect(await toggle.count()).toBe(1);
+  await toggle.click();
+  const text = pane.getByRole('textbox', { name: 'Terminal text', exact: true });
+  await expect(text).toBeFocused();
+  return { toggle, text, send: pane.getByRole('button', { name: 'Send text', exact: true }) };
 }
 
 // Model the soft keyboard's edit stream, not desktop keydown autorepeat.
@@ -57,6 +66,133 @@ async function deleteInput(textarea: Locator, count = 1, inputType = 'deleteCont
 
 test.describe('terminal input', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  for (const platform of ['iPhone', 'MacIntel']) test(`native spelling on ${platform} keeps corrections local until Send text`, async ({ page }) => {
+    const t = await terminal(page, platform), draft = await openText(t.pane);
+    await expect(draft.text).toHaveAttribute('spellcheck', 'true');
+    await expect(draft.text).toHaveAttribute('autocorrect', 'on');
+    await expect(draft.text).toHaveAttribute('autocapitalize', 'off');
+    await expect(draft.send).toBeDisabled();
+    await page.keyboard.type('teh');
+    // Exercise the browser edit contract; the OS dictionary and suggestion UI need a real iPhone.
+    const cancelled = await draft.text.evaluate((element: HTMLTextAreaElement) => {
+      const before = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: 'the' });
+      element.dispatchEvent(before);
+      if (!before.defaultPrevented) {
+        element.setRangeText('the', 0, 3, 'end');
+        element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: 'the' }));
+      }
+      return before.defaultPrevented;
+    });
+    expect(cancelled).toBe(false);
+    await expect(draft.text).toHaveValue('the');
+    expect(t.input).toEqual([]);
+    await draft.send.click();
+    await expect.poll(() => t.input.join('')).toBe('the');
+    await expect(draft.text).toHaveValue('');
+    await expect(draft.text).toBeFocused();
+    await expect(draft.send).toBeDisabled();
+    await draft.toggle.click();
+    await expect(t.textarea).toBeFocused();
+    await expect(t.textarea).toHaveAttribute('autocorrect', 'off');
+    await page.keyboard.type('raw');
+    await expect.poll(() => t.input.join('')).toBe('theraw');
+  });
+
+  test('native spelling preserves IME, whitespace and multiline paste without terminal modifiers', async ({ page }) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    t.send(Buffer.from('\u001b[?2004hbracketed ready\r\n'));
+    await expect(t.pane.locator('.xterm-rows')).toContainText('bracketed ready');
+    await draft.text.dispatchEvent('compositionstart');
+    await draft.text.fill('\u304b');
+    await expect(draft.send).toBeDisabled();
+    expect(t.input).toEqual([]);
+    await draft.text.dispatchEvent('compositionend', { data: '\u304b' });
+    await expect(draft.send).toBeEnabled();
+    await page.keyboard.press('Enter');
+    await page.keyboard.insertText('  caf\u00e9 \ud83d\ude42 ');
+    const expected = '\u304b\n  caf\u00e9 \ud83d\ude42 ';
+    await expect(draft.text).toHaveValue(expected);
+    expect(t.input).toEqual([]);
+    await t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true }).click();
+    await t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true }).click();
+    await draft.send.click();
+    await expect.poll(() => t.input.join('')).toBe('\u001b[200~' + expected.replace('\n', '\r') + '\u001b[201~');
+    for (const name of ['Use Control with the next character', 'Use Alt with the next key']) {
+      await expect(t.pane.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+
+  test('native spelling never sends or replays a draft during observation or disconnection', async ({ page }) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    await draft.text.fill('unsent draft');
+    t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+    await expect(draft.send).toBeDisabled();
+    await draft.send.evaluate((element: HTMLButtonElement) => element.click());
+    await expect(draft.text).toHaveValue('unsent draft');
+    t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
+    await expect(draft.send).toBeEnabled();
+    expect(t.input).toEqual([]);
+    t.disconnect();
+    await expect(t.pane).toHaveAttribute('data-mode', 'disconnected');
+    await expect(draft.send).toBeDisabled();
+    await draft.send.evaluate((element: HTMLButtonElement) => element.click());
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    await expect(draft.send).toBeEnabled();
+    await expect(draft.text).toHaveValue('unsent draft');
+    expect(t.input).toEqual([]);
+    await draft.send.click();
+    await expect.poll(() => t.input.join('')).toBe('unsent draft');
+  });
+
+  test('native spelling keeps per-project drafts only for the mounted page', async ({ page }) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    await draft.text.fill('alpha draft');
+    await draft.toggle.click();
+    await draft.toggle.click();
+    await expect(draft.text).toHaveValue('alpha draft');
+    await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+    await page.locator('.project-item').filter({ hasText: 'beta' }).click();
+    const beta = page.locator('.terminal-pane:not([hidden])');
+    await expect(beta).toHaveAttribute('data-mode', 'control');
+    const other = await openText(beta);
+    await expect(other.text).toHaveValue('');
+    await other.text.fill('beta draft');
+    await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+    await page.locator('.project-item').filter({ hasText: 'alpha' }).click();
+    await expect(page.getByRole('textbox', { name: 'Terminal text', exact: true })).toHaveValue('alpha draft');
+    expect(t.input).toEqual([]);
+    await page.reload();
+    const current = page.locator('.terminal-pane:not([hidden])');
+    await expect(current).toHaveAttribute('data-mode', 'control');
+    await expect((await openText(current)).text).toHaveValue('');
+    expect(t.input).toEqual([]);
+  });
+
+  test('native spelling fits a keyboard-reduced phone viewport in both themes', async ({ page }, testInfo) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    await page.setViewportSize({ width: 390, height: 420 });
+    await draft.text.fill('Check this text before sending.');
+    for (const theme of ['light', 'dark']) {
+      if (await page.locator('html').getAttribute('data-theme') !== theme) {
+        await page.getByRole('button', { name: /theme/i }).click();
+      }
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await draft.text.focus();
+      for (const locator of [draft.text, draft.send, draft.toggle]) {
+        const bounds = await locator.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.y).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(420);
+      }
+      expect(await draft.text.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+      await page.screenshot({ path: testInfo.outputPath(`native-spelling-${theme}.png`) });
+    }
+    expect(t.input).toEqual([]);
+  });
 
   test('iOS leaves Backspace uncancelled and forwards every native repeat exactly once', async ({ page }) => {
     const t = await terminal(page);
@@ -164,6 +300,7 @@ test.describe('terminal input', () => {
 
   test('non-iOS keyboards retain xterm keydown handling without seeded text or duplicate deletion', async ({ page }) => {
     const t = await terminal(page, 'Linux x86_64');
+    await expect(t.pane.getByRole('button', { name: 'Text', exact: true })).toHaveCount(0);
     await expect(t.textarea).toHaveValue('');
     await page.keyboard.type('abc');
     await page.keyboard.down('Backspace');
