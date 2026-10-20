@@ -232,7 +232,7 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     for (const key of await page.locator('.terminal-keys button:visible').all()) {
       expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
     }
-    for (const name of ['Enter', 'Copy', 'Paste', 'Alt + Arrow Up', 'Ctrl+X then Ctrl+S']) {
+    for (const name of ['Enter', 'Copy', 'Paste', 'Shift + Arrow Left', 'Ctrl+X then Ctrl+S']) {
       const key = page.locator('.terminal-keys').getByRole('button', { name, exact: true });
       await key.scrollIntoViewIfNeeded();
       await expect(key).toBeInViewport({ ratio: 1 });
@@ -261,8 +261,10 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
   const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
   const enter = keys.getByRole('button', { name: 'Enter', exact: true });
+  const shiftLeft = keys.getByRole('button', { name: 'Shift + Arrow Left', exact: true });
   const sequence = keys.getByRole('button', { name: 'Ctrl+X then Ctrl+S', exact: true });
   await expect(enter).toBeVisible();
+  await expect(shiftLeft).toHaveText('Shift + ←');
   await expect(sequence).toHaveText('Ctrl-X Ctrl-S');
   const received = async (value: string) => { await expect.poll(() => input.join('')).toBe(Buffer.from(value).toString('hex')); input.length = 0; };
   await alt.click(); await expect(alt).toHaveAttribute('aria-pressed', 'true');
@@ -278,7 +280,9 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     send(Buffer.from(application ? '\u001b[?1h' : '\u001b[?1l'));
     await page.locator('.xterm-helper-textarea').focus();
     await page.keyboard.press('Alt+ArrowUp'); await received('\u001b[1;3A');
-    await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click(); await received('\u001b[1;3A');
+    await page.keyboard.press('Shift+ArrowLeft'); await received('\u001b[1;2D');
+    await shiftLeft.click(); await received('\u001b[1;2D');
+    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
     await alt.click(); await keys.getByRole('button', { name: '↑', exact: true }).click(); await received('\u001b[1;3A');
     await expect(alt).toHaveAttribute('aria-pressed', 'false');
     await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
@@ -308,7 +312,7 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   await expect(keys).toContainText('Observing');
   await enter.click();
   await sequence.click();
-  await keys.getByRole('button', { name: 'Alt + Arrow Up', exact: true }).click();
+  await shiftLeft.click();
   await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
   await keys.getByRole('button', { name: 'Take control', exact: true }).click();
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
@@ -318,6 +322,7 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   disconnect();
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'disconnected');
   await sequence.evaluate((element: HTMLButtonElement) => element.click());
+  await shiftLeft.evaluate((element: HTMLButtonElement) => element.click());
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   await page.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('reconnected'); await received('reconnected');
