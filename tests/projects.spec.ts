@@ -112,7 +112,7 @@ test('Claude indicators update inactive projects without replacing terminals and
     await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
     await page.locator('.terminal-pane').evaluate(node => { (node as HTMLElement).dataset.continuity = 'claude-kept'; });
     await beta.click();
-    for (const [source, label] of [['busy', 'Working'], ['waiting', 'Waiting'], ['idle', 'Completed']]) {
+    for (const [source, label] of [['shell', 'Working'], ['busy', 'Working'], ['waiting', 'Waiting'], ['shell', 'Working'], ['idle', 'Completed']]) {
       await claudeSession(f, source);
       await expect(row.locator('.claude-status')).toHaveText(label);
       await expect(row).toHaveAccessibleName(/Claude Code/);

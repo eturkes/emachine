@@ -42,7 +42,7 @@ Inventory events carry changes to the phase or eligibility without remounting pr
 
 `claudeStatus` is optional live sidebar metadata, independent of `phase` and `CLAUDE.md`.
 The server reads Claude Code's local `sessions/<pid>.json` registry under `CLAUDE_CONFIG_DIR` or `~/.claude`.
-Interactive sessions map `busy` to `working`, `idle` to `completed`, and `waiting` to `waiting`.
+Interactive sessions map `busy` and `shell` to `working`, `idle` to `completed`, and `waiting` to `waiting`.
 Completed means Claude Code is idle and ready for another prompt; it is not a claim that the task succeeded.
 Match canonical session working directories to a project or its descendants.
 For multiple sessions, waiting takes priority over working, then completed.

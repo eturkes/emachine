@@ -7,7 +7,7 @@ priv struct ClaudeSession {
 ///|
 fn claude_status(value : String) -> String? {
   match value {
-    "busy" => Some("working")
+    "busy" | "shell" => Some("working")
     "idle" => Some("completed")
     "waiting" => Some("waiting")
     _ => None

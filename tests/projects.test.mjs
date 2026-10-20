@@ -28,6 +28,32 @@ test('Claude status follows live sessions without opening terminals or reading t
   assert.equal((await exec('zmx', ['list', '--short'], { env: f.env }).catch(() => ({ stdout: '' }))).stdout.trim(), '');
 });
 
+test('Claude shell waits stay working across inventory, restarts, and session precedence', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const child = spawn('sleep', ['120']); t.after(() => child.kill());
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const status = async () => JSON.parse(await f.cli('projects')).projects.find(p => p.name === 'alpha').claudeStatus;
+  await claudeSession(f, 'idle');
+  await claudeSession(f, 'shell', { pid: child.pid, updatedAt: 1, statusUpdatedAt: 1 });
+  assert.equal(await status(), 'working');
+  await until(() => events.packets.filter(p => p.type === 'inventory').at(-1)?.state.projects.find(p => p.name === 'alpha').claudeStatus === 'working');
+  assert.equal((await f.state()).projects.find(p => p.name === 'alpha').claudeStatus, 'working');
+  await f.stop(); await f.start();
+  assert.equal((await f.state()).projects.find(p => p.name === 'alpha').claudeStatus, 'working');
+  await claudeSession(f, 'waiting');
+  assert.equal(await status(), 'waiting');
+  await claudeSession(f, 'idle');
+  assert.equal(await status(), 'working');
+  await claudeSession(f, 'idle', { pid: child.pid });
+  assert.equal(await status(), 'completed');
+  await claudeSession(f, 'shell', { pid: child.pid });
+  assert.equal(await status(), 'working');
+  await new Promise(resolve => { child.once('exit', resolve); child.kill(); });
+  assert.equal(await status(), 'completed');
+  await rm(join(f.home, `.claude/sessions/${process.pid}.json`));
+  assert.equal(await status(), null);
+});
+
 test('Claude status prioritizes waiting, validates process identity, and clears dead sessions', async t => {
   const f = await fixture(); t.after(() => f.close());
   const child = spawn('sleep', ['120']); t.after(() => child.kill());
