@@ -36,7 +36,7 @@ pub async fn restore(@model.Config, @model.Project, String, String) -> Unit
 
 pub fn state_path(@model.Config, String, String) -> String raise
 
-pub async fn tail_text(String, maximum? : Int) -> String
+pub async fn tail_text(String, maximum? : Int32) -> String
 
 // Errors
 
@@ -50,7 +50,7 @@ pub(all) struct Manifest {
   refresh : String
   watch : Array[String]
   actions : Map[String, Array[String]]
-  buildTimeoutMs : Int
+  buildTimeoutMs : Int32
 } derive(ToJson, @json.FromJson)
 
 pub(all) struct Receipt {

@@ -165,7 +165,7 @@ pnpm test:desktop-storage
 pnpm test:desktop-window-state
 ```
 
-The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20260904`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.
+The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20261016`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.
 
 To install the server on another Linux machine, build it first, then run:
 

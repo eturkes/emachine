@@ -6,7 +6,7 @@ import {
 }
 
 // Values
-pub async fn[G] spawn(@async.TaskGroup[G], String, String, String, Int, Int, extra_env? : Map[String, String]) -> Pty
+pub async fn[G] spawn(@async.TaskGroup[G], String, String, String, Int32, Int32, extra_env? : Map[String, String]) -> Pty
 
 // Errors
 
@@ -16,8 +16,8 @@ pub struct Pty {
 }
 pub fn Pty::close(Self) -> Unit
 pub async fn Pty::read(Self) -> Bytes
-pub fn Pty::resize(Self, Int, Int) -> Unit raise
-pub async fn Pty::wait(Self) -> Int
+pub fn Pty::resize(Self, Int32, Int32) -> Unit raise
+pub async fn Pty::wait(Self) -> Int32
 pub async fn Pty::write(Self, Bytes) -> Unit
 
 // Type aliases

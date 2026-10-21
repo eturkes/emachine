@@ -24,7 +24,7 @@ pub async fn future_path(String) -> String
 
 pub async fn initialize(Config) -> Unit
 
-pub fn int_field(Json, String, fallback? : Int) -> Int
+pub fn int_field(Json, String, fallback? : Int32) -> Int32
 
 pub fn is_within(String, String) -> Bool
 
@@ -58,7 +58,7 @@ pub fn valid_id(String) -> Bool
 
 // Types and methods
 pub(all) struct Config {
-  port : Int
+  port : Int32
   projectRoot : String
   dataRoot : String
   stateRoot : String
@@ -114,7 +114,7 @@ pub impl @json.FromJson for Project
 type RegistryEntry derive(ToJson, @json.FromJson)
 
 pub(all) struct State {
-  protocol : Int
+  protocol : Int32
   machine : Machine
   projects : Array[Project]
 } derive(ToJson, @json.FromJson)

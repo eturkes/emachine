@@ -10,7 +10,7 @@ import {
 // Values
 pub fn authorized(@model.Config, Map[@http.CaseInsensitiveString, String], Bool) -> Bool
 
-pub fn dimension(String, String, Int) -> Int
+pub fn dimension(String, String, Int32) -> Int32
 
 pub async fn serve(@model.Config) -> Unit
 
