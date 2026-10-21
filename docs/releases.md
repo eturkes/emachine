@@ -15,7 +15,7 @@ pnpm release:prepare
 
 Preparation runs the standard acceptance gate, then builds from a separate archive of the committed source.
 It tests the exact packaged AppImage with an empty machine list and a real test server.
-Storage tests cover cache paths, legacy database migration, and retained client settings. Interface tests cover refresh and recovery.
+Storage tests cover cache paths, legacy database migration, and retained client settings. Window tests cover saved size and maximized state across AppImage relaunches. Interface tests cover refresh and recovery.
 The existing installed AppImage is unchanged. Existing release output is never overwritten.
 
 The output directory is `desktop/publish/vVERSION/`. It contains:

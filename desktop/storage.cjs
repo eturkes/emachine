@@ -11,7 +11,7 @@ const runtimeEntries = new Set([
   'Service Worker', 'CacheStorage', 'WebStorage', 'SharedStorage', 'Shared Dictionary',
   'Shared Proto DB', 'Network', 'Network Persistent State', 'TransportSecurity',
   'Cookies', 'Trust Tokens', 'DIPS', 'QuotaManager', 'Reporting and NEL',
-  'Preferences', 'Local State', 'Partitions', 'Crashpad', 'logs', 'interface',
+  'Preferences', 'Local State', 'Partitions', 'Crashpad', 'logs', 'interface', 'window-state.json',
   'DevToolsActivePort', 'declarative_performance_observer.db',
 ]);
 const migrated = '.desktop-cache-v1';

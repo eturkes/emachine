@@ -137,7 +137,9 @@ The server rejects storage roots that overlap the managed project root. XDG vari
 
 The AppImage uses `$XDG_CACHE_HOME/emachine/` when `XDG_CACHE_HOME` is an absolute path. Otherwise, it uses `~/.cache/emachine/`.
 On first launch, it moves known desktop storage from the old configuration directory. Server files and unknown configuration stay unchanged.
-Saved connections and preferences use the browser database. Clearing the entire desktop cache removes those settings and saved interfaces.
+Saved connections and interface preferences use the browser database. Window size and maximized state use `window-state.json` in the same profile.
+The next launch restores the last window size and maximized state. Clearing the entire desktop cache removes these settings and saved interfaces.
+At fractional display scaling, Electron can round the restored dimensions by a few pixels. Repeated launches keep that size stable.
 An explicit `--user-data-dir` keeps all desktop storage in that profile. Development runs keep their existing storage paths.
 
 Older `em-<projectId>` sessions remain under the configured runtime root's `zmx/` directory. Emachine does not rename or terminate them.
@@ -160,6 +162,7 @@ pnpm appimage
 pnpm test:desktop
 pnpm test:desktop-interface
 pnpm test:desktop-storage
+pnpm test:desktop-window-state
 ```
 
 The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20260904`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.

@@ -22,6 +22,7 @@ async function fixture() {
     app: { setName() {}, on() {}, getPath: () => '/fixture/profile', requestSingleInstanceLock: () => true,
       whenReady: () => ({ then: start => (ready = start()) }) },
     BrowserWindow, protocol: { registerSchemesAsPrivileged() {}, handle() {} },
+    screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },
     session: { defaultSession: {
       setPermissionCheckHandler: handler => { check = handler; },
       setPermissionRequestHandler: handler => { request = handler; },
@@ -32,6 +33,7 @@ async function fixture() {
   runInNewContext(readFileSync(mainPath, 'utf8'), {
     require: name => name === 'electron' ? electron
       : name === './storage.cjs' ? { configureDesktopStorage() {} }
+      : name === './window-state.cjs' ? { createWindowState: () => ({ options: {}, manage() {} }) }
       : name === './interface.cjs' ? { createInterfaceController: async () => ({ async start() {} }), registerInterfaceIpc() {} }
       : require(name),
     __dirname: dirname(mainPath), URL, console,

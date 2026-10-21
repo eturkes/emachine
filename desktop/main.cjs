@@ -1,10 +1,11 @@
 'use strict';
-const { app, BrowserWindow, protocol, net, session, dialog, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, protocol, net, session, dialog, ipcMain, Menu, screen } = require('electron');
 const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { createInterfaceController, registerInterfaceIpc } = require('./interface.cjs');
 const { configureDesktopStorage } = require('./storage.cjs');
+const { createWindowState } = require('./window-state.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true,
@@ -95,8 +96,9 @@ async function start() {
     if (result.response === 1) mediaGrants.add(origin);
     callback(result.response === 1);
   });
+  const windowState = createWindowState({ profile: app.getPath('userData'), workArea: screen.getPrimaryDisplay().workAreaSize });
   main = new BrowserWindow({
-    width: 1320, height: 860, minWidth: 420, minHeight: 380,
+    ...windowState.options,
     title: 'emachine', backgroundColor: '#151515', show: false, autoHideMenuBar: true,
     icon: join(root, 'icons/512.png'),
     webPreferences: { nodeIntegration: false, nodeIntegrationInSubFrames: false,
@@ -131,7 +133,7 @@ async function start() {
     if (isMainFrame && code !== -3) void ui.loadFailed();
   });
   main.webContents.on('render-process-gone', () => { void ui.loadFailed(); });
-  main.once('ready-to-show', () => main.show());
+  windowState.manage(main);
   await ui.start();
   const initialCheck = setTimeout(() => { void ui.check(); }, 1000);
   const checks = setInterval(() => { void ui.check(); }, 60000);

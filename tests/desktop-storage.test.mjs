@@ -90,7 +90,7 @@ test('moves desktop databases and interface state without touching server or unk
   for (const name of ['Local Storage', 'IndexedDB', 'GPUCache', 'interface']) {
     mkdirSync(join(f.config, name)); writeFileSync(join(f.config, name, 'fixture'), name);
   }
-  const databases = ['Cookies', 'Cookies-journal', 'Preferences', 'Local State', 'declarative_performance_observer.db', 'declarative_performance_observer.db-journal'];
+  const databases = ['Cookies', 'Cookies-journal', 'Preferences', 'Local State', 'window-state.json', 'declarative_performance_observer.db', 'declarative_performance_observer.db-journal'];
   for (const name of databases) writeFileSync(join(f.config, name), name);
   for (const name of ['config.json', 'custom.json']) writeFileSync(join(f.config, name), name);
   mkdirSync(join(f.config, 'phone')); writeFileSync(join(f.config, 'phone/password'), 'fixture-secret');

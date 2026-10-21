@@ -121,7 +121,7 @@ try {
   assert.equal(await readFile(join(f.config, 'config.json'), 'utf8'), '{"server":"unchanged"}\n');
   assert.equal(await readFile(join(f.config, 'phone/fixture'), 'utf8'), 'unchanged');
   const entries = await readdir(f.cache);
-  for (const name of ['Local Storage', 'IndexedDB', 'Cookies', 'interface']) assert.ok(entries.includes(name), `${name} must be in the cache directory.`);
+  for (const name of ['Local Storage', 'IndexedDB', 'Cookies', 'interface', 'window-state.json']) assert.ok(entries.includes(name), `${name} must be in the cache directory.`);
   page = await launch(f.env);
   assert.deepEqual(await paths(), expected(f));
   assert.equal(await page.evaluate(() => localStorage.getItem('emachine:storage-regression')), 'updated');

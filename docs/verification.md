@@ -11,6 +11,8 @@
 | `node tests/desktop.mjs --interface` | Existing AppImage with the built interface, system clipboard buttons, shortcuts, context menu, terminal focus, and feature-frame permission denial |
 | `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
 | `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
+| `pnpm test:window-state` | Saved dimensions and maximized state, startup rounding, special-state bounds, malformed preferences, display constraints, atomic writes, close flushing, and profile isolation |
+| `pnpm test:desktop-window-state` | Real AppImage relaunches after resizing, maximizing, restoring, minimized/fullscreen closure, and repeated fractional-DPI launches without growth |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
 | `node scripts/check-installation.mjs` | Enabled and active service, valid systemd unit, disjoint storage, HTTPS, exact desktop CORS, and credential-free client files |
 | `git diff --check` | Patch whitespace integrity |
