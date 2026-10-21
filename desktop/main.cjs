@@ -24,7 +24,7 @@ function shellClipboardRequest(contents, origin, details) {
   return Boolean(contents && contents === main?.webContents && !contents.isDestroyed() && details?.isMainFrame === true &&
     isShellUrl(contents.getURL()) && isShellUrl(origin) && isShellUrl(details.requestingUrl));
 }
-const SHELL_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; frame-src https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const SHELL_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; frame-src https: http://127.0.0.1:* http://localhost:*; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 app.on('login', (event, contents, details, authInfo, callback) => {
   event.preventDefault();
