@@ -58,6 +58,14 @@ Older servers can omit the field; their sidebar appearance stays unchanged.
 
 ## Terminal
 
+`GET api/v1/prompts` returns `{prompts: [{id: string, title: string, body: string, steered: boolean}]}` under the existing API authorization and `no-store` policy.
+The server reads Markdown templates from its user's `~/.local/app/agents/claude/prompts/{auto,steered}/` directories on demand. IDs are paths relative to the agents repository; titles include the variant.
+Automatic prompts appear first. Each group is sorted by filename. The reader accepts immediate, regular UTF-8 `.md` files up to 1 MiB and skips README files, malformed templates, and paths outside the prompt directory.
+Only the body below the first standalone `---` rule is pasteable. Steered templates have a leading standalone `<request>` slot; the catalog removes that slot, and the client replaces it with the user's nonblank steering plus a blank line.
+The client normalizes line endings to LF for the native text preview and removes final line endings. Both copy and paste use that preview text. It never sends on selection, typing, loading, or reconnecting. Paste uses the guarded terminal paste path and adds no Enter key.
+Prompt bodies and steering stay outside inventory, events, persistent client storage, and the service-worker cache. Drafts are local to each terminal pane and prompt until the page closes.
+Older servers may return `404`; the selector explains the required server update without affecting the terminal.
+
 `WS api/v1/terminal/{projectId}?cols=100&rows=30` attaches a zmx session named exactly after the current project. The server inherits `ZMX_DIR`; otherwise, zmx resolves its normal socket directory. An existing manual SSH session is reused, including its working directory and shell state. A missing session starts in the project directory. Every browser connection gets its own native attachment; disconnection closes only that attachment. The session survives machine-server restarts. After a project rename, new attachments use the new name; existing attachments remain intact.
 
 Server binary frames contain raw terminal bytes. Server text frames:

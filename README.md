@@ -58,12 +58,19 @@ Use **Control+Shift+P** to find a project or view. Select a project from the sid
 The theme button shows **Light** or **Dark**. Select it to switch colors. The first launch uses your environment's color preference.
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
 The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
-The terminal shortcut bar includes **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Alt + ↑**, **Copy**, and **Paste**.
+The terminal shortcut bar includes **Prompts**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.
 Right-click the terminal for **Copy**, **Paste**, **Select all**, and **Clear selection**.
 Use **Shift+F10** or the menu key to open the same menu from the keyboard.
 Arrow keys move between available actions. **Escape** closes the menu and returns focus to the terminal.
+
+Select **Prompts** to choose a phase prompt from the connected machine's `~/.local/app/agents/claude/prompts/auto/` or `steered/` directory.
+For a steered prompt, enter your request in **Steering**. The preview places it above the prompt body in place of the `<request>` slot.
+The file's title, usage instructions, and separator stay out of the copied text.
+Select **Copy prompt** to copy the preview, or **Paste into terminal** to insert it into the controlling terminal. Paste adds no Enter key and removes trailing line endings.
+Use **Reload prompts** to read file changes. Each opening also loads the current files.
+Steering drafts stay with each project while the page is open. Reloading the page clears them.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 The `.snapshots` and `.pnpm-store` directories are excluded because they store filesystem snapshots and pnpm packages, not projects. Other dot-prefixed directories remain visible.

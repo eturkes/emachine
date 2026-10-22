@@ -4,12 +4,12 @@ import { execFileSync } from 'node:child_process';
 import { webkitOptions } from '../scripts/webkit.mjs';
 
 export default defineConfig({
-  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts'], workers: 1,
+  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts', 'terminal-prompts.spec.ts'], workers: 1,
   timeout: 45000, expect: { timeout: 15000 }, reporter: 'list',
   outputDir: '../test-results/browser',
   projects: [
     { name: 'chromium', use: { launchOptions: { executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim() } } },
-    { name: 'webkit-input', testMatch: 'terminal-input.spec.ts', use: { browserName: 'webkit', launchOptions: webkitOptions() } },
+    { name: 'webkit-input', testMatch: ['terminal-input.spec.ts', 'terminal-prompts.spec.ts'], use: { browserName: 'webkit', launchOptions: webkitOptions() } },
   ],
   use: {
     headless: true, viewport: { width: 1360, height: 900 },

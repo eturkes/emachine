@@ -198,6 +198,8 @@ async fn route(
       json_response(exchange, 200, { "ok": true, "protocol": 1 })
     ["api", "v1", "state"] =>
       json_response(exchange, 200, @json.to_json(runtime.state))
+    ["api", "v1", "prompts"] =>
+      json_response(exchange, 200, @model.prompt_catalog())
     ["api", "v1", "jobs"] => {
       let jobs : Array[Json] = []
       for _, job in runtime.jobs {

@@ -6,6 +6,7 @@ import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalTextInput } from './terminal-text';
+import { TerminalPrompts } from './terminal-prompts';
 import { socketUrl, type Link, type Project } from './transport';
 export type Theme = 'dark' | 'light';
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
@@ -41,6 +42,7 @@ export class TerminalPane {
   private detachTouch?: () => void;
   private detachInput?: () => void;
   private textInput?: TerminalTextInput;
+  private prompts: TerminalPrompts;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private fit = new FitAddon();
   private ws?: WebSocket;
@@ -93,6 +95,16 @@ export class TerminalPane {
       });
       this.host.after(this.textInput.element); keys.prepend(this.textInput.button);
     }
+    this.prompts = new TerminalPrompts({
+      link: () => this.link,
+      canPaste: () => this.visible && canInput(),
+      paste: text => {
+        if (!this.visible || !canInput()) return false;
+        clearModifiers(); this.terminal.paste(text); return true;
+      },
+      focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
+    });
+    this.element.append(this.prompts.element); keys.prepend(this.prompts.button);
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
@@ -144,6 +156,8 @@ export class TerminalPane {
     this.visible = show;
     this.element.hidden = !show;
     if (!show) this.clipboard.close();
+    // A render hides every pane before showing the active one again.
+    if (!show) queueMicrotask(() => { if (!this.visible) this.prompts.close(false); });
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
@@ -155,6 +169,7 @@ export class TerminalPane {
     this.link = link; this.project = project;
     if (link.online && link.route && this.route && link.route !== this.route) { this.ws?.close(); this.route = ''; }
     if (link.online && !this.ws) this.connect();
+    this.prompts.update();
   }
   private connect(): void {
     // Attach only after font-backed fitting; a default-sized replay can corrupt a live TUI.
@@ -169,6 +184,7 @@ export class TerminalPane {
     this.mode = 'observe'; this.control.hidden = true;
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
     this.textInput?.refresh();
+    this.prompts.refresh();
     this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
     this.seen = Date.now();
     ws.onopen = () => { this.reconnects = 0; this.seen = Date.now(); };
@@ -184,6 +200,7 @@ export class TerminalPane {
           if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
           this.mode = mode;
           this.textInput?.refresh();
+          this.prompts.refresh();
           this.element.dataset.mode = this.mode;
           this.control.hidden = this.mode === 'control';
           if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
@@ -201,6 +218,7 @@ export class TerminalPane {
       if (this.closed || generation !== this.generation) return;
       this.ws = undefined; this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
       this.textInput?.refresh();
+      this.prompts.refresh();
       this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
       window.clearInterval(this.heartbeat);
       this.retry = window.setTimeout(() => this.connect(), Math.min(12000, 750 * 2 ** this.reconnects++));
@@ -222,6 +240,7 @@ export class TerminalPane {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
     this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
+    this.prompts.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }
