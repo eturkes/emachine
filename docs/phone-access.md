@@ -77,7 +77,8 @@ Do not download or open that file.
 ## Open the terminal keyboard
 
 Tap **Keyboard** to type directly in the terminal. Tap it again to hide the keyboard.
-The button stays visible when you scroll the shortcut bar. Its pressed state marks active terminal input.
+Tap **Esc** beside it to send Escape to the terminal.
+Both buttons stay visible when you scroll the shortcut bar. Keyboard's pressed state marks active terminal input.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.
 Short taps open the keyboard; swipes and long presses keep their existing behavior.
 

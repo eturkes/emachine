@@ -288,7 +288,7 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
   }
   for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
-    await keys.getByRole('button', { name, exact: true }).click(); await received(value);
+    await page.getByRole('group', { name: 'Terminal keyboard controls', exact: true }).getByRole('button', { name, exact: true }).click(); await received(value);
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   }
   await ctrl.click(); await enter.click(); await received('\r');

@@ -70,14 +70,14 @@ export class TerminalPane {
     this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the project shell…'; this.status.setAttribute('role', 'status');
     this.control = button('Take control', () => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
-    const keys = document.createElement('div'); keys.className = 'terminal-keys'; keys.setAttribute('role', 'group'); keys.setAttribute('aria-label', 'Terminal keyboard controls');
+    const keys = document.createElement('div'); keys.className = 'terminal-keys';
     let useCtrl = false, useAlt = false;
     const ctrl = button('Ctrl', () => { useCtrl = !useCtrl; ctrl.setAttribute('aria-pressed', String(useCtrl)); this.terminal.focus(); }, 'Use Control with the next character');
     const alt = button('Alt', () => { useAlt = !useAlt; alt.setAttribute('aria-pressed', String(useAlt)); this.terminal.focus(); }, 'Use Alt with the next key');
     const clearModifiers = () => { useCtrl = useAlt = false; ctrl.setAttribute('aria-pressed', 'false'); alt.setAttribute('aria-pressed', 'false'); };
     clearModifiers();
     keys.append(this.control, ctrl, alt);
-    for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
+    for (const [label, value] of [['Tab', '\t'], ['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
       keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Shift + ←' ? 'Shift + Arrow Left' : label));
     }
     keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
@@ -93,15 +93,17 @@ export class TerminalPane {
       if (!hide) this.terminal.focus();
       this.setKeyboardShown(!hide);
     }, 'Toggle terminal keyboard');
-    this.keyboard.className = 'terminal-keyboard'; this.keyboard.disabled = true;
+    this.keyboard.className = 'terminal-keyboard terminal-fixed-key'; this.keyboard.disabled = true;
     this.setKeyboardShown(false);
     // Capture before the button can blur the input; cancelling pointerdown suppresses taps in WebKit.
     this.keyboard.addEventListener('pointerdown', event => {
       if (event.isPrimary && event.button === 0) this.keyboardTap = this.keyboardShown;
     }, { signal: this.keyboardEvents.signal });
     this.keyboard.addEventListener('pointercancel', () => { this.keyboardTap = undefined; }, { signal: this.keyboardEvents.signal });
-    const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar';
-    toolbar.append(this.keyboard, keys);
+    const escape = button('Esc', () => { this.terminal.input('\u001b'); this.terminal.focus(); });
+    escape.className = 'terminal-fixed-key';
+    const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Terminal keyboard controls');
+    toolbar.append(this.keyboard, escape, keys);
     this.element.append(this.host, toolbar);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);

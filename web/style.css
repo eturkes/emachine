@@ -94,10 +94,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-toolbar, .terminal-toolbar button { touch-action: manipulation; }
 .terminal-keys { display: flex; align-items: center; gap: var(--terminal-key-gap); min-width: 0; padding: 8px var(--terminal-key-gap); flex: 1; overflow-x: auto; scroll-padding-inline: var(--terminal-key-gap); }
 .terminal-status { flex-shrink: 0; max-width: min(320px,70vw); margin-left: auto; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px Iosevka,monospace; color: var(--muted); }
-.terminal-keys button, .terminal-keyboard { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
-.terminal-keyboard { display: none; margin: 8px 0 8px var(--terminal-key-gap); }
+.terminal-keys button, .terminal-fixed-key { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
+.terminal-fixed-key { min-width: 44px; margin: 8px 0 8px var(--terminal-key-gap); }
+.terminal-keyboard { display: none; }
 .terminal-ios .terminal-keyboard { display: block; }
-.terminal-ios .terminal-keys button, .terminal-ios .terminal-keyboard { min-height: 44px; }
+.terminal-ios .terminal-keys button, .terminal-ios .terminal-fixed-key { min-height: 44px; }
 .terminal-toolbar button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 .terminal-keys button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
 .terminal-text { flex-shrink: 0; min-width: 0; padding: 8px 6px 0; border-top: 1px solid var(--border); }
@@ -183,7 +184,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .tab { padding: 0 13px; }
   .terminal-pane { --terminal-font-size: 12; padding: 9px 9px 0; }
   .terminal-keyboard { display: block; }
-  .terminal-keys button, .terminal-keyboard { padding: 9px 10px; min-height: 44px; }
+  .terminal-keys button, .terminal-fixed-key { padding: 9px 10px; min-height: 44px; }
   .connection-form input { font-size: 16px; }
   .dialog { padding: 19px; }
   .toast-region { right: 14px; }

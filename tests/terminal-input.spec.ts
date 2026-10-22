@@ -145,24 +145,84 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
-  test('Keyboard spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
+  test('Keyboard and Esc spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
     const t = await terminal(page);
-    for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
+    const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
+    await expect(escape).toHaveCount(1);
+    for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
       await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
+      await expect(escape).toBeInViewport({ ratio: 1 });
       const geometry = await t.pane.evaluate(element => {
         const keys = element.querySelector<HTMLElement>('.terminal-keys')!; keys.scrollLeft = 0;
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
+        const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
         const [first, second] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
-        return { fixedGap: first.left - keyboard.right, shortcutGap: second.left - first.right,
-          keyboardTop: keyboard.top, shortcutTop: first.top, keyboardHeight: keyboard.height, shortcutHeight: first.height };
+        return { fixedGap: escape.left - keyboard.right, scrollGap: first.left - escape.right, shortcutGap: second.left - first.right,
+          keyboardTop: keyboard.top, escapeTop: escape.top, shortcutTop: first.top,
+          keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, shortcutHeight: first.height };
       });
       expect(geometry.fixedGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.scrollGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
+      expect(geometry.escapeTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.keyboardHeight).toBeCloseTo(geometry.shortcutHeight, 3);
+      expect(geometry.escapeHeight).toBeCloseTo(geometry.shortcutHeight, 3);
       expect(geometry.keyboardHeight).toBeGreaterThanOrEqual(44);
-      if (viewport.width !== 1024) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
+      expect(geometry.escapeHeight).toBeGreaterThanOrEqual(44);
+      expect(geometry.escapeWidth).toBeGreaterThanOrEqual(44);
+      const before = await escape.boundingBox();
+      await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+      expect(await escape.boundingBox()).toEqual(before);
+      await expect(escape).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = 0; });
+      if (viewport.width === 390 || viewport.width === 844) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
     }
+  });
+
+  test('Esc stays reachable and sends Escape without sending drafts or replaying blocked input', async ({ page }) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
+    const keyboard = t.pane.locator('.terminal-keyboard');
+    await draft.text.fill('unsent draft');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    await expect(escape).toBeInViewport({ ratio: 1 });
+    await expect(escape).toHaveCSS('touch-action', 'manipulation');
+    await escape.tap();
+    await expect.poll(() => t.input).toEqual(['\u001b']);
+    await expect(t.textarea).toBeFocused();
+    await expect(draft.text).toHaveValue('unsent draft');
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+
+    const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
+    const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
+    await ctrl.tap(); await alt.tap(); await escape.tap();
+    await expect.poll(() => t.input).toEqual(['\u001b', '\u001b\u001b']);
+    await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
+    await expect(alt).toHaveAttribute('aria-pressed', 'false');
+    await page.keyboard.type('x');
+    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bx');
+
+    t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+    await escape.tap();
+    t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    await page.keyboard.type('control');
+    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bxcontrol');
+    t.disconnect();
+    await expect(t.pane).toHaveAttribute('data-mode', 'disconnected');
+    await escape.tap();
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    await t.textarea.focus(); await page.keyboard.type('reconnected');
+    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bxcontrolreconnected');
+    await draft.toggle.tap();
+    await expect(draft.text).toHaveValue('unsent draft');
   });
 
   test('Keyboard stays reachable and synchronously focuses raw input without sending a Text draft', async ({ page }) => {
