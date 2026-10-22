@@ -88,11 +88,88 @@ test.describe('terminal input', () => {
     await expect.poll(() => t.input.join('')).toBe('\u001b[C'.repeat(3));
   });
 
+  test('Keyboard toggles terminal input with touch and keyboard activation', async ({ page }) => {
+    const t = await terminal(page), keyboard = t.pane.locator('.terminal-keyboard');
+    await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    await keyboard.tap();
+    await expect(t.textarea).toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    expect(await keyboard.evaluate((element: HTMLButtonElement) => {
+      element.click();
+      return document.activeElement === element.closest('.terminal-pane')!.querySelector('.xterm-helper-textarea');
+    })).toBe(false);
+    for (const key of ['Enter', 'Space']) {
+      await keyboard.focus();
+      await page.keyboard.press(key);
+      await expect(t.textarea).toBeFocused();
+      await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+      await keyboard.tap();
+      await expect(t.textarea).not.toBeFocused();
+      await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    }
+    expect(t.input).toEqual([]);
+  });
+
+  test('Keyboard follows native dismissal while preserving input focus and intentional pinch', async ({ page }) => {
+    const t = await terminal(page), keyboard = t.pane.locator('.terminal-keyboard');
+    const resize = async (height: number, scale = 1) => page.evaluate(({ height, scale }) => {
+      Object.defineProperties(visualViewport!, {
+        height: { configurable: true, value: height }, scale: { configurable: true, value: scale },
+      });
+      visualViewport!.dispatchEvent(new Event('resize'));
+    }, { height, scale });
+    await resize(480);
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await resize(240, 2);
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await resize(422, 2);
+    await expect(t.textarea).toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    expect(await keyboard.evaluate((element: HTMLButtonElement) => {
+      const input = element.closest('.terminal-pane')!.querySelector<HTMLTextAreaElement>('.xterm-helper-textarea')!;
+      let focuses = 0;
+      const focused = () => { focuses++; };
+      input.addEventListener('focus', focused);
+      element.click();
+      input.removeEventListener('focus', focused);
+      return { focuses, focused: document.activeElement === input, pressed: element.getAttribute('aria-pressed') };
+    })).toEqual({ focuses: 1, focused: true, pressed: 'true' });
+    // Pinch alone must not reset the explicit toggle when no docked keyboard was detected.
+    await resize(844);
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    expect(t.input).toEqual([]);
+  });
+
+  test('Keyboard spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
+    const t = await terminal(page);
+    for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
+      await page.setViewportSize(viewport);
+      await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
+      const geometry = await t.pane.evaluate(element => {
+        const keys = element.querySelector<HTMLElement>('.terminal-keys')!; keys.scrollLeft = 0;
+        const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
+        const [first, second] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        return { fixedGap: first.left - keyboard.right, shortcutGap: second.left - first.right,
+          keyboardTop: keyboard.top, shortcutTop: first.top, keyboardHeight: keyboard.height, shortcutHeight: first.height };
+      });
+      expect(geometry.fixedGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
+      expect(geometry.keyboardHeight).toBeCloseTo(geometry.shortcutHeight, 3);
+      expect(geometry.keyboardHeight).toBeGreaterThanOrEqual(44);
+      if (viewport.width !== 1024) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
+    }
+  });
+
   test('Keyboard stays reachable and synchronously focuses raw input without sending a Text draft', async ({ page }) => {
     const t = await terminal(page), draft = await openText(t.pane);
     await draft.text.fill('unsent draft');
     await page.setViewportSize({ width: 390, height: 420 });
-    const keyboard = t.pane.getByRole('button', { name: 'Show terminal keyboard', exact: true });
+    const keyboard = t.pane.getByRole('button', { name: 'Toggle terminal keyboard', exact: true });
     await expect(keyboard).toBeVisible();
     const before = (await keyboard.boundingBox())!;
     await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
@@ -111,6 +188,8 @@ test.describe('terminal input', () => {
     await expect(draft.toggle).toHaveAttribute('aria-expanded', 'false');
     expect(t.input).toEqual([]);
     await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await keyboard.tap();
     await expect(t.textarea).toBeFocused();
     await page.keyboard.type('raw');
     await expect.poll(() => t.input.join('')).toBe('raw');
@@ -120,6 +199,9 @@ test.describe('terminal input', () => {
     t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
     await expect(t.pane).toHaveAttribute('data-mode', 'observe');
     await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await keyboard.tap();
+    await expect(t.textarea).toBeFocused();
     await page.keyboard.type('dropped');
     t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
     await expect(t.pane).toHaveAttribute('data-mode', 'control');

@@ -18,7 +18,7 @@ export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
   black: '#292929', red: '#a73748', green: '#21744a', yellow: '#88621a', blue: '#345daa', magenta: '#835096', cyan: '#267d7b', white: '#666666',
   brightBlack: '#666666', brightRed: '#bb4355', brightGreen: '#217c50', brightYellow: '#906d24', brightBlue: '#486caf', brightMagenta: '#9564a9', brightCyan: '#2b8580', brightWhite: '#202020',
 };
-function button(label: string, action: () => void, title = label): HTMLButtonElement {
+function button(label: string, action: (event: MouseEvent) => void, title = label): HTMLButtonElement {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.onclick = action; return b;
 }
 function modifiedInput(data: string, ctrl: boolean, alt: boolean): string {
@@ -39,6 +39,9 @@ export class TerminalPane {
   private status = document.createElement('span');
   private control: HTMLButtonElement;
   private keyboard: HTMLButtonElement;
+  private keyboardShown = false;
+  private keyboardTap?: boolean;
+  private keyboardEvents = new AbortController();
   private terminal: Terminal;
   private detachTouch?: () => void;
   private detachInput?: () => void;
@@ -81,12 +84,22 @@ export class TerminalPane {
     const copy = () => { void this.copy(); };
     const paste = () => { clearModifiers(); void this.paste(); };
     keys.append(button('Copy', copy), button('Paste', paste), this.status);
-    this.keyboard = button('Keyboard', () => {
+    this.keyboard = button('Keyboard', event => {
+      const hide = (event.detail > 0 ? this.keyboardTap : undefined) ?? this.keyboardShown;
+      this.keyboardTap = undefined;
       this.textInput?.close();
       // iOS can dismiss its keyboard while leaving the textarea focused. Refocus in this gesture.
-      this.terminal.blur(); this.terminal.focus();
-    }, 'Show terminal keyboard');
+      this.terminal.blur();
+      if (!hide) this.terminal.focus();
+      this.setKeyboardShown(!hide);
+    }, 'Toggle terminal keyboard');
     this.keyboard.className = 'terminal-keyboard'; this.keyboard.disabled = true;
+    this.setKeyboardShown(false);
+    // Capture before the button can blur the input; cancelling pointerdown suppresses taps in WebKit.
+    this.keyboard.addEventListener('pointerdown', event => {
+      if (event.isPrimary && event.button === 0) this.keyboardTap = this.keyboardShown;
+    }, { signal: this.keyboardEvents.signal });
+    this.keyboard.addEventListener('pointercancel', () => { this.keyboardTap = undefined; }, { signal: this.keyboardEvents.signal });
     const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar';
     toolbar.append(this.keyboard, keys);
     this.element.append(this.host, toolbar);
@@ -121,6 +134,7 @@ export class TerminalPane {
       this.terminal.open(this.host);
       this.detachInput = attachTerminalInput(this.host, this.terminal);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
+      this.attachKeyboard();
       this.keyboard.disabled = false;
       this.layout();
       this.connect();
@@ -136,6 +150,30 @@ export class TerminalPane {
     this.terminal.onResize(() => this.syncSize());
     this.observer = new ResizeObserver(() => this.layout());
     this.observer.observe(this.host);
+  }
+  private setKeyboardShown(shown: boolean): void {
+    this.keyboardShown = shown;
+    this.keyboard.setAttribute('aria-pressed', String(shown));
+  }
+  private attachKeyboard(): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    const { signal } = this.keyboardEvents;
+    input.addEventListener('focus', () => this.setKeyboardShown(true), { signal });
+    input.addEventListener('blur', () => this.setKeyboardShown(false), { signal });
+    this.setKeyboardShown(document.activeElement === input);
+    const viewport = window.visualViewport;
+    if (!isIOS() || !viewport) return;
+    let occluded = false;
+    const resized = () => {
+      const previous = occluded;
+      // Docked iOS keyboards shrink the visual viewport; discount pinch and small browser-chrome changes.
+      occluded = document.documentElement.clientHeight - viewport.height * viewport.scale > 100;
+      // Only a detected open → closed transition overrides focus; floating keyboards may not resize.
+      if (document.activeElement === input && (occluded || previous)) this.setKeyboardShown(occluded);
+    };
+    viewport.addEventListener('resize', resized, { signal });
+    resized();
   }
   private send(data: string): void {
     // Input is deliberately discarded while disconnected, never buffered for reconnection.
@@ -253,6 +291,7 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
+    this.keyboardEvents.abort();
     this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
     this.prompts.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
