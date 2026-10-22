@@ -7,8 +7,9 @@ import { attachTerminalClipboard } from './terminal-clipboard';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
-import { socketUrl, type Link, type Project } from './transport';
+import { socketUrl, type Link } from './transport';
 export type Theme = 'dark' | 'light';
+export type TerminalTarget = { kind: 'project'; id: string } | { kind: 'general'; session: string };
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
   background: '#151515', foreground: '#e7e7e7', cursor: '#d6d6d6', cursorAccent: '#151515', selectionBackground: '#a3a3a380',
   black: '#202020', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
@@ -62,12 +63,13 @@ export class TerminalPane {
   private route = '';
   private remoteSize = '';
   private pendingSize = '';
-  constructor(public link: Link, public project: Project, theme: Theme, private notice: (text: string) => void) {
+  constructor(public link: Link, public target: TerminalTarget, theme: Theme, private notice: (text: string) => void) {
     this.element.className = 'terminal-pane view';
     this.element.classList.toggle('terminal-ios', isIOS());
-    this.element.dataset.terminalProject = project.id;
+    if (target.kind === 'project') this.element.dataset.terminalProject = target.id;
+    else this.element.dataset.terminalSession = target.session;
     this.host.className = 'terminal-host';
-    this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the project shell…'; this.status.setAttribute('role', 'status');
+    this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the shell…'; this.status.setAttribute('role', 'status');
     this.control = button('Take control', () => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
     const keys = document.createElement('div'); keys.className = 'terminal-keys';
@@ -219,8 +221,8 @@ export class TerminalPane {
     const proposed = this.fit.proposeDimensions();
     if (proposed) this.terminal.resize(Math.max(2, Math.min(500, proposed.cols)), Math.max(2, Math.min(500, proposed.rows)));
   }
-  update(link: Link, project: Project): void {
-    this.link = link; this.project = project;
+  update(link: Link, target: TerminalTarget): void {
+    this.link = link; this.target = target;
     if (link.online && link.route && this.route && link.route !== this.route) { this.ws?.close(); this.route = ''; }
     if (link.online && !this.ws) this.connect();
     this.prompts.update();
@@ -231,7 +233,8 @@ export class TerminalPane {
     window.clearTimeout(this.retry);
     this.route = this.link.route;
     const generation = ++this.generation;
-    const url = new URL(socketUrl(this.route, `api/v1/terminal/${this.project.id}`));
+    const path = this.target.kind === 'project' ? this.target.id : `general/${this.target.session}`;
+    const url = new URL(socketUrl(this.route, `api/v1/terminal/${path}`));
     url.searchParams.set('cols', String(this.terminal.cols)); url.searchParams.set('rows', String(this.terminal.rows));
     this.terminal.reset();
     this.remoteSize = this.pendingSize = '';

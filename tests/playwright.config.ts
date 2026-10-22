@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { webkitOptions } from '../scripts/webkit.mjs';
 
 export default defineConfig({
-  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts', 'terminal-prompts.spec.ts'], workers: 1,
+  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'general.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts', 'terminal-prompts.spec.ts'], workers: 1,
   timeout: 45000, expect: { timeout: 15000 }, reporter: 'list',
   outputDir: '../test-results/browser',
   projects: [

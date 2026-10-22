@@ -68,6 +68,10 @@ Older servers may return `404`; the selector explains the required server update
 
 `WS api/v1/terminal/{projectId}?cols=100&rows=30` attaches a zmx session named exactly after the current project. The server inherits `ZMX_DIR`; otherwise, zmx resolves its normal socket directory. An existing manual SSH session is reused, including its working directory and shell state. A missing session starts in the project directory. Every browser connection gets its own native attachment; disconnection closes only that attachment. The session survives machine-server restarts. After a project rename, new attachments use the new name; existing attachments remain intact.
 
+`WS api/v1/terminal/general/{session}?cols=100&rows=30` uses the same authorization, Origin checks, namespace, and terminal messages. The session is `general` or `generalN`, where N is an integer of at least 2 without leading zeroes; names have at most 48 ASCII characters. A new session starts in the server user's home directory. This route does not require a project. Closing a General tab closes only its attachment. Rooms share control by exact zmx session name across both terminal routes, including a project named `general` or `generalN`.
+
+General tab state belongs to each machine in the client: open session names, selected session, and the next number survive reload. Tabs attach lazily. Closing a tab preserves its zmx session and does not reuse its number for the next new tab. An existing session with the next name is attached without resetting its shell state.
+
 Server binary frames contain raw terminal bytes. Server text frames:
 - `{type:"state", session:string, mode:"control"|"observe", cols:number, rows:number}`.
 - `{type:"error", message:string}`.

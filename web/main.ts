@@ -4,6 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
+import { restoreGeneralTabs, type GeneralTabs } from './general';
 import { attachInterfaceUpdates } from './interface';
 
 const $ = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -23,6 +24,7 @@ save('theme', theme);
 let filter = '';
 let orderedProjects = read<string[]>('project-order', []);
 const orderTabs = read<Record<string, string[]>>('tab-order', {});
+const generalTabs = restoreGeneralTabs(read<unknown>('general-tabs', {}));
 const terminals = new Map<string, TerminalPane>();
 const frames = new Map<string, FeatureFrame>();
 const jobs = new Map<string, { link: Link; job: Job }>();
@@ -32,26 +34,30 @@ const rail = $('aside', 'project-rail'); rail.setAttribute('aria-label', 'Projec
 const brand = $('header', 'brand'); brand.append($('div', 'brand-name', 'emachine'), button('Close', () => app.classList.remove('drawer-open'), 'text-button mobile-close', 'Close projects'));
 const search = $('input', 'project-search'); search.type = 'search'; search.placeholder = 'Find a project'; search.setAttribute('aria-label', 'Filter projects'); search.oninput = () => { filter = search.value; renderRail(); };
 const projectList = $('nav', 'project-list'); projectList.setAttribute('aria-label', 'Project list');
+const generalList = $('nav', 'general-list'); generalList.setAttribute('aria-label', 'General terminals');
 const railFooter = $('footer', 'rail-footer');
 const machineCount = $('span', 'machine-count');
 railFooter.append(button('Machines', () => openSettings(), 'manage-machines'), machineCount);
-rail.append(brand, $('div', 'rail-label', 'WORKSPACES'), search, projectList, railFooter);
+rail.append(brand, generalList, $('div', 'rail-label', 'PROJECTS'), search, projectList, railFooter);
 const workspace = $('main', 'workspace');
 const tabHeader = $('header', 'tab-header');
 const mobileMenu = button('Projects', () => app.classList.toggle('drawer-open'), 'text-button mobile-menu', 'Open project drawer');
 const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project views');
+const newGeneral = button('+', () => addGeneralTerminal(), 'new-terminal', 'New General terminal'); newGeneral.hidden = true;
 const themeButton = button('', () => { theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); applyTheme(); }, 'text-button');
 const actions = $('div', 'header-actions'); actions.append(themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
-tabHeader.append(mobileMenu, tabs, actions);
+tabHeader.append(mobileMenu, tabs, newGeneral, actions);
 const diagnostics = $('details', 'diagnostics');
 const diagnosticTitle = $('summary'); const diagnosticText = $('pre'); diagnostics.append(diagnosticTitle, diagnosticText); diagnostics.hidden = true;
 actions.append(diagnostics);
 const offline = $('div', 'offline-banner'); offline.setAttribute('role', 'status'); offline.hidden = true;
 const views = $('div', 'views');
 const empty = $('section', 'empty-state');
+const generalEmpty = $('section', 'general-empty'); generalEmpty.hidden = true;
+generalEmpty.append($('h1', '', 'No open terminals'), $('p', 'empty-copy', 'Your sessions remain on the machine. Open general again or use + for another terminal.'), button('Open general', () => chooseGeneral(selected, 'general'), 'primary-button'));
 empty.append($('p', 'eyebrow', 'A PERSONAL COMMAND CENTER'), $('h1', '', 'Your projects. Their own space.'), $('p', 'empty-copy', 'Connect a machine to discover its projects. Each workspace starts with a persistent terminal and grows through your requests to Codexify.'), button('Connect a machine', () => openSettings(), 'primary-button'));
-views.append(empty); workspace.append(tabHeader, offline, views); app.append(scrim, rail, workspace);
+views.append(empty, generalEmpty); workspace.append(tabHeader, offline, views); app.append(scrim, rail, workspace);
 const toastRegion = $('div', 'toast-region'); toastRegion.setAttribute('aria-live', 'polite'); document.body.append(toastRegion);
 function notice(message: string): void {
   const toast = $('div', 'toast', message); toastRegion.append(toast); window.setTimeout(() => toast.remove(), 7000);
@@ -67,6 +73,38 @@ function applyTheme(): void {
 }
 applyTheme();
 function projectKey(link: Link, project: Project): string { return `${link.state!.machine.id}:${project.id}`; }
+function generalEntries(): { key: string; link: Link }[] {
+  return fleet.unique().filter(link => link.state).map(link => ({ key: `${link.state!.machine.id}:@general`, link }));
+}
+function generalState(key: string): GeneralTabs { return generalTabs[key] ??= { sessions: ['general'], next: 2 }; }
+function chooseGeneral(key: string, session?: string): void {
+  const state = generalState(key);
+  if (!state.sessions.length) { state.sessions.push('general'); save('general-tabs', generalTabs); }
+  choose(key, session);
+}
+function focusGeneralTab(): void {
+  const active = tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+  (active ?? newGeneral).focus();
+  active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function addGeneralTerminal(): void {
+  if (!generalEntries().some(item => item.key === selected)) return;
+  const state = generalState(selected);
+  if (state.next >= Number.MAX_SAFE_INTEGER) return;
+  const session = `general${state.next++}`;
+  state.sessions.push(session); save('general-tabs', generalTabs);
+  choose(selected, session); focusGeneralTab();
+}
+function closeGeneralTerminal(key: string, session: string): void {
+  const state = generalState(key), index = state.sessions.indexOf(session);
+  if (index < 0) return;
+  state.sessions.splice(index, 1); save('general-tabs', generalTabs);
+  if (selectedTabs[key] === session) {
+    selectedTabs[key] = state.sessions[Math.min(index, state.sessions.length - 1)] ?? '';
+    save('tabs', selectedTabs);
+  }
+  render(); focusGeneralTab();
+}
 function entries(): { key: string; link: Link; project: Project }[] {
   const result = fleet.unique().flatMap(link => (link.state?.projects ?? []).map(project => ({ key: projectKey(link, project), link, project })));
   const position = (key: string) => { const index = orderedProjects.indexOf(key); return index < 0 ? 100000 : index; };
@@ -79,6 +117,15 @@ function choose(key: string, tab?: string): void {
 }
 let draggedProject = '';
 function renderRail(): void {
+  const generalScroll = generalList.scrollTop; generalList.replaceChildren();
+  for (const { key, link } of generalEntries()) {
+    const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `General on ${link.state!.machine.name}, ${link.online ? 'online' : 'offline'}`);
+    b.dataset.generalKey = key; b.setAttribute('aria-current', key === selected ? 'page' : 'false');
+    const mark = $('span', 'general-mark', '>_'); mark.setAttribute('aria-hidden', 'true');
+    const copy = $('span', 'general-copy'); copy.append($('strong', '', 'General'), $('small', '', link.state!.machine.name));
+    b.append(mark, copy); generalList.append(b);
+  }
+  generalList.hidden = !generalList.childElementCount; generalList.scrollTop = generalScroll;
   const scroll = projectList.scrollTop; projectList.replaceChildren();
   const items = entries().filter(({ project, link }) => `${project.name} ${link.state?.machine.name} ${link.config.name}`.toLowerCase().includes(filter.toLowerCase()));
   for (const item of items) {
@@ -155,29 +202,70 @@ class FeatureFrame {
   dispose(): void { this.element.remove(); }
 }
 window.addEventListener('message', event => { for (const frame of frames.values()) frame.receive(event); });
+function renderGeneral({ key, link }: { key: string; link: Link }): void {
+  const state = generalState(key);
+  const session = state.sessions.includes(selectedTabs[key]) ? selectedTabs[key] : state.sessions[0] ?? '';
+  if (selectedTabs[key] !== session) { selectedTabs[key] = session; save('tabs', selectedTabs); }
+  tabs.setAttribute('aria-label', 'General terminal tabs');
+  newGeneral.hidden = false; newGeneral.disabled = state.next >= Number.MAX_SAFE_INTEGER;
+  diagnostics.hidden = true; generalEmpty.hidden = state.sessions.length > 0;
+  for (const name of state.sessions) {
+    const group = $('div', `general-tab${name === session ? ' active' : ''}`); group.setAttribute('role', 'presentation');
+    const b = button(name, () => { choose(key, name); focusGeneralTab(); }, `tab${name === session ? ' active' : ''}`);
+    b.dataset.tabId = name; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(name === session)); b.tabIndex = name === session ? 0 : -1;
+    b.id = `general-tab-${link.state!.machine.id}-${name}`; b.setAttribute('aria-controls', `general-pane-${link.state!.machine.id}-${name}`);
+    b.onkeydown = event => {
+      const index = state.sessions.indexOf(name);
+      const next = event.key === 'ArrowRight' ? (index + 1) % state.sessions.length : event.key === 'ArrowLeft' ? (index - 1 + state.sessions.length) % state.sessions.length : event.key === 'Home' ? 0 : event.key === 'End' ? state.sessions.length - 1 : -1;
+      if (next >= 0) { event.preventDefault(); choose(key, state.sessions[next]); focusGeneralTab(); }
+      else if (event.key === 'Delete') { event.preventDefault(); closeGeneralTerminal(key, name); }
+    };
+    const close = button('×', () => closeGeneralTerminal(key, name), 'close-terminal', `Close ${name}`);
+    close.tabIndex = name === session ? 0 : -1;
+    close.title = `Close ${name} tab. The session stays on the machine.`;
+    group.append(b, close); tabs.append(group);
+  }
+  if (!session) return;
+  const terminalKey = `${key}:${session}`;
+  let terminal = terminals.get(terminalKey);
+  if (!terminal && link.online) {
+    terminal = new TerminalPane(link, { kind: 'general', session }, theme, notice);
+    terminal.element.id = `general-pane-${link.state!.machine.id}-${session}`;
+    terminal.element.setAttribute('role', 'tabpanel'); terminal.element.setAttribute('aria-labelledby', `general-tab-${link.state!.machine.id}-${session}`);
+    terminals.set(terminalKey, terminal); views.append(terminal.element);
+  }
+  terminal?.show(true);
+}
 function render(): void {
-  const items = entries();
-  if (!items.some(item => item.key === selected)) { selected = items[0]?.key ?? ''; save('selection', selected); }
+  const items = entries(), generals = generalEntries();
+  if (![...items, ...generals].some(item => item.key === selected)) { selected = items[0]?.key ?? generals[0]?.key ?? ''; save('selection', selected); }
   renderRail();
-  const valid = new Set(items.map(item => item.key));
+  const valid = new Set([...items.map(item => item.key), ...generals.flatMap(item => generalState(item.key).sessions.map(session => `${item.key}:${session}`))]);
   for (const [key, terminal] of terminals) if (!valid.has(key)) { terminal.dispose(); terminals.delete(key); }
   for (const [key, frame] of frames) {
     const item = items.find(item => item.key === projectKey(frame.link, frame.project));
     if (!item || !item.project.features.some(feature => feature.id === frame.feature.id)) { frame.dispose(); frames.delete(key); }
   }
   for (const item of items) {
-    terminals.get(item.key)?.update(item.link, item.project);
+    terminals.get(item.key)?.update(item.link, { kind: 'project', id: item.project.id });
     for (const feature of item.project.features) frames.get(`${item.key}:${feature.id}`)?.update(item.link, item.project, feature);
   }
+  for (const item of generals) for (const session of generalState(item.key).sessions) terminals.get(`${item.key}:${session}`)?.update(item.link, { kind: 'general', session });
   const active = items.find(item => item.key === selected);
-  empty.hidden = Boolean(active);
+  const general = generals.find(item => item.key === selected);
+  empty.hidden = Boolean(active || general); generalEmpty.hidden = true;
+  tabHeader.classList.toggle('general-view', Boolean(general)); newGeneral.hidden = true;
+  tabs.setAttribute('aria-label', 'Project views');
   tabs.replaceChildren();
   for (const terminal of terminals.values()) terminal.show(false);
   for (const frame of frames.values()) frame.element.hidden = true;
-  if (!active) { diagnostics.hidden = true; offline.hidden = true; return; }
+  if (!active && !general) { diagnostics.hidden = true; offline.hidden = true; return; }
+  const activeLink = (active ?? general)!.link;
+  offline.hidden = activeLink.online;
+  offline.textContent = `${activeLink.state!.machine.name} is offline. Its workspaces remain listed. ${activeLink.error}`;
+  if (general) { renderGeneral(general); return; }
+  if (!active) return;
   const { link, project, key } = active;
-  offline.hidden = link.online;
-  offline.textContent = `${link.state!.machine.name} is offline. Its projects remain listed. ${link.error}`;
   diagnostics.hidden = !project.diagnostics.length;
   diagnosticTitle.textContent = `${project.diagnostics.length} feature ${project.diagnostics.length === 1 ? 'issue' : 'issues'}`;
   diagnosticText.textContent = project.diagnostics.map(d => `${d.feature}\n${d.message}`).join('\n\n');
@@ -198,7 +286,7 @@ function render(): void {
   }
   if (tab === 'terminal') {
     let terminal = terminals.get(key);
-    if (!terminal && link.online) { terminal = new TerminalPane(link, project, theme, notice); terminals.set(key, terminal); views.append(terminal.element); }
+    if (!terminal && link.online) { terminal = new TerminalPane(link, { kind: 'project', id: project.id }, theme, notice); terminals.set(key, terminal); views.append(terminal.element); }
     terminal?.show(true);
   } else {
     const feature = project.features.find(feature => feature.id === tab)!;
@@ -248,6 +336,12 @@ function openPalette(): void {
   const results = $('div', 'palette-results'); d.append(input, results);
   const update = () => {
     results.replaceChildren(); const query = input.value.toLowerCase();
+    for (const item of generalEntries()) {
+      const sessions = generalState(item.key).sessions;
+      for (const session of sessions.length ? sessions : ['general']) if (`General ${item.link.state!.machine.name} ${session}`.toLowerCase().includes(query)) {
+        results.append(button(`General / ${session} · ${item.link.state!.machine.name}`, () => { d.close(); chooseGeneral(item.key, session); }, 'palette-result'));
+      }
+    }
     for (const item of entries()) {
       const choices = [{ id: 'terminal', title: 'Terminal' }, ...item.project.features];
       for (const view of choices) if (`${item.project.name} ${item.link.state!.machine.name} ${view.title}`.toLowerCase().includes(query)) {

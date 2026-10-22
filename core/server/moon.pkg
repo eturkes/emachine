@@ -12,6 +12,7 @@ import {
   "moonbitlang/async/socket",
   "moonbitlang/async/websocket",
   "moonbitlang/core/json",
+  "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
 }
 

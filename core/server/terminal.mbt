@@ -57,19 +57,62 @@ async fn terminal_socket(
   query : String,
 ) -> Unit {
   let project = @model.resolve_project(runtime.config, project_id)
+  terminal_session(runtime, exchange, project.name, project.path, query)
+}
+
+///|
+fn valid_general_session(session : String) -> Bool {
+  if session == "general" {
+    return true
+  }
+  if !session.has_prefix("general") || session.length() > 48 {
+    return false
+  }
+  let number = session[7:].to_owned()
+  if number.is_empty() || number == "1" || number.has_prefix("0") {
+    return false
+  }
+  for byte in @utf8.encode(number) {
+    let n = byte.to_int()
+    if n < 48 || n > 57 {
+      return false
+    }
+  }
+  true
+}
+
+///|
+async fn general_terminal_socket(
+  runtime : Runtime,
+  exchange : Exchange,
+  session : String,
+  query : String,
+) -> Unit {
+  if !valid_general_session(session) {
+    fail("Invalid General terminal session")
+  }
+  let home = @env.get_env_var("HOME").unwrap_or("")
+  if !home.has_prefix("/") || @fs.kind(home) != Directory {
+    fail("The server user's home directory is unavailable")
+  }
+  terminal_session(runtime, exchange, session, home, query)
+}
+
+///|
+async fn terminal_session(
+  runtime : Runtime,
+  exchange : Exchange,
+  session : String,
+  cwd : String,
+  query : String,
+) -> Unit {
   let cols = dimension(query, "cols", 100)
   let rows = dimension(query, "rows", 30)
-  let room = match runtime.rooms.get(project.name) {
+  let room = match runtime.rooms.get(session) {
     Some(room) => room
     None => {
-      let room : Room = {
-        session: project.name,
-        cols,
-        rows,
-        controller: "",
-        peers: [],
-      }
-      runtime.rooms[project.name] = room
+      let room : Room = { session, cols, rows, controller: "", peers: [], }
+      runtime.rooms[session] = room
       room
     }
   }
@@ -87,7 +130,7 @@ async fn terminal_socket(
     @async.with_task_group() <| group => {
       let terminal = @pty.spawn(
         group,
-        project.path,
+        cwd,
         room.session,
         runtime.config.shell,
         room.cols,

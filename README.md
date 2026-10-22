@@ -84,6 +84,10 @@ The zmx session name is the project name, such as `figure-verification`. Open a 
 
 From SSH, run `zmx attach figure-verification` to use the same session. Emachine inherits `ZMX_DIR` when set; otherwise, zmx uses its normal socket directory. The service and SSH shell must use the same socket directory.
 
+Each machine has a **General** entry above the project list. Select it to attach to `general`. Select **+** in the top bar to open `general2`, `general3`, and subsequent sessions. New sessions start in the server user's home directory. Existing sessions keep their working directory and shell state, including sessions opened through SSH.
+
+Use **×** to close a General tab. This detaches the client and keeps the session running. Open tabs, the selected tab, and the next number are saved separately for each machine in this browser. Closing all tabs leaves **+** available; select **Open general** to return to the original session. General remains available when a machine has no projects.
+
 Switching projects or tabs does not close the shell. Closing the application disconnects its attachment, not the session. After a project rename, new attachments use the new name. Existing attachments and older sessions remain intact.
 
 The first connected Emachine device controls the terminal. Other devices observe the same screen until you select **Take control**. The controlling device sets the terminal dimensions. This control applies only to Emachine clients; an SSH attachment can still send input.

@@ -41,6 +41,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .project-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 10px; margin: 3px 0; text-align: left; border: 1px solid transparent; border-radius: 9px; }
 .project-item:hover { background: var(--hover); }
 .project-item.active { border-color: color-mix(in srgb,var(--accent) 23%,transparent); background: var(--accent-soft); }
+.general-list { flex-shrink: 0; overflow: auto; max-height: 30%; padding: 14px 9px 0; }
+.general-item { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 10px; margin: 3px 0; text-align: left; border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 9px; background: var(--surface); }
+.general-item:hover { background: var(--hover); }
+.general-item.active { border-left-color: var(--accent); background: var(--accent-soft); }
+.general-mark { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 6px; background: var(--raised); color: var(--muted); font: 14px Iosevka,monospace; }
+.general-copy { display: grid; gap: 4px; min-width: 0; }
+.general-copy strong { font-size: 14px; font-weight: 650; }
+.general-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 11px Iosevka,monospace; }
 .project-copy { min-width: 0; display: grid; gap: 4px; width: 100%; }
 .project-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
 .project-phase { flex-shrink: 0; font: 11px Iosevka,monospace; color: var(--muted); }
@@ -73,6 +81,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tab:hover { color: var(--text); background: var(--accent-soft); }
 .tab.active { color: var(--accent); }
 .tab.active::after { position: absolute; bottom: 0; left: 15px; right: 15px; height: 2px; content: ''; background: var(--accent); }
+.general-tab { display: flex; flex-shrink: 0; align-items: stretch; }
+.general-tab.active { background: var(--accent-soft); }
+.general-tab .tab { padding-right: 9px; }
+.close-terminal, .new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; border-radius: 6px; color: var(--muted); line-height: 1; }
+.close-terminal { width: 32px; height: 32px; margin-right: 4px; font-size: 19px; }
+.new-terminal { width: 36px; min-height: 36px; margin: 8px; font-size: 24px; }
+.close-terminal:hover, .new-terminal:hover { color: var(--text); background: var(--hover); }
 .stale-indicator { margin-left: 7px; color: var(--warning); font-size: 11px; }
 .header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 5px; padding: 0 11px; border-left: 1px solid var(--border); }
 .tab-header .text-button { min-height: 36px; white-space: nowrap; }
@@ -111,9 +126,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; padding: 9px 10px; border-radius: 4px; text-align: left; font-size: 13px; white-space: nowrap; }
 .terminal-menu button:not(:disabled):is(:hover,:focus) { background: var(--hover); outline: none; }
 .terminal-menu button span { color: var(--muted); font: 11px Iosevka,monospace; }
-.empty-state { padding: clamp(30px,8vw,120px); display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; background: radial-gradient(ellipse at 80% 15%,var(--accent-soft),transparent 65%); }
+.empty-state, .general-empty { padding: clamp(30px,8vw,120px); display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; background: radial-gradient(ellipse at 80% 15%,var(--accent-soft),transparent 65%); }
 .eyebrow { font-size: 10px; letter-spacing: .2em; color: var(--accent); font-weight: 700; }
-.empty-state h1 { font-size: clamp(27px,3vw,45px); font-weight: 500; letter-spacing: -1.4px; max-width: 16ch; line-height: 1.1; margin: 10px 0; }
+.empty-state h1, .general-empty h1 { font-size: clamp(27px,3vw,45px); font-weight: 500; letter-spacing: -1.4px; max-width: 16ch; line-height: 1.1; margin: 10px 0; }
 .empty-copy { color: var(--muted); max-width: 43ch; line-height: 1.7; margin-bottom: 30px; }
 .primary-button { background: var(--accent); color: var(--bg); font-weight: 650; padding: 12px 18px; border-radius: 8px; }
 .text-button { padding: 6px 9px; border-radius: 6px; font-size: 12px; }
@@ -179,9 +194,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .mobile-close { margin-left: auto; }
   .mobile-menu { align-self: center; place-items: center; margin-left: 6px; }
   .tab-header { display: grid; grid-template-columns: auto minmax(0,1fr); height: auto; }
+  .tab-header.general-view { grid-template-columns: auto minmax(0,1fr) auto; }
   .header-actions { grid-column: 1 / -1; flex-wrap: wrap; gap: 2px; padding: 4px 8px; border-left: 0; border-top: 1px solid var(--border); }
   .tabs { padding-left: 0; min-height: 44px; }
   .tab { padding: 0 13px; }
+  .close-terminal { width: 44px; height: 44px; }
+  .new-terminal { width: 44px; min-height: 44px; margin: 0 4px; }
   .terminal-pane { --terminal-font-size: 12; padding: 9px 9px 0; }
   .terminal-keyboard { display: block; }
   .terminal-keys button, .terminal-fixed-key { padding: 9px 10px; min-height: 44px; }

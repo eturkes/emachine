@@ -148,6 +148,8 @@ async fn route(
       ["api", "v1", "events"] => event_socket(runtime, exchange)
       ["api", "v1", "terminal", project] =>
         terminal_socket(runtime, exchange, project, query)
+      ["api", "v1", "terminal", "general", session] =>
+        general_terminal_socket(runtime, exchange, session, query)
       _ =>
         json_response(exchange, 404, { "error": "Unknown WebSocket endpoint" })
     }
