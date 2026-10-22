@@ -90,12 +90,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-host .xterm-viewport { background-color: var(--bg); }
 /* Safari's focus zoom follows the editable input, independently of the terminal cells. */
 .terminal-host .xterm-helper-textarea { font-size: 16px; }
-.terminal-toolbar { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); flex-shrink: 0; }
+.terminal-toolbar { display: flex; align-items: center; gap: 4px; min-width: 0; padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0; }
 .terminal-toolbar, .terminal-toolbar button { touch-action: manipulation; }
-.terminal-keys { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; overflow-x: auto; scroll-padding-inline: 6px; }
+.terminal-keys { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 8px 6px; flex: 1; overflow-x: auto; scroll-padding-inline: 6px; }
 .terminal-status { flex-shrink: 0; max-width: min(320px,70vw); margin-left: auto; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px Iosevka,monospace; color: var(--muted); }
 .terminal-keys button, .terminal-keyboard { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
-.terminal-keyboard { display: none; }
+.terminal-keyboard { display: none; margin: 8px 0 8px 6px; }
 .terminal-ios .terminal-keyboard { display: block; min-height: 44px; }
 .terminal-keys button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 .terminal-keys button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
