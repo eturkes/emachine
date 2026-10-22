@@ -38,6 +38,7 @@ export class TerminalPane {
   private host = document.createElement('div');
   private status = document.createElement('span');
   private control: HTMLButtonElement;
+  private keyboard: HTMLButtonElement;
   private terminal: Terminal;
   private detachTouch?: () => void;
   private detachInput?: () => void;
@@ -60,6 +61,7 @@ export class TerminalPane {
   private pendingSize = '';
   constructor(public link: Link, public project: Project, theme: Theme, private notice: (text: string) => void) {
     this.element.className = 'terminal-pane view';
+    this.element.classList.toggle('terminal-ios', isIOS());
     this.element.dataset.terminalProject = project.id;
     this.host.className = 'terminal-host';
     this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the project shell…'; this.status.setAttribute('role', 'status');
@@ -79,7 +81,15 @@ export class TerminalPane {
     const copy = () => { void this.copy(); };
     const paste = () => { clearModifiers(); void this.paste(); };
     keys.append(button('Copy', copy), button('Paste', paste), this.status);
-    this.element.append(this.host, keys);
+    this.keyboard = button('Keyboard', () => {
+      this.textInput?.close();
+      // iOS can dismiss its keyboard while leaving the textarea focused. Refocus in this gesture.
+      this.terminal.blur(); this.terminal.focus();
+    }, 'Show terminal keyboard');
+    this.keyboard.className = 'terminal-keyboard'; this.keyboard.disabled = true;
+    const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar';
+    toolbar.append(this.keyboard, keys);
+    this.element.append(this.host, toolbar);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
@@ -111,6 +121,7 @@ export class TerminalPane {
       this.terminal.open(this.host);
       this.detachInput = attachTerminalInput(this.host, this.terminal);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
+      this.keyboard.disabled = false;
       this.layout();
       this.connect();
     });
@@ -161,7 +172,10 @@ export class TerminalPane {
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
-    if (!this.visible || !this.element.isConnected || !this.host.clientWidth || this.mode === 'observe' && this.ws) return;
+    if (!this.visible || !this.element.isConnected || !this.host.clientWidth) return;
+    const fontSize = Number(getComputedStyle(this.element).getPropertyValue('--terminal-font-size'));
+    if (fontSize > 0 && this.terminal.options.fontSize !== fontSize) this.terminal.options.fontSize = fontSize;
+    if (this.mode === 'observe' && this.ws) return;
     const proposed = this.fit.proposeDimensions();
     if (proposed) this.terminal.resize(Math.max(2, Math.min(500, proposed.cols)), Math.max(2, Math.min(500, proposed.rows)));
   }

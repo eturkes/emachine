@@ -4,13 +4,13 @@ export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal)
   const screen = host.querySelector<HTMLElement>('.xterm-screen')!;
   const listeners = new AbortController();
   const { signal } = listeners;
-  let gesture: { id: number; x: number; y: number; lastY: number; remainder: number; vertical: boolean } | undefined;
+  let gesture: { id: number; x: number; y: number; lastY: number; remainder: number; vertical: boolean; started: number } | undefined;
   const reset = () => { gesture = undefined; };
   host.addEventListener('touchstart', event => {
     reset();
     if (event.touches.length !== 1 || event.target instanceof Element && event.target.closest('.scrollbar')) return;
     const touch = event.touches[0];
-    gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, lastY: touch.clientY, remainder: 0, vertical: false };
+    gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, lastY: touch.clientY, remainder: 0, vertical: false, started: event.timeStamp };
   }, { passive: true, signal });
   host.addEventListener('touchmove', event => {
     if (!gesture || event.touches.length !== 1 || event.touches[0].identifier !== gesture.id) { reset(); return; }
@@ -42,7 +42,14 @@ export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal)
       }));
     }
   }, { passive: false, signal });
-  host.addEventListener('touchend', reset, { passive: true, signal });
+  host.addEventListener('touchend', event => {
+    const tap = gesture; reset();
+    if (!tap || tap.vertical || event.defaultPrevented || event.touches.length || event.timeStamp - tap.started > 400) return;
+    const touch = Array.from(event.changedTouches).find(touch => touch.identifier === tap.id);
+    if (!touch || Math.max(Math.abs(touch.clientX - tap.x), Math.abs(touch.clientY - tap.y)) >= 6) return;
+    // Focus within the real touch gesture so iOS can open its software keyboard.
+    terminal.focus();
+  }, { passive: true, signal });
   host.addEventListener('touchcancel', reset, { passive: true, signal });
   return () => { reset(); listeners.abort(); };
 }

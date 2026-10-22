@@ -74,6 +74,16 @@ When the session expires, reopen the app and enter the same password.
 If an older app shows an empty download, close it from the app switcher and reopen it.
 Do not download or open that file.
 
+## Open the terminal keyboard
+
+Tap **Keyboard** to type directly in the terminal. This button stays visible when you scroll the shortcut bar.
+You can also tap the terminal once. Swipe vertically to scroll terminal history.
+Short taps open the keyboard; swipes and long presses keep their existing behavior.
+
+On iPhone and iPad, the terminal uses smaller text to show more content.
+The terminal disables double-tap zoom. You can still pinch to zoom.
+Rotate the phone to show more columns. The terminal fits the available space when the keyboard opens or closes.
+
 ## Type with native spelling tools
 
 On iPhone or iPad, select **Text** in the terminal keyboard bar.
@@ -87,7 +97,7 @@ See [Apple's autocorrection instructions](https://support.apple.com/104995).
 
 Typing and pressing Return in the field only edit the draft. **Send text** does not add an Enter key.
 Embedded line breaks follow normal terminal paste behavior. They can execute commands when the receiving program does not use bracketed paste.
-To type commands without spelling changes, select **Text** again or tap the terminal directly.
+To type commands without spelling changes, select **Keyboard**, select **Text** again, or tap the terminal directly.
 The existing terminal keys and clipboard controls keep their normal behavior.
 
 Send is unavailable during composition, observation, or disconnection.

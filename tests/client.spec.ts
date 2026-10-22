@@ -371,7 +371,7 @@ for (const viewport of [{ width: 1360, height: 900 }, { width: 390, height: 844 
         widths: [...'MWil01@#'].map(character => canvas.measureText(character).width),
       };
     });
-    expect(metrics.size).toBe(14);
+    expect(metrics.size).toBe(viewport.width <= 700 ? 12 : 14);
     // Check real glyph metrics, not just the configured family or a fallback face.
     for (const width of metrics.widths) {
       expect(width / metrics.size).toBeGreaterThanOrEqual(.58);

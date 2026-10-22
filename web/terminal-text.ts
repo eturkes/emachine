@@ -57,6 +57,10 @@ export class TerminalTextInput {
       : 'Reconnect and take control to send text.';
   }
 
+  close(): void {
+    this.element.hidden = true; this.button.setAttribute('aria-expanded', 'false');
+  }
+
   dispose(): void {
     this.text.value = ''; this.element.remove(); this.button.remove();
   }

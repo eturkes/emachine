@@ -67,6 +67,94 @@ async function deleteInput(textarea: Locator, count = 1, inputType = 'deleteCont
 test.describe('terminal input', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
+  for (const platform of ['iPhone', 'MacIntel']) test(`compact terminal on ${platform} keeps a zoom-safe input across rotation and observation`, async ({ page }) => {
+    const t = await terminal(page, platform);
+    for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
+      await page.setViewportSize(viewport);
+      await expect(t.pane.locator('.xterm-rows')).toHaveCSS('font-size', '12px');
+      await expect(t.textarea).toHaveCSS('font-size', '16px');
+      await expect(t.pane).toHaveCSS('touch-action', 'manipulation');
+      await t.textarea.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(t.textarea).toHaveCSS('font-size', '16px');
+    }
+    t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await expect(t.pane.locator('.xterm-rows')).toHaveCSS('font-size', '12px');
+    await expect(t.pane.locator('.xterm-rows > div')).toHaveCount(24);
+    await expect(t.textarea).toHaveCSS('font-size', '16px');
+    expect(await page.locator('meta[name="viewport"]').getAttribute('content')).not.toMatch(/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?:\D|$)/);
+    await expect.poll(() => t.input.join('')).toBe('\u001b[C'.repeat(3));
+  });
+
+  test('Keyboard stays reachable and synchronously focuses raw input without sending a Text draft', async ({ page }) => {
+    const t = await terminal(page), draft = await openText(t.pane);
+    await draft.text.fill('unsent draft');
+    await page.setViewportSize({ width: 390, height: 420 });
+    const keyboard = t.pane.getByRole('button', { name: 'Show terminal keyboard', exact: true });
+    await expect(keyboard).toBeVisible();
+    const before = (await keyboard.boundingBox())!;
+    await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    expect(await keyboard.boundingBox()).toEqual(before);
+    expect(before.width).toBeGreaterThanOrEqual(44);
+    expect(before.height).toBeGreaterThanOrEqual(44);
+    expect(before.x).toBeGreaterThanOrEqual(0);
+    expect(before.y + before.height).toBeLessThanOrEqual(420);
+    await expect(keyboard).toHaveCSS('touch-action', 'manipulation');
+    // Focus must happen inside the gesture, before a promise, frame or socket response.
+    expect(await keyboard.evaluate((element: HTMLButtonElement) => {
+      element.click();
+      return document.activeElement === element.closest('.terminal-pane')!.querySelector('.xterm-helper-textarea');
+    })).toBe(true);
+    await expect(draft.text).toBeHidden();
+    await expect(draft.toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(t.input).toEqual([]);
+    await keyboard.tap();
+    await expect(t.textarea).toBeFocused();
+    await page.keyboard.type('raw');
+    await expect.poll(() => t.input.join('')).toBe('raw');
+    await draft.toggle.click();
+    await expect(draft.text).toHaveValue('unsent draft');
+    await keyboard.tap();
+    t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+    await keyboard.tap();
+    await page.keyboard.type('dropped');
+    t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    expect(t.input.join('')).toBe('raw');
+  });
+
+  test('a short terminal tap focuses synchronously without treating scrolling or interrupted touches as taps', async ({ page }) => {
+    const t = await terminal(page);
+    const result = await t.pane.locator('.terminal-host').evaluate(host => {
+      const screen = host.querySelector('.xterm-screen')!, textarea = host.querySelector<HTMLTextAreaElement>('textarea')!;
+      const touch = (identifier: number, x = 80, y = 80) => ({ identifier, clientX: x, clientY: y });
+      const fire = (type: string, touches: ReturnType<typeof touch>[], changed = touches, time = 0) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, { touches: { value: touches }, changedTouches: { value: changed }, timeStamp: { value: time } });
+        screen.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      return ['tap', 'small move', 'vertical', 'horizontal', 'multitouch', 'cancel', 'long press'].map(kind => {
+        textarea.blur();
+        fire('touchstart', [touch(1)]);
+        if (kind === 'small move') fire('touchmove', [touch(1, 82, 83)]);
+        if (kind === 'vertical') fire('touchmove', [touch(1, 80, 110)]);
+        if (kind === 'horizontal') fire('touchmove', [touch(1, 110, 80)]);
+        if (kind === 'multitouch') fire('touchstart', [touch(1), touch(2)]);
+        if (kind === 'cancel') fire('touchcancel', [], [touch(1)]);
+        const cancelled = fire('touchend', [], [touch(1)], kind === 'long press' ? 1000 : 100);
+        return { kind, focused: document.activeElement === textarea, cancelled };
+      });
+    });
+    expect(result).toEqual(['tap', 'small move', 'vertical', 'horizontal', 'multitouch', 'cancel', 'long press'].map(kind => ({
+      kind, focused: kind === 'tap' || kind === 'small move', cancelled: false,
+    })));
+    expect(t.input).toEqual([]);
+  });
+
   for (const platform of ['iPhone', 'MacIntel']) test(`native spelling on ${platform} keeps corrections local until Send text`, async ({ page }) => {
     const t = await terminal(page, platform), draft = await openText(t.pane);
     await expect(draft.text).toHaveAttribute('spellcheck', 'true');
