@@ -19,7 +19,8 @@ import { alignedHeaderLabels } from './header-contract.mjs';
 const password = randomBytes(32).toString('base64url');
 const authorization = 'Basic ' + Buffer.from(`emachine:${password}`).toString('base64');
 const caddy = await ensureCaddy();
-const passwordHash = execFileSync(caddy, ['hash-password', '--algorithm', 'bcrypt'], { input: password + '\n', encoding: 'utf8' }).trim();
+// Exercise real bcrypt authentication without production-cost work on each fixture request.
+const passwordHash = execFileSync(caddy, ['hash-password', '--algorithm', 'bcrypt', '--bcrypt-cost', '4'], { input: password + '\n', encoding: 'utf8' }).trim();
 const implementation = () => import('../scripts/phone-gateway.mjs');
 
 async function stop(child) {

@@ -51,7 +51,8 @@ test('phone supervisor owns its socket and proxy; restart revokes sessions witho
   const f = await fixture({ origins: [new URL(publicUrl).origin] }); t.after(() => f.close());
   const state = await f.state(), password = randomBytes(32).toString('base64url');
   const caddy = await ensureCaddy();
-  const passwordHash = execFileSync(caddy, ['hash-password', '--algorithm', 'bcrypt'], { input: password + '\n', encoding: 'utf8' }).trim();
+  // Exercise real bcrypt authentication without production-cost work on each fixture request.
+  const passwordHash = execFileSync(caddy, ['hash-password', '--algorithm', 'bcrypt', '--bcrypt-cost', '4'], { input: password + '\n', encoding: 'utf8' }).trim();
   const settings = { publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, passwordHash, sessionSocket: join(f.home, 'session.sock') };
   const settingsPath = join(f.home, 'settings.json'), configPath = join(f.home, 'caddy.json');
   await writeFile(settingsPath, JSON.stringify(settings), { mode: 0o600 });
