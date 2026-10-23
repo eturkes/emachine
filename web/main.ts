@@ -361,7 +361,7 @@ document.addEventListener('keydown', event => {
   if (event.altKey && /^[1-9]$/.test(event.key) && !document.querySelector('dialog[open]')) { const item = entries()[Number(event.key) - 1]; if (item) { event.preventDefault(); choose(item.key); } }
 });
 function wake(): void { if (!document.hidden) { for (const link of fleet.links) link.wake(); for (const terminal of terminals.values()) terminal.wake(); } }
-document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake); window.addEventListener('pageshow', wake);
+document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake); window.addEventListener('pageshow', wake); window.addEventListener('focus', wake);
 const viewport = () => document.documentElement.style.setProperty('--app-height', `${visualViewport?.height ?? innerHeight}px`);
 visualViewport?.addEventListener('resize', viewport); window.addEventListener('resize', viewport); viewport();
 void fleet.start().catch(error => notice(String(error)));

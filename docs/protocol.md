@@ -8,6 +8,10 @@ Linux MoonBit machine servers own local projects. Clients aggregate servers; ser
 
 Each saved connection: `{id?: string, name: string, direct: string, gateway?: string}`. Addresses are HTTP(S) base URLs, normalized with a trailing slash; gateway URLs may contain a path prefix. HTTPS is required except localhost. Add relative endpoint paths to the selected base; never discard a gateway prefix. Machine identity comes from the server, not its URL. Prefer direct; retain an established route until it fails. Preserve cached project rows for offline machines. Never replay terminal input across reconnection.
 
+Inventory requests start with a 4.5-second deadline for prompt route fallback. A route that times out receives 15 seconds on its next attempt, then up to 30 seconds; retain that allowance after success for the current client session. Retry the last successful route first. Job-history recovery has a 30-second deadline and is cancelled when its connection is replaced or stopped.
+
+Event and terminal sockets send heartbeats every 10 seconds. After more than 30 seconds without a message, detach the stale socket locally and retry without waiting for its close handshake. Visibility, online, pageshow and window-focus wakeups replace sockets silent for more than 25 seconds immediately. Ignore callbacks from detached sockets; preserve mounted views, independent healthy terminals and server sessions. Disconnected terminal input is dropped. Regression coverage runs in Chromium and WebKit through `tests/recovery.spec.ts`.
+
 `GET bootstrap.json` returns `{servers: Connection[]}`. The server serves its own bootstrap; a static host or desktop bundle may provide a seed list. Absence is allowed; show machine setup. Store editable connections and theme locally. Do not store terminal output or project data in the service-worker cache.
 
 `GET api/v1/health` -> `{ok: true, protocol: 1}`.

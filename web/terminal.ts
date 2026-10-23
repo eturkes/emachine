@@ -223,7 +223,7 @@ export class TerminalPane {
   }
   update(link: Link, target: TerminalTarget): void {
     this.link = link; this.target = target;
-    if (link.online && link.route && this.route && link.route !== this.route) { this.ws?.close(); this.route = ''; }
+    if (link.online && link.route && this.route && link.route !== this.route) { this.disconnect(this.ws); this.route = ''; }
     if (link.online && !this.ws) this.connect();
     this.prompts.update();
   }
@@ -244,9 +244,12 @@ export class TerminalPane {
     this.prompts.refresh();
     this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
     this.seen = Date.now();
-    ws.onopen = () => { this.reconnects = 0; this.seen = Date.now(); };
+    ws.onopen = () => {
+      if (this.closed || generation !== this.generation || this.ws !== ws) return;
+      this.reconnects = 0; this.seen = Date.now();
+    };
     ws.onmessage = event => {
-      if (this.closed || generation !== this.generation) return;
+      if (this.closed || generation !== this.generation || this.ws !== ws) return;
       this.seen = Date.now();
       if (event.data instanceof ArrayBuffer) { this.terminal.write(new Uint8Array(event.data)); return; }
       try {
@@ -271,25 +274,32 @@ export class TerminalPane {
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
       } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
     };
-    ws.onclose = () => {
-      if (this.closed || generation !== this.generation) return;
-      this.ws = undefined; this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
-      this.textInput?.refresh();
-      this.prompts.refresh();
-      this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
-      window.clearInterval(this.heartbeat);
-      this.retry = window.setTimeout(() => this.connect(), Math.min(12000, 750 * 2 ** this.reconnects++));
-    };
-    ws.onerror = () => ws.close();
+    const disconnect = () => { if (generation === this.generation) this.disconnect(ws); };
+    ws.onclose = disconnect;
+    ws.onerror = disconnect;
     window.clearInterval(this.heartbeat);
     this.heartbeat = window.setInterval(() => {
-      if (Date.now() - this.seen > 30000) { ws.close(); return; }
+      if (this.closed || generation !== this.generation || this.ws !== ws) return;
+      if (Date.now() - this.seen > 30000) { this.disconnect(ws); return; }
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
     }, 10000);
   }
+  private disconnect(ws: WebSocket | undefined): void {
+    if (!ws || this.closed || this.ws !== ws) return;
+    // Drop local input/control immediately, independently of the browser's close handshake.
+    this.ws = undefined; this.generation++;
+    this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
+    this.textInput?.refresh();
+    this.prompts.refresh();
+    this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
+    window.clearInterval(this.heartbeat);
+    window.clearTimeout(this.retry);
+    this.retry = window.setTimeout(() => this.connect(), Math.min(12000, 750 * 2 ** this.reconnects++));
+    ws.close();
+  }
   wake(): void {
-    if (this.ws && Date.now() - this.seen > 25000) this.ws.close();
-    else this.connect();
+    if (this.ws && Date.now() - this.seen > 25000) this.disconnect(this.ws);
+    this.connect();
     this.layout();
   }
   theme(theme: Theme): void { this.terminal.options.theme = terminalTheme(theme); }

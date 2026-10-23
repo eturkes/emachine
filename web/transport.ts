@@ -63,6 +63,14 @@ function read<T>(key: string, fallback: T): T {
 function store(key: string, value: unknown): void {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage can be unavailable in a private browser. */ }
 }
+async function fetchJson(base: string, path: string, timeout: number, request: AbortController) {
+  const timer = window.setTimeout(() => request.abort(new DOMException(`Response timed out after ${timeout / 1000}s.`, 'TimeoutError')), timeout);
+  try {
+    const response = await fetch(endpoint(base, path), { credentials: 'include', signal: request.signal, cache: 'no-store' });
+    if (!response.ok) throw new Error(response.status === 403 ? 'Access denied: check the tailnet owner and allowed client origin.' : `HTTP ${response.status}`);
+    return await response.json();
+  } finally { window.clearTimeout(timer); }
+}
 export class Link {
   state?: Inventory;
   route?: string;
@@ -76,6 +84,9 @@ export class Link {
   private attempts = 0;
   private seen = 0;
   private generation = 0;
+  private deadlines = new Map<string, number>();
+  private request?: AbortController;
+  private jobsRequest?: AbortController;
   constructor(public config: Connection, private changed: () => void, private job: (link: Link, job: Job, recovered?: boolean) => void) {
     try { const cached = read<Inventory | undefined>(CACHE + config.key, undefined); if (cached) this.state = inventory(cached); } catch { /* Ignore incompatible local metadata. */ }
   }
@@ -92,14 +103,15 @@ export class Link {
     this.connecting = true;
     const generation = ++this.generation;
     window.clearTimeout(this.retry);
-    const candidates = [...new Set([this.config.direct, this.config.gateway].filter(Boolean) as string[])];
+    const candidates = [...new Set([this.route, this.config.direct, this.config.gateway].filter(Boolean) as string[])];
     const errors: string[] = [];
     for (const candidate of candidates) {
+      const timeout = this.deadlines.get(candidate) ?? 4500;
+      const request = new AbortController();
+      this.request = request;
       try {
         const base = baseUrl(candidate);
-        const response = await fetch(endpoint(base, 'api/v1/state'), { credentials: 'include', signal: AbortSignal.timeout(4500), cache: 'no-store' });
-        if (!response.ok) throw new Error(response.status === 403 ? 'Access denied: check the tailnet owner and allowed client origin.' : `HTTP ${response.status}`);
-        const next = inventory(await response.json());
+        const next = inventory(await fetchJson(base, 'api/v1/state', timeout, request));
         if (this.stopped || generation !== this.generation) return;
         if (this.config.id && this.config.id !== next.machine.id) throw new Error('Machine identity mismatch.');
         this.route = base;
@@ -111,7 +123,12 @@ export class Link {
         this.openEvents(generation);
         void this.recoverJobs(base, generation);
         return;
-      } catch (error) { errors.push(`${new URL(candidate).host}: ${error instanceof Error ? error.message : String(error)}`); }
+      } catch (error) {
+        if (this.stopped || generation !== this.generation) return;
+        // Keep fast initial fallback, then retain a larger budget for a consistently slow route.
+        if (request.signal.reason?.name === 'TimeoutError') this.deadlines.set(candidate, Math.min(30000, Math.max(15000, timeout * 2)));
+        errors.push(`${new URL(candidate).host}: ${error instanceof Error ? error.message : String(error)}`);
+      } finally { if (this.request === request) this.request = undefined; }
     }
     if (this.stopped || generation !== this.generation) return;
     this.connecting = false;
@@ -121,16 +138,17 @@ export class Link {
     this.schedule();
   }
   private async recoverJobs(base: string, generation: number): Promise<void> {
+    this.jobsRequest?.abort();
+    const request = new AbortController();
+    this.jobsRequest = request;
     try {
-      const response = await fetch(endpoint(base, 'api/v1/jobs'), { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error(`Job history: HTTP ${response.status}`);
-      const value = await response.json();
+      const value = await fetchJson(base, 'api/v1/jobs', 30000, request);
       if (this.stopped || generation !== this.generation) return;
       if (!Array.isArray(value.jobs)) throw new Error('Invalid job history response.');
       for (const job of value.jobs.slice(-200)) this.job(this, job, true);
     } catch (error) {
       if (!this.stopped && generation === this.generation) { this.error = String(error); this.changed(); }
-    }
+    } finally { if (this.jobsRequest === request) this.jobsRequest = undefined; }
   }
   private openEvents(generation: number): void {
     if (!this.route || this.stopped) return;
@@ -139,7 +157,7 @@ export class Link {
     this.ws = ws;
     this.seen = Date.now();
     ws.onmessage = event => {
-      if (generation !== this.generation || this.stopped) return;
+      if (generation !== this.generation || this.stopped || this.ws !== ws) return;
       this.seen = Date.now();
       try {
         const message = JSON.parse(String(event.data));
@@ -148,33 +166,44 @@ export class Link {
         else if (message.type === 'error') { this.error = String(message.message); this.changed(); }
       } catch (error) { this.error = error instanceof Error ? error.message : String(error); this.changed(); }
     };
-    ws.onclose = () => {
-      if (this.stopped || generation !== this.generation || this.ws !== ws) return;
-      window.clearInterval(this.heartbeat);
-      this.online = false;
-      this.error ||= 'Connection lost. Reconnecting without replaying terminal input.';
-      this.changed();
-      this.schedule();
-    };
-    ws.onerror = () => ws.close();
+    const disconnect = () => { if (generation === this.generation) this.disconnect(ws); };
+    ws.onclose = disconnect;
+    ws.onerror = disconnect;
     window.clearInterval(this.heartbeat);
     this.heartbeat = window.setInterval(() => {
-      if (Date.now() - this.seen > 30000) { ws.close(); return; }
+      if (this.stopped || generation !== this.generation || this.ws !== ws) return;
+      if (Date.now() - this.seen > 30000) { this.disconnect(ws); return; }
       if (ws.readyState === WebSocket.OPEN) ws.send('ping');
     }, 10000);
   }
+  private disconnect(ws: WebSocket | undefined): void {
+    if (!ws || this.stopped || this.ws !== ws) return;
+    // A lost connection can remain CLOSING for a long time; recovery owns its own lifetime.
+    this.ws = undefined;
+    this.generation++;
+    window.clearInterval(this.heartbeat);
+    this.jobsRequest?.abort();
+    this.online = false;
+    this.error ||= 'Connection lost. Reconnecting without replaying terminal input.';
+    this.schedule();
+    ws.close();
+    this.changed();
+  }
   private schedule(): void {
+    window.clearTimeout(this.retry);
     if (!this.stopped) this.retry = window.setTimeout(() => void this.connect(), Math.min(15000, 700 * 2 ** this.attempts++));
   }
   wake(): void {
+    if (this.online && Date.now() - this.seen > 25000) this.disconnect(this.ws);
     if (!this.online) void this.connect();
-    else if (Date.now() - this.seen > 25000) this.ws?.close();
   }
   stop(): void {
     this.stopped = true;
     this.generation++;
     window.clearTimeout(this.retry);
     window.clearInterval(this.heartbeat);
+    this.request?.abort();
+    this.jobsRequest?.abort();
     this.ws?.close();
   }
 }
