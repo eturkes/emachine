@@ -220,14 +220,43 @@ test('real MoonBit machine server acceptance', { timeout: 180000 }, async t => {
   });
 
   await t.test('newer activations win; removing a tab does not affect another project', async () => {
-    const slow = { id: 'map', title: 'Older', entry: 'index.html', build: ['/bin/sh', '-c', 'echo started; sleep 0.6'] };
+    const started = join(f.home, 'older-build-started'), release = join(f.home, 'release-older-build');
+    const waitForRelease = `
+      import { access, writeFile } from 'node:fs/promises';
+      import { setTimeout } from 'node:timers/promises';
+      const [started, release] = process.argv.slice(1);
+      await writeFile(started, 'started', { flag: 'wx' });
+      const deadline = Date.now() + 30000;
+      for (;;) {
+        try { await access(release); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (Date.now() >= deadline) throw new Error('Older build release timed out.');
+        await setTimeout(20);
+      }
+    `;
+    const slow = { id: 'map', title: 'Older', entry: 'index.html', build: [process.execPath, '--input-type=module', '-e', waitForRelease, started, release] };
     await writeFile(join(aWorkspace, 'feature.json'), JSON.stringify(slow));
-    const old = f.cli('feature', 'activate', 'alpha', 'map').then(() => 'published', () => 'superseded');
-    await until(async () => (await readFile(join(aWorkspace, '../build.log'), 'utf8')).includes('started'));
-    await writeFile(join(aWorkspace, 'feature.json'), JSON.stringify({ id: 'map', title: 'Newest', entry: 'index.html' }));
-    const latest = f.cli('feature', 'activate', 'alpha', 'map');
-    assert.equal(await old, 'superseded');
-    assert.equal(JSON.parse(await latest).title, 'Newest');
+    let olderFailure = '', latest;
+    const old = f.cli('feature', 'activate', 'alpha', 'map').then(() => 'published', error => {
+      olderFailure = [error.stdout, error.stderr, error.message].join('\n'); return 'superseded';
+    });
+    try {
+      await until(async () => (await readFile(started, 'utf8')) === 'started');
+      const requested = join(aWorkspace, '../requested.json');
+      const olderRequest = JSON.parse(await readFile(requested, 'utf8')).id;
+      await writeFile(join(aWorkspace, 'feature.json'), JSON.stringify({ id: 'map', title: 'Newest', entry: 'index.html' }));
+      latest = f.cli('feature', 'activate', 'alpha', 'map');
+      void latest.catch(() => {});
+      // Registration precedes the project lock; the newer build cannot start until the older one exits.
+      await until(async () => JSON.parse(await readFile(requested, 'utf8')).id !== olderRequest);
+      await writeFile(release, 'release');
+      assert.equal(await old, 'superseded');
+      assert.match(olderFailure, /Activation superseded by a newer request/);
+      assert.equal(JSON.parse(await latest).title, 'Newest');
+    } finally {
+      try { await writeFile(release, 'release'); }
+      finally { await Promise.allSettled([old, latest]); }
+    }
     await f.cli('feature', 'remove', 'alpha', 'map');
     await until(async () => (await f.state()).projects.find(p => p.id === alpha.id).features.length === 0);
     assert.equal((await f.state()).projects.find(p => p.id === beta.id).features[0].revision, bRevision);
