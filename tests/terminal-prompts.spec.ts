@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 // @ts-expect-error The fixture drives the native server.
 import { fixture } from './network-helper.mjs';
 
@@ -76,6 +78,120 @@ async function openPrompts(page: import('@playwright/test').Page) {
 async function routeCatalog(page: import('@playwright/test').Page) {
   await page.route('**/api/v1/prompts', route => route.fulfill({ json: { prompts: catalog } }));
 }
+
+test('real multi-section files provide separate prompt choices and steering drafts', async ({ page }) => {
+  const root = join(machine.home, '.local/app/agents/claude/prompts');
+  const automaticPath = join(root, 'auto/maintain.md');
+  const steeredPath = join(root, 'steered/maintain.md');
+  const queue = 'Work all queued rows.\n\n  Preserve indentation.';
+  const security = 'Review only the security changes.';
+  const requestBody = 'Complete the request above.';
+  const rowsBody = 'Work only the row names above.';
+  const section = (title: string, body: string) => `## ${title}\n\n---\n\n${body}\n\n---\n\n`;
+  const header = '# Maintain\n\nUse: paste one body between its rules.\n\n';
+  try {
+    await mkdir(join(root, 'auto'), { recursive: true });
+    await mkdir(join(root, 'steered'), { recursive: true });
+    await writeFile(automaticPath, header + section('Queue', queue) + section('Security review', security));
+    await writeFile(steeredPath, header + section('Request', '<request>\n\n' + requestBody) + section('Queue', '<rows>\n\n' + rowsBody));
+    const t = await promptTerminal(page);
+    t.send(Buffer.from('\u001b[?2004hsection prompts ready\r\n'));
+    await expect(t.pane.locator('.xterm-rows')).toContainText('section prompts ready');
+    const p = await openPrompts(page);
+    await expect(p.select.locator('option')).toHaveText([
+      'Maintain: Queue (automatic)', 'Maintain: Security review (automatic)',
+      'Maintain: Request (steered)', 'Maintain: Queue (steered)',
+    ]);
+    const ids = await p.select.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
+    expect(new Set(ids).size).toBe(4);
+    for (const [label, expected] of [['Maintain: Queue (automatic)', queue], ['Maintain: Security review (automatic)', security]]) {
+      await p.select.selectOption({ label });
+      await expect(p.steering).toBeHidden();
+      await expect(p.preview).toHaveValue(expected);
+      await p.copy.click();
+    }
+    const request = 'Fix the requested behavior.';
+    const rows = 'parser-boundaries\nselector-labels';
+    const requestPreview = request + '\n\n' + requestBody;
+    const rowsPreview = rows + '\n\n' + rowsBody;
+    await p.select.selectOption({ label: 'Maintain: Request (steered)' });
+    await expect(p.copy).toBeDisabled(); await expect(p.paste).toBeDisabled();
+    await p.steering.fill(request);
+    await expect(p.preview).toHaveValue(requestPreview); await p.copy.click();
+    await p.select.selectOption({ label: 'Maintain: Queue (steered)' });
+    await expect(p.steering).toHaveValue('');
+    await expect(p.copy).toBeDisabled(); await expect(p.paste).toBeDisabled();
+    await p.steering.fill(rows);
+    await expect(p.preview).toHaveValue(rowsPreview); await p.copy.click();
+    await expect.poll(() => page.evaluate(() => (window as any).promptCopies)).toEqual([queue, security, requestPreview, rowsPreview]);
+    await p.select.selectOption({ label: 'Maintain: Request (steered)' });
+    await expect(p.steering).toHaveValue(request);
+    await expect(p.preview).toHaveValue(requestPreview);
+    await p.select.selectOption({ label: 'Maintain: Queue (steered)' });
+    await expect(p.steering).toHaveValue(rows);
+    await p.reload.click();
+    await expect(p.paste).toBeEnabled();
+    await expect(p.preview).toHaveValue(rowsPreview);
+    expect(t.input).toEqual([]);
+    await p.paste.click();
+    await expect.poll(() => t.input.join('')).toBe('\u001b[200~' + rowsPreview.replaceAll('\n', '\r') + '\u001b[201~');
+    await expect(p.dialog).not.toBeVisible();
+  } finally {
+    await rm(automaticPath, { force: true });
+    await rm(steeredPath, { force: true });
+  }
+});
+
+test('duplicate section drafts follow their bodies and discarded identities stay cleared', async ({ page }) => {
+  const root = join(machine.home, '.local/app/agents/claude/prompts/steered');
+  const path = join(root, 'duplicate-drafts.md');
+  const bodyA = 'Complete task A only.';
+  const bodyB = 'Complete task B only.';
+  const draftA = 'Request for task A.';
+  const draftB = 'Request for task B.';
+  const section = (body: string) => `## Task\n\n---\n\n<request>\n\n${body}\n\n---\n\n`;
+  const source = (...bodies: string[]) => '# Duplicate drafts\n\nUse: paste one body.\n\n' + bodies.map(section).join('');
+  try {
+    await mkdir(root, { recursive: true });
+    await writeFile(path, source(bodyA, bodyB));
+    const t = await promptTerminal(page), p = await openPrompts(page);
+    await expect(p.select.locator('option')).toHaveCount(2);
+    const ids = await p.select.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
+    expect(ids[0]).not.toBe(ids[1]);
+    await p.select.selectOption(ids[0]); await p.steering.fill(draftA);
+    await expect(p.preview).toHaveValue(draftA + '\n\n' + bodyA);
+    await p.select.selectOption(ids[1]); await p.steering.fill(draftB);
+    await expect(p.preview).toHaveValue(draftB + '\n\n' + bodyB);
+    await p.select.selectOption(ids[0]);
+    await writeFile(path, source(bodyB, bodyA));
+    await p.reload.click(); await expect(p.reload).toBeEnabled();
+    await expect(p.select).toHaveValue(ids[0]);
+    await expect(p.steering).toHaveValue(draftA);
+    await expect(p.preview).toHaveValue(draftA + '\n\n' + bodyA);
+    await p.select.selectOption(ids[1]);
+    await expect(p.steering).toHaveValue(draftB);
+    await expect(p.preview).toHaveValue(draftB + '\n\n' + bodyB);
+
+    await writeFile(path, source(bodyA));
+    await page.reload();
+    await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
+    const fresh = await openPrompts(page);
+    await expect(fresh.select.locator('option')).toHaveCount(1);
+    await fresh.steering.fill('Obsolete request for the unique task A.');
+    await writeFile(path, source(bodyA, bodyB));
+    await fresh.reload.click(); await expect(fresh.reload).toBeEnabled();
+    await expect(fresh.select.locator('option')).toHaveCount(2);
+    await writeFile(path, source(bodyB));
+    await fresh.reload.click(); await expect(fresh.reload).toBeEnabled();
+    await expect(fresh.select.locator('option')).toHaveCount(1);
+    await expect(fresh.steering).toHaveValue('');
+    await expect(fresh.preview).toHaveValue(bodyB);
+    await expect(fresh.copy).toBeDisabled(); await expect(fresh.paste).toBeDisabled();
+    expect(t.input).toEqual([]);
+  } finally {
+    await rm(path, { force: true });
+  }
+});
 
 test('prompt composition, copy and paste preserve the preview without a final Enter', async ({ page }) => {
   await routeCatalog(page);

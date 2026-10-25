@@ -66,11 +66,12 @@ Use **Shift+F10** or the menu key to open the same menu from the keyboard.
 Arrow keys move between available actions. **Escape** closes the menu and returns focus to the terminal.
 
 Select **Prompts** to choose a phase prompt from the connected machine's `~/.local/app/agents/claude/prompts/auto/` or `steered/` directory.
-For a steered prompt, enter your request in **Steering**. The preview places it above the prompt body in place of the `<request>` slot.
-The file's title, usage instructions, and separator stay out of the copied text.
+Files with separate named bodies provide one choice per section, such as **Maintain: Queue** or **Maintain: Security review**.
+For a steered prompt, enter your request or row names in **Steering**. The preview places your text above the selected body in place of its `<request>` or `<rows>` slot.
+The file's title, usage instructions, section labels, and boundary separators stay out of the copied text.
 Select **Copy prompt** to copy the preview, or **Paste into terminal** to insert it into the controlling terminal. Paste adds no Enter key and removes trailing line endings.
 Use **Reload prompts** to read file changes. Each opening also loads the current files.
-Steering drafts stay with each project while the page is open. Reloading the page clears them.
+Steering drafts stay with each prompt section and project while the page is open. Reloading the page clears them.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 The `.snapshots` and `.pnpm-store` directories are excluded because they store filesystem snapshots and pnpm packages, not projects. Other dot-prefixed directories remain visible.

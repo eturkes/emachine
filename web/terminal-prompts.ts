@@ -61,7 +61,7 @@ export class TerminalPrompts {
     close.setAttribute('aria-label', 'Close prompts'); close.onclick = () => this.close();
     const header = document.createElement('div'); header.className = 'dialog-header'; header.append(title, close);
     const description = document.createElement('p'); description.className = 'dialog-copy';
-    description.textContent = 'Choose a prompt from this machine. Steered prompts place your request at the top.';
+    description.textContent = 'Choose a prompt from this machine. Steered prompts place your text at the top.';
     const choice = document.createElement('div'); choice.className = 'prompt-choice';
     const label = document.createElement('label'); label.textContent = 'Prompt'; label.append(this.select);
     this.select.onchange = () => {
@@ -78,7 +78,7 @@ export class TerminalPrompts {
     steeringLabel.append(this.steering);
     const steeringHint = document.createElement('p'); steeringHint.className = 'prompt-hint';
     steeringHint.id = `${this.element.id}-steering-hint`;
-    steeringHint.textContent = 'Your request replaces the template\'s <request> slot.';
+    steeringHint.textContent = 'Your text replaces the template\'s input slot.';
     this.steering.setAttribute('aria-describedby', steeringHint.id);
     this.steeringField.append(steeringLabel, steeringHint);
     this.steering.addEventListener('input', () => { this.drafts.set(this.selection, this.steering.value); this.refresh(); });
@@ -170,6 +170,8 @@ export class TerminalPrompts {
         : `Could not load prompts (HTTP ${response.status}).`);
       const prompts = catalog(await response.json());
       if (this.disposed || this.request !== request || this.actions.link().route !== route) return;
+      const ids = new Set(prompts.map(prompt => prompt.id));
+      for (const id of this.drafts.keys()) if (!ids.has(id)) this.drafts.delete(id);
       this.prompts = prompts;
       this.select.replaceChildren(...prompts.map(prompt => {
         const option = document.createElement('option'); option.value = prompt.id; option.textContent = prompt.title; return option;
