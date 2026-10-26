@@ -59,7 +59,7 @@ The theme button shows **Light** or **Dark**. Select it to switch colors. The fi
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
 The light terminal uses the native reference's warm off-white background and softer gray text. Programs retain their own ANSI and full RGB colors.
 The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
-The terminal shortcut bar includes **Prompts**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
+The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.
 Right-click the terminal for **Copy**, **Paste**, **Select all**, and **Clear selection**.
@@ -73,6 +73,12 @@ The file's title, usage instructions, section labels, and boundary separators st
 Select **Copy prompt** to copy the preview, or **Paste into terminal** to insert it into the controlling terminal. Paste adds no Enter key and removes trailing line endings.
 Use **Reload prompts** to read file changes. Each opening also loads the current files.
 Steering drafts stay with each prompt section and project while the page is open. Reloading the page clears them.
+
+Select **History** in a project's terminal to browse its Claude Code prompts, newest first, with dates and full selectable text.
+Scroll the list and select **Load older** to continue through earlier entries. **Reload history** reads newly recorded prompts; **Copy prompt** copies exactly the displayed text.
+The history includes the project directory and its subdirectories on that machine. General terminals have no project history.
+History comes from Claude Code's `history.jsonl` in `CLAUDE_CONFIG_DIR`, or `~/.claude` by default. Available pasted text is restored; expired or unavailable pasted text is marked.
+Only prompts still recorded by Claude Code are available. Browsing and copying do not send terminal input or change the saved history.
 
 Emachine scans the immediate directories under `~/Projects/` once per second. Adding or removing a directory updates connected clients. A renamed directory retains its identity when its filesystem identity is unchanged.
 The `.snapshots` and `.pnpm-store` directories are excluded because they store filesystem snapshots and pnpm packages, not projects. Other dot-prefixed directories remain visible.

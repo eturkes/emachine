@@ -202,6 +202,21 @@ async fn route(
       json_response(exchange, 200, @json.to_json(runtime.state))
     ["api", "v1", "prompts"] =>
       json_response(exchange, 200, @model.prompt_catalog())
+    ["api", "v1", "projects", project, "prompt-history"] => {
+      let mut cursor = ""
+      if !query.is_empty() {
+        match query.split_once("=") {
+          Some(("cursor", value)) if !value.is_empty() && !value.contains("&") =>
+            cursor = @model.url_decode(value.to_owned())
+          _ => fail("Invalid prompt history query")
+        }
+      }
+      json_response(
+        exchange,
+        200,
+        @model.prompt_history(runtime.config, project, cursor),
+      )
+    }
     ["api", "v1", "jobs"] => {
       let jobs : Array[Json] = []
       for _, job in runtime.jobs {

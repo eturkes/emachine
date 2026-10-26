@@ -7,6 +7,7 @@ import { attachTerminalClipboard } from './terminal-clipboard';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
+import { TerminalHistory } from './terminal-history';
 import { socketUrl, type Link } from './transport';
 export type Theme = 'dark' | 'light';
 export type TerminalTarget = { kind: 'project'; id: string } | { kind: 'general'; session: string };
@@ -48,6 +49,7 @@ export class TerminalPane {
   private detachInput?: () => void;
   private textInput?: TerminalTextInput;
   private prompts: TerminalPrompts;
+  private history?: TerminalHistory;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private fit = new FitAddon();
   private ws?: WebSocket;
@@ -134,6 +136,14 @@ export class TerminalPane {
       focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
     });
     this.element.append(this.prompts.element); keys.prepend(this.prompts.button);
+    if (target.kind === 'project') {
+      this.history = new TerminalHistory({
+        link: () => this.link,
+        project: () => this.target.kind === 'project' ? this.target.id : '',
+        focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
+      });
+      this.element.append(this.history.element); this.prompts.button.after(this.history.button);
+    }
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
@@ -212,7 +222,7 @@ export class TerminalPane {
     this.element.hidden = !show;
     if (!show) this.clipboard.close();
     // A render hides every pane before showing the active one again.
-    if (!show) queueMicrotask(() => { if (!this.visible) this.prompts.close(false); });
+    if (!show) queueMicrotask(() => { if (!this.visible) { this.prompts.close(false); this.history?.close(false); } });
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
@@ -228,6 +238,7 @@ export class TerminalPane {
     if (link.online && link.route && this.route && link.route !== this.route) { this.disconnect(this.ws); this.route = ''; }
     if (link.online && !this.ws) this.connect();
     this.prompts.update();
+    this.history?.update();
   }
   private connect(): void {
     // Attach only after font-backed fitting; a default-sized replay can corrupt a live TUI.
@@ -315,6 +326,7 @@ export class TerminalPane {
     this.keyboardEvents.abort();
     this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
     this.prompts.dispose();
+    this.history?.dispose();
     this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
   }
 }

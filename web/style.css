@@ -151,6 +151,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
 .prompt-actions button { min-height: 44px; }
 .prompt-actions .text-button { border: 1px solid var(--border); }
+.history-dialog { width: min(820px,calc(100vw - 28px)); height: min(740px,calc(var(--app-height,100dvh) - 28px)); max-height: calc(var(--app-height,100dvh) - 28px); overflow: hidden; }
+.history-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.history-dialog .dialog-header, .history-dialog .dialog-copy, .history-footer { flex-shrink: 0; }
+.history-dialog .dialog-copy { margin: 0; }
+.history-dialog button { min-height: 44px; }
+.history-list { flex: 1; min-height: 0; margin: 0; padding: 0; overflow: auto; overscroll-behavior: contain; list-style: none; border-block: 1px solid var(--border); }
+.history-entry { padding: 14px 4px; border-bottom: 1px solid var(--border); }
+.history-entry:last-child { border-bottom: 0; }
+.history-entry-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.history-entry time { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.history-entry .text-button { flex-shrink: 0; }
+.history-body { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 Iosevka,monospace; color: var(--text); }
+.history-incomplete { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.history-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.history-status { flex: 1 1 160px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.history-controls { display: flex; gap: 8px; margin-left: auto; }
+.history-controls button { border: 1px solid var(--border); }
 .dialog-copy { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .interface-control { white-space: nowrap; }
 .interface-control.has-update { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent); }

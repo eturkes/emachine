@@ -38,6 +38,8 @@ pub fn project_data(Config, String) -> String raise
 
 pub async fn prompt_catalog() -> Json
 
+pub async fn prompt_history(Config, String, String) -> Json
+
 pub async fn read_json(String) -> Json
 
 pub async fn resolve_project(Config, String) -> Project
