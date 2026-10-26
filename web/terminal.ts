@@ -108,7 +108,7 @@ export class TerminalPane {
     toolbar.append(this.keyboard, escape, keys);
     this.element.append(this.host, toolbar);
     const colors = terminalTheme(theme);
-    this.element.style.backgroundColor = colors.background;
+    this.element.style.setProperty('--terminal-background', colors.background);
     this.terminal = new Terminal({ theme: colors, fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
@@ -306,7 +306,7 @@ export class TerminalPane {
   }
   theme(theme: Theme): void {
     const colors = terminalTheme(theme);
-    this.element.style.backgroundColor = colors.background;
+    this.element.style.setProperty('--terminal-background', colors.background);
     this.terminal.options.theme = colors;
   }
   dispose(): void {

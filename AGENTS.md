@@ -15,7 +15,7 @@
 - Header = text controls + view titles; route details in Settings, disconnection in the offline banner. AppImage upgrades = external GitHub Releases; no built-in updater. Interface refresh remains independent.
 - Theme = persisted light/dark; environment resolves missing/legacy preferences once. Desktop rail stays expanded; phone drawer remains. No project/path or live-shell strips; exceptional terminal status + control share the shortcut bar.
 - Shell + default feature styling = neutral grayscale in both themes, including text, surfaces, controls, selection, focus, terminal defaults + launcher icons. Accent tokens mean neutral emphasis. Use chromatic colors only for labeled functional states, warnings/errors, or data distinctions; keep semantic tokens separate from controls. Match the parent theme; copy/pin styles per feature. Apply this default to every new feature unless explicitly overridden.
-- Terminal light defaults match the native reference: background `#f6f5f4`, foreground/cursor `#424242`; pane padding uses the same terminal background. Preserve application-supplied ANSI/indexed/RGB colors and the dark palette. Terminal light background is an explicit exception to the shell's grayscale rule.
+- Terminal light defaults match the native reference: background `#f6f5f4`, foreground/cursor `#424242`; pane padding and the outer xterm viewport use the same terminal background. Preserve application-supplied ANSI/indexed/RGB colors and the dark palette. Terminal light background is an explicit exception to the shell's grayscale rule.
 
 ## Feature iteration
 

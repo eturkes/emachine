@@ -422,6 +422,7 @@ test('light palette keeps the shell neutral and matches native terminal colors o
       terminalText: getComputedStyle(document.querySelector('.xterm-rows')!).color,
       terminalBackground: getComputedStyle(document.querySelector('.xterm-scrollable-element')!).backgroundColor,
       terminalPaneBackground: getComputedStyle(document.querySelector('.terminal-pane')!).backgroundColor,
+      terminalViewportBackground: getComputedStyle(document.querySelector('.xterm-viewport')!).backgroundColor,
       chrome: document.querySelector('meta[name="theme-color"]')!.getAttribute('content'),
     };
   });
@@ -437,6 +438,7 @@ test('light palette keeps the shell neutral and matches native terminal colors o
   expect(rgb(light.terminalText)).toEqual([66, 66, 66]);
   expect(rgb(light.terminalBackground)).toEqual([246, 245, 244]);
   expect(light.terminalPaneBackground).toBe(light.terminalBackground);
+  expect(light.terminalViewportBackground).toBe(light.terminalBackground);
   expect(light.chrome).toBe(light.tokens.bg);
   for (const foreground of ['text', 'muted', 'accent']) for (const background of ['bg', 'surface', 'hover']) {
     const values = [luminance(light.tokens[foreground]), luminance(light.tokens[background])].sort((a, b) => a - b);
