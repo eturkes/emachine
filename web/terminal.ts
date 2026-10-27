@@ -16,7 +16,7 @@ export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
   black: '#202020', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
   brightBlack: '#858585', brightRed: '#ff9d9d', brightGreen: '#a4efb6', brightYellow: '#ffe19b', brightBlue: '#b0caff', brightMagenta: '#e0b9ff', brightCyan: '#a2f4df', brightWhite: '#ffffff',
 } : {
-  background: '#f6f5f4', foreground: '#424242', cursor: '#424242', cursorAccent: '#f6f5f4', selectionBackground: '#a3a3a380',
+  background: '#f7f7f7', foreground: '#292929', cursor: '#454545', cursorAccent: '#f7f7f7', selectionBackground: '#a3a3a380',
   black: '#292929', red: '#a73748', green: '#21744a', yellow: '#88621a', blue: '#345daa', magenta: '#835096', cyan: '#267d7b', white: '#666666',
   brightBlack: '#666666', brightRed: '#bb4355', brightGreen: '#217c50', brightYellow: '#906d24', brightBlue: '#486caf', brightMagenta: '#9564a9', brightCyan: '#2b8580', brightWhite: '#202020',
 };
@@ -109,9 +109,7 @@ export class TerminalPane {
     const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Terminal keyboard controls');
     toolbar.append(this.keyboard, escape, keys);
     this.element.append(this.host, toolbar);
-    const colors = terminalTheme(theme);
-    this.element.style.setProperty('--terminal-background', colors.background);
-    this.terminal = new Terminal({ theme: colors, fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
+    this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
@@ -315,11 +313,7 @@ export class TerminalPane {
     this.connect();
     this.layout();
   }
-  theme(theme: Theme): void {
-    const colors = terminalTheme(theme);
-    this.element.style.setProperty('--terminal-background', colors.background);
-    this.terminal.options.theme = colors;
-  }
+  theme(theme: Theme): void { this.terminal.options.theme = terminalTheme(theme); }
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);

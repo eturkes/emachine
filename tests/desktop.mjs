@@ -192,19 +192,9 @@ try {
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await neutralTheme(page.locator('body'), {
       tokens: ['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft', 'selection', 'backdrop', 'scrim'],
-      selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows'],
+      selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows', '.xterm-scrollable-element'],
       surfaces: ['bg', 'surface', 'raised', 'hover'], semantic: ['warning', 'danger'],
     });
-    const terminalColors = await page.evaluate(() => ({
-      foreground: getComputedStyle(document.querySelector('.xterm-rows')).color,
-      background: getComputedStyle(document.querySelector('.xterm-scrollable-element')).backgroundColor,
-      pane: getComputedStyle(document.querySelector('.terminal-pane')).backgroundColor,
-      viewport: getComputedStyle(document.querySelector('.xterm-viewport')).backgroundColor,
-    }));
-    assert.equal(terminalColors.foreground, theme === 'light' ? 'rgb(66, 66, 66)' : 'rgb(231, 231, 231)');
-    assert.equal(terminalColors.background, theme === 'light' ? 'rgb(246, 245, 244)' : 'rgb(21, 21, 21)');
-    assert.equal(terminalColors.pane, terminalColors.background);
-    assert.equal(terminalColors.viewport, terminalColors.background);
     await page.screenshot({ path: join(root, `test-results/emachine-appimage-${theme}.png`) });
   }
   await page.screenshot({ path: join(root, 'test-results/emachine-appimage.png') });

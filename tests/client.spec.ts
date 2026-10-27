@@ -407,7 +407,7 @@ test('terminal cells match the loaded font after a delayed font response', async
   expect(Math.abs(metrics.cell - metrics.glyph)).toBeLessThanOrEqual(metrics.pixel);
 });
 
-test('light palette keeps the shell neutral and matches native terminal colors on phones and desktop', async ({ page }) => {
+test('light palette stays neutral across the shell, terminal and phone layout', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   const toggle = page.getByRole('button', { name: /^Theme:/ });
@@ -421,8 +421,6 @@ test('light palette keeps the shell neutral and matches native terminal colors o
       selection: getComputedStyle(document.documentElement, '::selection').backgroundColor,
       terminalText: getComputedStyle(document.querySelector('.xterm-rows')!).color,
       terminalBackground: getComputedStyle(document.querySelector('.xterm-scrollable-element')!).backgroundColor,
-      terminalPaneBackground: getComputedStyle(document.querySelector('.terminal-pane')!).backgroundColor,
-      terminalViewportBackground: getComputedStyle(document.querySelector('.xterm-viewport')!).backgroundColor,
       chrome: document.querySelector('meta[name="theme-color"]')!.getAttribute('content'),
     };
   });
@@ -432,13 +430,11 @@ test('light palette keeps the shell neutral and matches native terminal colors o
   const rgb = (color: string) => color.startsWith('#') ? color.slice(1, 7).match(/../g)!.map(hex => parseInt(hex, 16)) : color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
   const luminance = (color: string) => rgb(color).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
   const light = await colors();
-  for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText })) {
+  for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText, terminalBackground: light.terminalBackground })) {
     expect(new Set(rgb(color)).size, `${name} must have no color tint`).toBe(1);
   }
-  expect(rgb(light.terminalText)).toEqual([66, 66, 66]);
-  expect(rgb(light.terminalBackground)).toEqual([246, 245, 244]);
-  expect(light.terminalPaneBackground).toBe(light.terminalBackground);
-  expect(light.terminalViewportBackground).toBe(light.terminalBackground);
+  expect(rgb(light.terminalText)).toEqual(rgb(light.tokens.text));
+  expect(rgb(light.terminalBackground)).toEqual(rgb(light.tokens.bg));
   expect(light.chrome).toBe(light.tokens.bg);
   for (const foreground of ['text', 'muted', 'accent']) for (const background of ['bg', 'surface', 'hover']) {
     const values = [luminance(light.tokens[foreground]), luminance(light.tokens[background])].sort((a, b) => a - b);

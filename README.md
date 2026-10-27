@@ -57,7 +57,6 @@ See [the FreeBSD deployment notes](docs/public-gateway.md) for that alternative.
 Use **Control+Shift+P** to find a project or view. Select a project from the sidebar to open its terminal.
 The theme button shows **Light** or **Dark**. Select it to switch colors. The first launch uses your environment's color preference.
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
-The light terminal uses the native reference's warm off-white background and softer gray text. Programs retain their own ANSI and full RGB colors.
 The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
 The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
