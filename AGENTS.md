@@ -15,6 +15,7 @@
 - Header = text controls + view titles; route details in Settings, disconnection in the offline banner. AppImage upgrades = external GitHub Releases; no built-in updater. Interface refresh remains independent.
 - Theme = persisted light/dark; environment resolves missing/legacy preferences once. Desktop rail stays expanded; phone drawer remains. No project/path or live-shell strips; exceptional terminal status + control share the shortcut bar.
 - Shell + default feature styling = neutral grayscale in both themes, including text, surfaces, controls, selection, focus, terminal defaults + launcher icons. Accent tokens mean neutral emphasis. Use chromatic colors only for labeled functional states, warnings/errors, or data distinctions; keep semantic tokens separate from controls. Match the parent theme; copy/pin styles per feature. Apply this default to every new feature unless explicitly overridden.
+- Dark shell, terminal and default feature surfaces use pure black for OLED; retain borders and small interaction highlights. Terminal rendering uses xterm's `minimumContrastRatio: 4.5` in both themes, preserving program theme settings and PTY/copy bytes. `tests/terminal-contrast.spec.ts` checks rendered ANSI/indexed/RGB text, selection/dim styling and black phone surfaces in Chromium/WebKit.
 
 ## Feature iteration
 

@@ -12,8 +12,8 @@ import { socketUrl, type Link } from './transport';
 export type Theme = 'dark' | 'light';
 export type TerminalTarget = { kind: 'project'; id: string } | { kind: 'general'; session: string };
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
-  background: '#151515', foreground: '#e7e7e7', cursor: '#d6d6d6', cursorAccent: '#151515', selectionBackground: '#a3a3a380',
-  black: '#202020', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
+  background: '#000000', foreground: '#e7e7e7', cursor: '#d6d6d6', cursorAccent: '#000000', selectionBackground: '#a3a3a380',
+  black: '#000000', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
   brightBlack: '#858585', brightRed: '#ff9d9d', brightGreen: '#a4efb6', brightYellow: '#ffe19b', brightBlue: '#b0caff', brightMagenta: '#e0b9ff', brightCyan: '#a2f4df', brightWhite: '#ffffff',
 } : {
   background: '#f7f7f7', foreground: '#292929', cursor: '#454545', cursorAccent: '#f7f7f7', selectionBackground: '#a3a3a380',
@@ -112,7 +112,12 @@ export class TerminalPane {
     toolbar.append(this.keyboard, escape, tab, keys);
     const main = document.createElement('div'); main.className = 'terminal-main';
     main.append(this.host, toolbar); this.element.append(main);
-    this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
+    // Light-themed programs can emit dark text; correct its rendered contrast without changing PTY bytes.
+    this.terminal = new Terminal({
+      theme: terminalTheme(theme), minimumContrastRatio: 4.5,
+      fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
+      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false,
+    });
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });

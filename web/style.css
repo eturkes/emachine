@@ -2,11 +2,11 @@
   color-scheme: light dark;
   font-family: 'Atkinson Hyperlegible Next Variable', system-ui, sans-serif;
   font-synthesis: none;
-  --bg: #151515; --surface: #1c1c1c; --raised: #262626; --hover: #303030;
+  --bg: #000000; --surface: #000000; --raised: #000000; --hover: #181818;
   --text: #e7e7e7; --muted: #ababab; --border: #3a3a3a; --accent: #d6d6d6;
   --accent-soft: #d6d6d612; --warning: #ecc780; --danger: #ed7985;
   --claude-working: #8cbaff; --claude-completed: #8ac79c;
-  --selection: #d6d6d633; --backdrop: #080808b0; --scrim: #080808aa;
+  --selection: #d6d6d633; --backdrop: #000000b0; --scrim: #000000aa;
   --rail: 252px; --bar: 56px; --radius: 10px;
   background: var(--bg); color: var(--text); font-size: 15px;
 }
@@ -127,7 +127,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; padding: 9px 10px; border-radius: 4px; text-align: left; font-size: 13px; white-space: nowrap; }
 .terminal-menu button:not(:disabled):is(:hover,:focus) { background: var(--hover); outline: none; }
 .terminal-menu button span { color: var(--muted); font: 11px Iosevka,monospace; }
-.empty-state, .general-empty { padding: clamp(30px,8vw,120px); display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; background: radial-gradient(ellipse at 80% 15%,var(--accent-soft),transparent 65%); }
+.empty-state, .general-empty { padding: clamp(30px,8vw,120px); display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; background: var(--bg); }
+:root[data-theme='light'] :is(.empty-state, .general-empty) { background: radial-gradient(ellipse at 80% 15%,var(--accent-soft),transparent 65%); }
 .eyebrow { font-size: 10px; letter-spacing: .2em; color: var(--accent); font-weight: 700; }
 .empty-state h1, .general-empty h1 { font-size: clamp(27px,3vw,45px); font-weight: 500; letter-spacing: -1.4px; max-width: 16ch; line-height: 1.1; margin: 10px 0; }
 .empty-copy { color: var(--muted); max-width: 43ch; line-height: 1.7; margin-bottom: 30px; }

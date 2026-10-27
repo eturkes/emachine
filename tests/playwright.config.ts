@@ -4,12 +4,12 @@ import { execFileSync } from 'node:child_process';
 import { webkitOptions } from '../scripts/webkit.mjs';
 
 export default defineConfig({
-  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'general.spec.ts', 'recovery.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts'], workers: 1,
+  testDir: '.', testMatch: ['client.spec.ts', 'projects.spec.ts', 'general.spec.ts', 'recovery.spec.ts', 'terminal-touch.spec.ts', 'terminal-resize.spec.ts', 'terminal-clipboard.spec.ts', 'terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts', 'terminal-contrast.spec.ts'], workers: 1,
   timeout: 45000, expect: { timeout: 15000 }, reporter: 'list',
   outputDir: '../test-results/browser',
   projects: [
     { name: 'chromium', use: { launchOptions: { executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim() } } },
-    { name: 'webkit-input', testMatch: ['terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts', 'recovery.spec.ts'], use: { browserName: 'webkit', launchOptions: webkitOptions() } },
+    { name: 'webkit-input', testMatch: ['terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts', 'terminal-contrast.spec.ts', 'recovery.spec.ts'], use: { browserName: 'webkit', launchOptions: webkitOptions() } },
   ],
   use: {
     headless: true, viewport: { width: 1360, height: 900 },

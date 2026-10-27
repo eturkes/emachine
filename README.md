@@ -57,6 +57,8 @@ See [the FreeBSD deployment notes](docs/public-gateway.md) for that alternative.
 Use **Control+Shift+P** to find a project or view. Select a project from the sidebar to open its terminal.
 The theme button shows **Light** or **Dark**. Select it to switch colors. The first launch uses your environment's color preference.
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
+Dark mode uses pure-black terminal and panel backgrounds, with borders and small neutral highlights for controls.
+The terminal improves low-contrast text in either theme, so Claude Code can keep its light-mode setting while emachine stays dark. Copied text and terminal output are preserved.
 The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
 The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
