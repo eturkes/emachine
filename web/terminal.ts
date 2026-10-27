@@ -81,7 +81,7 @@ export class TerminalPane {
     const clearModifiers = () => { useCtrl = useAlt = false; ctrl.setAttribute('aria-pressed', 'false'); alt.setAttribute('aria-pressed', 'false'); };
     clearModifiers();
     keys.append(this.control, ctrl, alt);
-    for (const [label, value] of [['Tab', '\t'], ['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
+    for (const [label, value] of [['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
       keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Shift + ←' ? 'Shift + Arrow Left' : label));
     }
     keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
@@ -106,8 +106,10 @@ export class TerminalPane {
     this.keyboard.addEventListener('pointercancel', () => { this.keyboardTap = undefined; }, { signal: this.keyboardEvents.signal });
     const escape = button('Esc', () => { this.terminal.input('\u001b'); this.terminal.focus(); });
     escape.className = 'terminal-fixed-key';
+    const tab = button('Tab', () => { this.terminal.input('\t'); this.terminal.focus(); });
+    tab.className = 'terminal-fixed-key';
     const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Terminal keyboard controls');
-    toolbar.append(this.keyboard, escape, keys);
+    toolbar.append(this.keyboard, escape, tab, keys);
     this.element.append(this.host, toolbar);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);

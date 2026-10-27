@@ -145,53 +145,65 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
-  test('Keyboard and Esc spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
+  test('Keyboard, Esc and Tab spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
     const t = await terminal(page);
     const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
+    const tab = t.pane.getByRole('button', { name: 'Tab', exact: true });
     await expect(escape).toHaveCount(1);
+    await expect(tab).toHaveCount(1);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
       await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
       await expect(escape).toBeInViewport({ ratio: 1 });
+      await expect(tab).toBeInViewport({ ratio: 1 });
       const geometry = await t.pane.evaluate(element => {
         const keys = element.querySelector<HTMLElement>('.terminal-keys')!; keys.scrollLeft = 0;
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
         const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
+        const tab = element.querySelector('button[aria-label="Tab"]')!.getBoundingClientRect();
         const [first, second] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
-        return { fixedGap: escape.left - keyboard.right, scrollGap: first.left - escape.right, shortcutGap: second.left - first.right,
-          keyboardTop: keyboard.top, escapeTop: escape.top, shortcutTop: first.top,
-          keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, shortcutHeight: first.height };
+        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: second.left - first.right,
+          keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: first.top,
+          keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: first.height };
       });
       expect(geometry.fixedGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.tabGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.scrollGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.escapeTop).toBeCloseTo(geometry.shortcutTop, 3);
+      expect(geometry.tabTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.keyboardHeight).toBeCloseTo(geometry.shortcutHeight, 3);
       expect(geometry.escapeHeight).toBeCloseTo(geometry.shortcutHeight, 3);
+      expect(geometry.tabHeight).toBeCloseTo(geometry.shortcutHeight, 3);
       expect(geometry.keyboardHeight).toBeGreaterThanOrEqual(44);
       expect(geometry.escapeHeight).toBeGreaterThanOrEqual(44);
       expect(geometry.escapeWidth).toBeGreaterThanOrEqual(44);
+      expect(geometry.tabHeight).toBeGreaterThanOrEqual(44);
+      expect(geometry.tabWidth).toBeGreaterThanOrEqual(44);
       const before = await escape.boundingBox();
+      const tabBefore = await tab.boundingBox();
       await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
       expect(await escape.boundingBox()).toEqual(before);
+      expect(await tab.boundingBox()).toEqual(tabBefore);
       await expect(escape).toBeInViewport({ ratio: 1 });
+      await expect(tab).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = 0; });
       if (viewport.width === 390 || viewport.width === 844) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
     }
   });
 
-  test('Esc stays reachable and sends Escape without sending drafts or replaying blocked input', async ({ page }) => {
+  for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t']] as const) test(`${label} stays reachable without sending drafts or replaying blocked input`, async ({ page }) => {
     const t = await terminal(page), draft = await openText(t.pane);
-    const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
+    const shortcut = t.pane.getByRole('button', { name: label, exact: true });
     const keyboard = t.pane.locator('.terminal-keyboard');
     await draft.text.fill('unsent draft');
     await page.setViewportSize({ width: 390, height: 420 });
     await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
-    await expect(escape).toBeInViewport({ ratio: 1 });
-    await expect(escape).toHaveCSS('touch-action', 'manipulation');
-    await escape.tap();
-    await expect.poll(() => t.input).toEqual(['\u001b']);
+    await expect(shortcut).toBeInViewport({ ratio: 1 });
+    await expect(shortcut).toHaveCSS('touch-action', 'manipulation');
+    await shortcut.tap();
+    await expect.poll(() => t.input).toEqual([value]);
     await expect(t.textarea).toBeFocused();
     await expect(draft.text).toHaveValue('unsent draft');
     await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
@@ -201,26 +213,27 @@ test.describe('terminal input', () => {
 
     const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
     const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-    await ctrl.tap(); await alt.tap(); await escape.tap();
-    await expect.poll(() => t.input).toEqual(['\u001b', '\u001b\u001b']);
+    await ctrl.tap(); await alt.tap(); await shortcut.tap();
+    await expect.poll(() => t.input).toEqual([value, '\u001b' + value]);
     await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
     await expect(alt).toHaveAttribute('aria-pressed', 'false');
     await page.keyboard.type('x');
-    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bx');
+    const sent = value + '\u001b' + value + 'x';
+    await expect.poll(() => t.input.join('')).toBe(sent);
 
     t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
     await expect(t.pane).toHaveAttribute('data-mode', 'observe');
-    await escape.tap();
+    await shortcut.tap();
     t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
     await expect(t.pane).toHaveAttribute('data-mode', 'control');
     await page.keyboard.type('control');
-    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bxcontrol');
+    await expect.poll(() => t.input.join('')).toBe(sent + 'control');
     t.disconnect();
     await expect(t.pane).toHaveAttribute('data-mode', 'disconnected');
-    await escape.tap();
+    await shortcut.tap();
     await expect(t.pane).toHaveAttribute('data-mode', 'control');
     await t.textarea.focus(); await page.keyboard.type('reconnected');
-    await expect.poll(() => t.input.join('')).toBe('\u001b\u001b\u001bxcontrolreconnected');
+    await expect.poll(() => t.input.join('')).toBe(sent + 'controlreconnected');
     await draft.toggle.tap();
     await expect(draft.text).toHaveValue('unsent draft');
   });
