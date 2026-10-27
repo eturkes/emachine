@@ -31,7 +31,7 @@ function historyPage(value: unknown): HistoryPage {
 let nextId = 0;
 
 export class TerminalHistory {
-  readonly element = document.createElement('dialog');
+  readonly element = document.createElement('aside');
   readonly button = document.createElement('button');
   private list = document.createElement('ol');
   private status = document.createElement('p');
@@ -44,23 +44,22 @@ export class TerminalHistory {
   private error = '';
   private loading = false;
   private disposed = false;
-  private focusOnClose = true;
   private request?: AbortController;
 
   constructor(private actions: HistoryActions) {
     this.element.id = 'terminal-history-' + ++nextId;
-    this.element.className = 'dialog history-dialog';
+    this.element.className = 'history-sidebar'; this.element.hidden = true;
     const title = document.createElement('h2'); title.textContent = 'Prompt history';
     title.id = this.element.id + '-title'; this.element.setAttribute('aria-labelledby', title.id);
     this.button.type = 'button'; this.button.textContent = 'History';
     this.button.setAttribute('aria-controls', this.element.id);
-    this.button.setAttribute('aria-haspopup', 'dialog'); this.button.setAttribute('aria-expanded', 'false');
-    this.button.onclick = () => this.open();
+    this.button.setAttribute('aria-expanded', 'false');
+    this.button.onclick = () => { if (this.element.hidden) this.open(); else this.close(); };
     const close = document.createElement('button');
-    close.type = 'button'; close.className = 'text-button'; close.textContent = 'Close';
-    close.setAttribute('aria-label', 'Close prompt history'); close.onclick = () => this.close();
-    const header = document.createElement('div'); header.className = 'dialog-header'; header.append(title, close);
-    const description = document.createElement('p'); description.className = 'dialog-copy';
+    close.type = 'button'; close.className = 'text-button'; close.textContent = 'Collapse';
+    close.setAttribute('aria-label', 'Collapse prompt history'); close.onclick = () => this.close();
+    const header = document.createElement('div'); header.className = 'history-header'; header.append(title, close);
+    const description = document.createElement('p'); description.className = 'history-description';
     description.textContent = 'Claude Code history for this project. Newest prompts first.';
     this.list.className = 'history-list'; this.list.setAttribute('role', 'list'); this.list.setAttribute('aria-label', 'Prompts, newest first');
     this.list.tabIndex = 0;
@@ -72,10 +71,9 @@ export class TerminalHistory {
     const controls = document.createElement('div'); controls.className = 'history-controls'; controls.append(this.reload, this.older);
     const footer = document.createElement('div'); footer.className = 'history-footer'; footer.append(this.status, controls);
     this.element.append(header, description, this.list, footer);
-    this.element.addEventListener('close', () => {
-      if (this.element.open) return;
-      this.cancel(); this.button.setAttribute('aria-expanded', 'false');
-      if (this.focusOnClose && !this.disposed) this.actions.focusTerminal();
+    this.element.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || event.isComposing) return;
+      event.preventDefault(); event.stopPropagation(); this.close();
     });
     this.refresh();
   }
@@ -95,20 +93,22 @@ export class TerminalHistory {
   }
 
   private open(): void {
-    if (this.disposed || this.element.open) return;
-    this.focusOnClose = true; this.element.showModal(); this.button.setAttribute('aria-expanded', 'true');
+    if (this.disposed || !this.element.hidden) return;
+    this.element.hidden = false; this.button.setAttribute('aria-expanded', 'true');
+    this.list.focus({ preventScroll: true });
     void this.load();
   }
 
   close(focus = true): void {
-    this.focusOnClose = focus; this.cancel();
-    if (this.element.open) this.element.close();
+    const wasOpen = !this.element.hidden;
+    this.cancel(); this.element.hidden = true; this.button.setAttribute('aria-expanded', 'false');
+    if (wasOpen && focus && !this.disposed) this.actions.focusTerminal();
   }
 
   update(): void {
     if (this.source !== this.identity()) {
       this.cancel(); this.clear(); this.source = this.identity(); this.error = '';
-      if (this.element.open) { void this.load(); return; }
+      if (!this.element.hidden) { void this.load(); return; }
     }
     this.refresh();
   }
@@ -141,7 +141,7 @@ export class TerminalHistory {
   }
 
   private async copy(prompt: HistoryPrompt): Promise<void> {
-    const current = () => !this.disposed && this.element.open && this.source === this.identity() && this.prompts.get(prompt.id) === prompt;
+    const current = () => !this.disposed && !this.element.hidden && this.source === this.identity() && this.prompts.get(prompt.id) === prompt;
     if (!current()) return;
     try {
       await navigator.clipboard.writeText(prompt.body);
@@ -152,7 +152,7 @@ export class TerminalHistory {
   }
 
   private async load(older = false): Promise<void> {
-    if (this.disposed || !this.element.open) return;
+    if (this.disposed || this.element.hidden) return;
     const cursor = older ? this.nextCursor : null;
     if (older && cursor === null) return;
     this.cancel();

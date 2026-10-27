@@ -110,7 +110,8 @@ export class TerminalPane {
     tab.className = 'terminal-fixed-key';
     const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Terminal keyboard controls');
     toolbar.append(this.keyboard, escape, tab, keys);
-    this.element.append(this.host, toolbar);
+    const main = document.createElement('div'); main.className = 'terminal-main';
+    main.append(this.host, toolbar); this.element.append(main);
     this.terminal = new Terminal({ theme: terminalTheme(theme), fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace', fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false });
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;

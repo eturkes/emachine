@@ -98,9 +98,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .views { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .view { width: 100%; height: 100%; border: 0; }
 .feature-frame { display: block; background: var(--bg); }
-.terminal-pane { --terminal-font-size: 14; --terminal-key-gap: 6px; display: flex; flex-direction: column; padding: 14px 16px 0; touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.terminal-pane { --terminal-font-size: 14; --terminal-key-gap: 6px; position: relative; display: flex; touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .terminal-pane.terminal-ios { --terminal-font-size: 12; }
-.terminal-host { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
+.terminal-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 14px 16px 0; }
+.terminal-host { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport { background-color: var(--bg); }
 /* Safari's focus zoom follows the editable input, independently of the terminal cells. */
@@ -151,11 +152,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
 .prompt-actions button { min-height: 44px; }
 .prompt-actions .text-button { border: 1px solid var(--border); }
-.history-dialog { width: min(820px,calc(100vw - 28px)); height: min(740px,calc(var(--app-height,100dvh) - 28px)); max-height: calc(var(--app-height,100dvh) - 28px); overflow: hidden; }
-.history-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
-.history-dialog .dialog-header, .history-dialog .dialog-copy, .history-footer { flex-shrink: 0; }
-.history-dialog .dialog-copy { margin: 0; }
-.history-dialog button { min-height: 44px; }
+.history-sidebar { display: flex; flex-direction: column; flex: 0 0 clamp(300px,36%,440px); min-width: 0; min-height: 0; gap: 12px; padding: 16px; padding-right: max(16px,env(safe-area-inset-right)); padding-bottom: max(16px,env(safe-area-inset-bottom)); overflow: hidden; border-left: 1px solid var(--border); background: var(--surface); }
+.history-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.history-header h2 { margin: 0; font-size: 18px; font-weight: 550; letter-spacing: -.4px; }
+.history-header, .history-description, .history-footer { flex-shrink: 0; }
+.history-description { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.history-sidebar button { min-height: 44px; }
+.history-sidebar button:hover { background: var(--hover); }
+.history-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-list { flex: 1; min-height: 0; margin: 0; padding: 0; overflow: auto; overscroll-behavior: contain; list-style: none; border-block: 1px solid var(--border); }
 .history-entry { padding: 14px 4px; border-bottom: 1px solid var(--border); }
 .history-entry:last-child { border-bottom: 0; }
@@ -200,6 +204,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 950px) {
   :root { --rail: 212px; }
   .header-actions { gap: 0; padding: 0 5px; }
+  .history-sidebar { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(420px,calc(100% - 12px)); gap: 8px; padding: 12px; padding-right: max(12px,env(safe-area-inset-right)); padding-bottom: max(12px,env(safe-area-inset-bottom)); box-shadow: -8px 0 24px #0003; }
 }
 @media (max-width: 700px) {
   .app { display: block; }
@@ -217,7 +222,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .tab { padding: 0 13px; }
   .close-terminal { width: 44px; height: 44px; }
   .new-terminal { width: 44px; min-height: 44px; margin: 0 4px; }
-  .terminal-pane { --terminal-font-size: 12; padding: 9px 9px 0; }
+  .terminal-pane { --terminal-font-size: 12; }
+  .terminal-main { padding: 9px 9px 0; }
   .terminal-keyboard { display: block; }
   .terminal-keys button, .terminal-fixed-key { padding: 9px 10px; min-height: 44px; }
   .connection-form input { font-size: 16px; }
