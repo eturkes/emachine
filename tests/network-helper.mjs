@@ -1,12 +1,14 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { zmxDirectory, zmxExecutable } from '../scripts/zmx.mjs';
 
 const exec = promisify(execFile);
 export const root = fileURLToPath(new URL('../', import.meta.url));
@@ -29,6 +31,7 @@ export async function freePort() {
   return port;
 }
 export async function fixture(options = {}) {
+  await access(zmxExecutable, constants.X_OK);
   const home = await mkdtemp(join(tmpdir(), 'emachine-test-'));
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -47,6 +50,7 @@ export async function fixture(options = {}) {
   await writeFile(configPath, JSON.stringify(config));
   const env = {
     ...process.env, HOME: home, HISTFILE: join(home, 'history'), EMACHINE_CONFIG: configPath,
+    PATH: zmxDirectory + ':' + process.env.PATH,
     XDG_RUNTIME_DIR: join(home, 'xdg-runtime'), XDG_STATE_HOME: join(home, 'xdg-state'),
     CLAUDE_CONFIG_DIR: join(home, '.claude'),
   };

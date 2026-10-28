@@ -1,15 +1,14 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 // @ts-expect-error This JavaScript fixture drives the real native server.
 import { fixture } from './network-helper.mjs';
+// @ts-expect-error This fixture records input inside a real manual zmx attachment.
+import { manualInputRecorder } from './terminal-session-fixture.mjs';
 
 let machine: any;
 test.beforeAll(async () => { machine = await fixture(); });
 test.afterAll(async () => { await machine?.close(); });
 
-async function terminal(page: Page, platform = 'iPhone') {
-  const input: string[] = [];
-  let send!: (data: string | Buffer) => void;
-  let disconnect!: () => void;
+async function inputPlatform(page: Page, platform = 'iPhone') {
   await page.addInitScript(platform => {
     const mobile = platform === 'iPhone' || platform === 'MacIntel';
     Object.defineProperty(navigator, 'platform', { configurable: true, value: platform });
@@ -21,6 +20,13 @@ async function terminal(page: Page, platform = 'iPhone') {
       readText: async () => 'paste\ntext', writeText: async () => {},
     } });
   }, platform);
+}
+
+async function terminal(page: Page, platform = 'iPhone') {
+  const input: string[] = [];
+  let send!: (data: string | Buffer) => void;
+  let disconnect!: () => void;
+  await inputPlatform(page, platform);
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     send = data => ws.send(data);
     disconnect = () => ws.close();
@@ -110,6 +116,48 @@ test.describe('terminal input', () => {
       await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
     }
     expect(t.input).toEqual([]);
+  });
+
+  test('toolbar arrows reach a manual-led zmx session byte-for-byte with either keyboard state', async ({ page }) => {
+    const shared = await fixture();
+    let manual: any;
+    try {
+      manual = await manualInputRecorder(shared);
+      await expect.poll(() => manual.text).toContain('INPUT RECORDER READY');
+      await inputPlatform(page);
+      await page.goto(shared.origin);
+      const pane = page.locator('.terminal-pane:not([hidden])');
+      await expect(pane).toHaveAttribute('data-mode', 'control');
+      await expect(pane.locator('.xterm-rows')).toContainText('INPUT RECORDER READY');
+      const textarea = pane.locator('.xterm-helper-textarea'), keyboard = pane.locator('.terminal-keyboard');
+      let expected = '';
+      await expect.poll(() => manual.read()).toBe(expected);
+      for (const shown of [false, true]) {
+        await textarea.focus();
+        if (!shown) await keyboard.tap();
+        for (const [name, sequence] of [['\u2191', '\u001b[A'], ['\u2193', '\u001b[B'], ['\u2190', '\u001b[D'], ['\u2192', '\u001b[C']] as const) {
+          // The other attachment takes leadership before every first phone arrow.
+          manual.input('m'); expected += 'm';
+          await expect.poll(() => manual.read()).toBe(expected);
+          await pane.getByRole('button', { name, exact: true }).tap(); expected += sequence;
+          await expect.poll(() => manual.read()).toBe(expected);
+          await expect(keyboard).toHaveAttribute('aria-pressed', String(shown));
+          if (shown) await expect(textarea).toBeFocused();
+          else await expect(textarea).not.toBeFocused();
+        }
+      }
+      await textarea.focus();
+      await page.keyboard.type('a');
+      await pane.getByRole('button', { name: '\u2190', exact: true }).tap();
+      await page.keyboard.type('b');
+      await pane.getByRole('button', { name: '\u2192', exact: true }).tap();
+      await pane.getByRole('button', { name: 'Enter', exact: true }).tap();
+      await expect.poll(() => manual.read()).toBe(expected + 'a\u001b[Db\u001b[C\r');
+    } finally {
+      await page.goto('about:blank');
+      await manual?.close();
+      await shared.close();
+    }
   });
 
   test('toolbar arrows preserve the hidden or open terminal keyboard while navigating a selector', async ({ page }) => {

@@ -189,6 +189,8 @@ pnpm test:desktop-window-state
 
 The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20261016`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.
 
+The server build prepares a pinned zmx client under `.tools/`. The first build downloads verified source and Zig compiler archives. The installed service uses this client so arrow input reaches sessions that are already open in another terminal. The system zmx installation and running sessions stay available. Run `node scripts/setup-zmx.mjs` to prepare the client separately.
+
 To install the server on another Linux machine, build it first, then run:
 
 ```sh

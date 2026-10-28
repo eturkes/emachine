@@ -5,6 +5,7 @@ import { homedir, userInfo, hostname } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { ensureZmx, zmxDirectory } from './zmx.mjs';
 
 const exec = promisify(execFile);
 if (process.platform !== 'linux') throw new Error('The machine server requires Linux.');
@@ -25,6 +26,7 @@ const home = await realpath(homedir());
 const root = fileURLToPath(new URL('../', import.meta.url));
 const binary = join(root, 'core/_build/native/release/build/cmd/main/main.exe');
 await access(binary); await access(join(root, 'web/dist/index.html'));
+await ensureZmx();
 const configHome = process.env.XDG_CONFIG_HOME || join(home, '.config');
 const configPath = process.env.EMACHINE_CONFIG || join(configHome, 'emachine/config.json');
 let previous = {};
@@ -82,7 +84,7 @@ After=network-online.target
 Type=simple
 ExecStart=${unitQuote(launcher)} serve
 Environment=${unitQuote('EMACHINE_CONFIG=' + configPath)}
-Environment=${unitQuote('PATH=' + join(home, '.local/bin') + ':' + join(home, '.moon/bin') + ':/usr/local/bin:/usr/bin:/bin')}
+Environment=${unitQuote('PATH=' + zmxDirectory + ':' + join(home, '.local/bin') + ':' + join(home, '.moon/bin') + ':/usr/local/bin:/usr/bin:/bin')}
 UMask=0077
 # zmx daemons must survive machine-server restarts. The core cancels its supervised jobs on shutdown.
 KillMode=process

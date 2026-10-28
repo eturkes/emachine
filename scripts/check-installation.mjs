@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
@@ -7,12 +8,18 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import WebSocket from 'ws';
+import { zmxDirectory, zmxExecutable } from './zmx.mjs';
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
 const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
 const config = JSON.parse(await readFile(process.env.EMACHINE_CONFIG || join(configHome, 'emachine/config.json'), 'utf8'));
 assert.equal((await exec('systemctl', ['--user', 'is-active', 'emachine.service'])).stdout.trim(), 'active');
 assert.equal((await exec('systemctl', ['--user', 'is-enabled', 'emachine.service'])).stdout.trim(), 'enabled');
+const servicePid = (await exec('systemctl', ['--user', 'show', 'emachine.service', '--property=MainPID', '--value'])).stdout.trim();
+assert.match(servicePid, /^[1-9][0-9]*$/);
+const servicePath = (await readFile(`/proc/${servicePid}/environ`, 'utf8')).split('\0').find(value => value.startsWith('PATH='))?.slice(5);
+assert.equal(servicePath?.split(':')[0], zmxDirectory, 'The running service must use the pinned terminal client.');
+await access(zmxExecutable, constants.X_OK);
 await exec('systemd-analyze', ['--user', 'verify', join(configHome, 'systemd/user/emachine.service')]);
 const projectRoot = await realpath(config.projectRoot);
 for (const path of [config.dataRoot, config.stateRoot, config.runtimeRoot]) {
@@ -90,4 +97,4 @@ if (terminalOption >= 0) {
   assert.equal((await session())?.pid, before.pid);
   console.log(`Existing terminal reused: ${name}, zmx PID ${before.pid}. No terminal input was sent.`);
 }
-console.log('Installed service passed: enabled and active, valid unit, isolated storage, loopback and Tailscale HTTPS, exact desktop CORS, credential-free client.');
+console.log('Installed service passed: enabled and active, pinned terminal client, valid unit, isolated storage, loopback and Tailscale HTTPS, exact desktop CORS, credential-free client.');

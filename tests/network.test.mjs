@@ -6,6 +6,7 @@ import { mkdir, readFile, writeFile, readdir, rename, rm, symlink } from 'node:f
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { fixture, socket, until, sleep } from './network-helper.mjs';
+import { manualInputRecorder } from './terminal-session-fixture.mjs';
 
 const exec = promisify(execFile);
 async function sessions(f) {
@@ -176,6 +177,43 @@ test('project-named zmx session interoperability', { timeout: 120000 }, async t 
     old.command("printf '__OL''D_ALIVE__\\n'");
     await until(() => old.text.includes('__OLD_ALIVE__'));
   });
+});
+
+test('ordered arrow input to shared zmx sessions', { timeout: 90000 }, async t => {
+  for (const zmxDir of [false, true]) {
+    await t.test(zmxDir ? 'explicit ZMX_DIR' : 'default XDG namespace', async t => {
+      const f = await fixture({ zmxDir });
+      let manual, client, observer;
+      t.after(async () => { await observer?.close(); await client?.close(); await manual?.close(); await f.close(); });
+      manual = await manualInputRecorder(f);
+      await until(() => manual.text.includes('INPUT RECORDER READY'));
+      const project = (await f.state()).projects.find(p => p.name === 'alpha');
+      const original = (await sessions(f)).find(s => s.name === project.name);
+      client = await socket(f, `api/v1/terminal/${project.id}?cols=43&rows=17`);
+      await until(() => client.text.includes('INPUT RECORDER READY'));
+      let expected = '\x1b[A\x1b[B\x1b[D\x1b[C';
+      client.ws.send(Buffer.from(expected));
+      await until(async () => await manual.read() === expected);
+
+      // Exercise the actual PTY bridge in a burst, including bytes that a command-style send can alter.
+      for (let i = 0; i < 100; i++) {
+        for (const data of ['a', '\x1b[D', '界', '\0\n\x7f\x03', '\x1b[1;5A', '\x1bOA', '\x1b[C']) {
+          client.ws.send(Buffer.from(data)); expected += data;
+        }
+      }
+      await until(async () => (await manual.read()).length >= expected.length);
+      assert.equal(await manual.read(), expected, 'input bytes and event order must survive the shared-session bridge');
+      await until(() => client.packets.some(packet => packet.screenCols === 43 && packet.screenRows === 17));
+
+      observer = await socket(f, `api/v1/terminal/${project.id}`);
+      await until(() => observer.packets.some(packet => packet.mode === 'observe'));
+      observer.ws.send(Buffer.from('\x1b[Aobserver'));
+      client.ws.send(Buffer.from('END')); expected += 'END';
+      await until(async () => (await manual.read()).length >= expected.length);
+      assert.equal(await manual.read(), expected, 'an observer cannot inject input through the compatibility route');
+      assert.equal((await sessions(f)).find(s => s.name === project.name).pid, original.pid);
+    });
+  }
 });
 
 test('real MoonBit machine server acceptance', { timeout: 180000 }, async t => {
