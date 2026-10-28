@@ -9,7 +9,7 @@ export default defineConfig({
   outputDir: '../test-results/browser',
   projects: [
     { name: 'chromium', use: { launchOptions: { executablePath: execFileSync('chromiumfish', ['path'], { encoding: 'utf8' }).trim() } } },
-    { name: 'webkit-input', testMatch: ['terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts', 'terminal-contrast.spec.ts', 'recovery.spec.ts'], use: { browserName: 'webkit', launchOptions: webkitOptions() } },
+    { name: 'webkit-input', testMatch: ['terminal-input.spec.ts', 'terminal-prompts.spec.ts', 'terminal-history.spec.ts', 'terminal-contrast.spec.ts', 'terminal-resize.spec.ts', 'recovery.spec.ts'], use: { browserName: 'webkit', launchOptions: webkitOptions() } },
   ],
   use: {
     headless: true, viewport: { width: 1360, height: 900 },

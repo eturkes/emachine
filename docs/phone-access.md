@@ -86,6 +86,8 @@ Short taps open the keyboard; swipes and long presses keep their existing behavi
 On iPhone and iPad, the terminal uses smaller text to show more content.
 The terminal disables double-tap zoom. You can still pinch to zoom.
 Rotate the phone to show more columns. The terminal fits the available space when the keyboard opens or closes.
+The arrow buttons preserve the keyboard's current state, so you can hide it and navigate a menu with more rows visible.
+Keyboard animations settle before the terminal sends its new dimensions to the running program.
 
 ## Type with native spelling tools
 

@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
 import { attachTerminalInput, isIOS } from './terminal-input';
+import { TerminalOutput } from './terminal-output';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
 import { TerminalHistory } from './terminal-history';
@@ -45,6 +46,7 @@ export class TerminalPane {
   private keyboardTap?: boolean;
   private keyboardEvents = new AbortController();
   private terminal: Terminal;
+  private output: TerminalOutput;
   private detachTouch?: () => void;
   private detachInput?: () => void;
   private textInput?: TerminalTextInput;
@@ -54,10 +56,12 @@ export class TerminalPane {
   private fit = new FitAddon();
   private ws?: WebSocket;
   private observer: ResizeObserver;
+  private layoutTimer?: number;
   private retry?: number;
   private heartbeat?: number;
   private seen = 0;
   private closed = false;
+  private connecting = false;
   private visible = false;
   private reconnects = 0;
   private mode: 'control' | 'observe' = 'observe';
@@ -82,7 +86,26 @@ export class TerminalPane {
     clearModifiers();
     keys.append(this.control, ctrl, alt);
     for (const [label, value] of [['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
-      keys.append(button(label, () => { this.terminal.input(value); this.terminal.focus(); }, label === 'Shift + ←' ? 'Shift + Arrow Left' : label));
+      const arrow = /^\u001b\[([ABCD])$/.exec(value);
+      let keyboardBeforeTap: boolean | undefined;
+      const key = button(label, event => {
+        const focus = !arrow || !isIOS() || ((event.detail > 0 ? keyboardBeforeTap : undefined) ?? this.keyboardShown);
+        keyboardBeforeTap = undefined;
+        this.terminal.input(arrow && this.terminal.modes.applicationCursorKeysMode ? `\u001bO${arrow[1]}` : value);
+        if (focus) this.terminal.focus();
+      }, label === 'Shift + ←' ? 'Shift + Arrow Left' : label);
+      if (arrow && isIOS()) {
+        const { signal } = this.keyboardEvents;
+        // Navigate selectors without opening a hidden keyboard or blurring an open one.
+        key.addEventListener('pointerdown', event => {
+          if (event.isPrimary && event.button === 0) keyboardBeforeTap = this.keyboardShown;
+        }, { signal });
+        key.addEventListener('pointercancel', () => { keyboardBeforeTap = undefined; }, { signal });
+        key.addEventListener('mousedown', event => {
+          if (event.button === 0 && document.activeElement === this.terminal.textarea) event.preventDefault();
+        }, { signal });
+      }
+      keys.append(key);
     }
     keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
     const copy = () => { void this.copy(); };
@@ -118,6 +141,7 @@ export class TerminalPane {
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
       fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false,
     });
+    this.output = new TerminalOutput(this.terminal);
     this.terminal.loadAddon(this.fit);
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
@@ -170,7 +194,11 @@ export class TerminalPane {
       if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(Uint8Array.from(data, character => character.charCodeAt(0) & 255));
     });
     this.terminal.onResize(() => this.syncSize());
-    this.observer = new ResizeObserver(() => this.layout());
+    this.observer = new ResizeObserver(() => {
+      // Keyboard animations produce several temporary grids; resize the PTY once they settle.
+      window.clearTimeout(this.layoutTimer);
+      this.layoutTimer = window.setTimeout(() => this.layout(), 100);
+    });
     this.observer.observe(this.host);
   }
   private setKeyboardShown(shown: boolean): void {
@@ -232,7 +260,11 @@ export class TerminalPane {
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
-    if (!this.visible || !this.element.isConnected || !this.host.clientWidth) return;
+    window.clearTimeout(this.layoutTimer);
+    this.output.run(() => this.fitTerminal());
+  }
+  private fitTerminal(): void {
+    if (this.closed || !this.visible || !this.element.isConnected || !this.host.clientWidth) return;
     const fontSize = Number(getComputedStyle(this.element).getPropertyValue('--terminal-font-size'));
     if (fontSize > 0 && this.terminal.options.fontSize !== fontSize) this.terminal.options.fontSize = fontSize;
     if (this.mode === 'observe' && this.ws) return;
@@ -247,8 +279,14 @@ export class TerminalPane {
     this.history?.update();
   }
   private connect(): void {
+    if (this.connecting || this.closed || !this.terminal.element || !this.visible && !this.route || !this.link.online || !this.link.route || this.ws) return;
+    this.connecting = true;
+    this.output.reset(() => { this.connecting = false; this.attach(); });
+  }
+  private attach(): void {
     // Attach only after font-backed fitting; a default-sized replay can corrupt a live TUI.
     if (this.closed || !this.terminal.element || !this.visible && !this.route || !this.link.online || !this.link.route || this.ws) return;
+    this.fitTerminal();
     window.clearTimeout(this.retry);
     this.route = this.link.route;
     const generation = ++this.generation;
@@ -270,26 +308,32 @@ export class TerminalPane {
     ws.onmessage = event => {
       if (this.closed || generation !== this.generation || this.ws !== ws) return;
       this.seen = Date.now();
-      if (event.data instanceof ArrayBuffer) { this.terminal.write(new Uint8Array(event.data)); return; }
+      if (event.data instanceof ArrayBuffer) { this.output.write(new Uint8Array(event.data)); return; }
       try {
         const message = JSON.parse(String(event.data));
         if (message.type === 'state') {
-          const mode = message.mode === 'control' ? 'control' : 'observe';
-          this.remoteSize = `${message.cols}x${message.rows}`;
-          if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
-          this.mode = mode;
-          this.textInput?.refresh();
-          this.prompts.refresh();
-          this.element.dataset.mode = this.mode;
-          this.control.hidden = this.mode === 'control';
-          if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
-          else {
-            this.layout();
-            // A fit completed before control can leave onResize silent despite a remote mismatch.
-            this.syncSize();
-          }
-          this.status.hidden = this.mode === 'control';
-          this.status.textContent = this.mode === 'control' ? '' : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
+          this.output.run(() => {
+            if (this.closed || generation !== this.generation || this.ws !== ws) return;
+            try {
+              const mode = message.mode === 'control' ? 'control' : 'observe';
+              const gainedControl = mode === 'control' && this.mode !== 'control';
+              this.remoteSize = `${message.cols}x${message.rows}`;
+              if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
+              this.mode = mode;
+              this.textInput?.refresh();
+              this.prompts.refresh();
+              this.element.dataset.mode = this.mode;
+              this.control.hidden = this.mode === 'control';
+              if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
+              else {
+                if (gainedControl) this.fitTerminal();
+                // A fit completed before control can leave onResize silent despite a remote mismatch.
+                this.syncSize();
+              }
+              this.status.hidden = this.mode === 'control';
+              this.status.textContent = this.mode === 'control' ? '' : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
+            } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
+          });
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
       } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
     };
@@ -325,10 +369,11 @@ export class TerminalPane {
   dispose(): void {
     this.closed = true; this.generation++;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
+    window.clearTimeout(this.layoutTimer);
     this.keyboardEvents.abort();
     this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
     this.prompts.dispose();
     this.history?.dispose();
-    this.ws?.close(); this.observer.disconnect(); this.terminal.dispose(); this.element.remove();
+    this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminal.dispose(); this.element.remove();
   }
 }

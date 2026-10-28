@@ -112,6 +112,110 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
+  test('toolbar arrows preserve the hidden or open terminal keyboard while navigating a selector', async ({ page }) => {
+    const t = await terminal(page), keyboard = t.pane.locator('.terminal-keyboard');
+    const up = t.pane.getByRole('button', { name: '\u2191', exact: true });
+    const down = t.pane.getByRole('button', { name: '\u2193', exact: true });
+    const expected: string[] = [];
+    await keyboard.tap();
+    await expect(t.textarea).not.toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    for (const [arrow, sequence] of [[down, '\u001b[B'], [up, '\u001b[A'], [down, '\u001b[B']] as const) {
+      await arrow.tap(); expected.push(sequence);
+      await expect.poll(() => t.input).toEqual(expected);
+      await expect(t.textarea).not.toBeFocused();
+      await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    }
+    await keyboard.tap();
+    await expect(t.textarea).toBeFocused();
+    for (const [arrow, sequence] of [[up, '\u001b[A'], [down, '\u001b[B']] as const) {
+      await arrow.tap(); expected.push(sequence);
+      await expect.poll(() => t.input).toEqual(expected);
+      await expect(t.textarea).toBeFocused();
+      await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    }
+  });
+
+  test('toolbar arrows preserve native keyboard dismissal without refocusing the raw helper', async ({ page }) => {
+    const t = await terminal(page), keyboard = t.pane.locator('.terminal-keyboard');
+    const resize = async (height: number) => page.evaluate(height => {
+      Object.defineProperties(visualViewport!, {
+        height: { configurable: true, value: height }, scale: { configurable: true, value: 1 },
+      });
+      visualViewport!.dispatchEvent(new Event('resize'));
+    }, height);
+    await resize(480);
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'true');
+    await resize(844);
+    await expect(t.textarea).toBeFocused();
+    await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    await t.textarea.evaluate((element: HTMLTextAreaElement) => {
+      const focus = element.focus.bind(element);
+      element.dataset.focusCalls = '0';
+      // A redundant focus() may reopen the native keyboard without emitting a focus event.
+      element.focus = options => { element.dataset.focusCalls = String(Number(element.dataset.focusCalls) + 1); focus(options); };
+    });
+    const expected: string[] = [];
+    for (const [name, sequence] of [['\u2191', '\u001b[A'], ['\u2193', '\u001b[B']] as const) {
+      await t.pane.getByRole('button', { name, exact: true }).tap(); expected.push(sequence);
+      await expect.poll(() => t.input).toEqual(expected);
+      await expect(t.textarea).toHaveAttribute('data-focus-calls', '0');
+      await expect(t.textarea).toBeFocused();
+      await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
+    }
+  });
+
+  test('toolbar arrows follow normal and application cursor modes once per tap with one-shot modifiers', async ({ page }) => {
+    const t = await terminal(page);
+    const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
+    const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
+    const up = t.pane.getByRole('button', { name: '\u2191', exact: true });
+    const down = t.pane.getByRole('button', { name: '\u2193', exact: true });
+    const expected: string[] = [];
+    for (const application of [false, true, false]) {
+      const label = application ? 'APPLICATION CURSOR' : `NORMAL CURSOR ${expected.length}`;
+      t.send(Buffer.from(`\u001b[?1${application ? 'h' : 'l'}${label}\r\n`));
+      await expect(t.pane.locator('.xterm-rows')).toContainText(label);
+      const prefix = application ? '\u001bO' : '\u001b[';
+      for (const [name, suffix] of [['\u2191', 'A'], ['\u2193', 'B'], ['\u2190', 'D'], ['\u2192', 'C']] as const) {
+        await t.pane.getByRole('button', { name, exact: true }).tap(); expected.push(prefix + suffix);
+        await expect.poll(() => t.input).toEqual(expected);
+      }
+      await ctrl.tap(); await up.tap(); expected.push('\u001b[1;5A');
+      await expect.poll(() => t.input).toEqual(expected);
+      await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
+      await alt.tap(); await down.tap(); expected.push('\u001b[1;3B');
+      await expect.poll(() => t.input).toEqual(expected);
+      await expect(alt).toHaveAttribute('aria-pressed', 'false');
+      await ctrl.tap(); await alt.tap(); await up.tap(); expected.push('\u001b[1;7A');
+      await expect.poll(() => t.input).toEqual(expected);
+      for (const modifier of [ctrl, alt]) await expect(modifier).toHaveAttribute('aria-pressed', 'false');
+      await down.tap(); expected.push(prefix + 'B');
+      await expect.poll(() => t.input).toEqual(expected);
+    }
+  });
+
+  test('toolbar arrows drop observer and disconnected navigation without replaying it after control returns', async ({ page }) => {
+    const t = await terminal(page);
+    const up = t.pane.getByRole('button', { name: '\u2191', exact: true });
+    const down = t.pane.getByRole('button', { name: '\u2193', exact: true });
+    await down.tap();
+    await expect.poll(() => t.input).toEqual(['\u001b[B']);
+    t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+    await up.tap(); await down.tap();
+    t.send(JSON.stringify({ type: 'state', mode: 'control', cols: 80, rows: 24 }));
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    await down.tap();
+    await expect.poll(() => t.input).toEqual(['\u001b[B', '\u001b[B']);
+    t.disconnect();
+    await expect(t.pane).toHaveAttribute('data-mode', 'disconnected');
+    await down.tap();
+    await expect(t.pane).toHaveAttribute('data-mode', 'control');
+    await up.tap();
+    await expect.poll(() => t.input).toEqual(['\u001b[B', '\u001b[B', '\u001b[A']);
+  });
+
   test('Keyboard follows native dismissal while preserving input focus and intentional pinch', async ({ page }) => {
     const t = await terminal(page), keyboard = t.pane.locator('.terminal-keyboard');
     const resize = async (height: number, scale = 1) => page.evaluate(({ height, scale }) => {
