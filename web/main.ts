@@ -50,7 +50,10 @@ sidebarToggle.setAttribute('aria-controls', rail.id);
 const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project views');
 const newGeneral = button('+', () => addGeneralTerminal(), 'new-terminal', 'New General terminal'); newGeneral.hidden = true;
 const themeButton = button('', () => { theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); applyTheme(); }, 'text-button');
-const actions = $('div', 'header-actions'); actions.append(themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
+const waitingButton = button('', () => showWaitingProjects(), 'text-button waiting-projects', 'Projects waiting for input');
+waitingButton.hidden = true; waitingButton.setAttribute('aria-controls', rail.id);
+const waitingAnnouncement = $('span', 'waiting-announcement'); waitingAnnouncement.setAttribute('role', 'status'); waitingAnnouncement.setAttribute('aria-atomic', 'true');
+const actions = $('div', 'header-actions'); actions.append(waitingButton, waitingAnnouncement, themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
 tabHeader.append(mobileMenu, sidebarToggle, tabs, newGeneral, actions);
 const diagnostics = $('details', 'diagnostics');
@@ -123,6 +126,32 @@ function entries(): { key: string; link: Link; project: Project }[] {
   const position = (key: string) => { const index = orderedProjects.indexOf(key); return index < 0 ? 100000 : index; };
   return result.sort((a, b) => position(a.key) - position(b.key) || a.project.name.localeCompare(b.project.name) || a.link.config.name.localeCompare(b.link.config.name));
 }
+function waitingProjects(): ReturnType<typeof entries> {
+  return entries().filter(({ link, project }) => link.online && project.claudeStatus === 'waiting');
+}
+function renderWaitingProjects(): void {
+  const waiting = waitingProjects();
+  const count = `${waiting.length} ${waiting.length === 1 ? 'project' : 'projects'} waiting for input`;
+  const names = waiting.map(({ project, link }) => `${project.name} on ${link.state!.machine.name}`).join(', ');
+  const announcement = waiting.length ? `${count}: ${names}.` : 'No projects waiting for input.';
+  if (!waiting.length && document.activeElement === waitingButton) {
+    (matchMedia('(max-width: 700px)').matches ? mobileMenu : sidebarToggle).focus();
+  }
+  waitingButton.hidden = !waiting.length;
+  waitingButton.textContent = `Waiting (${waiting.length})`;
+  waitingButton.setAttribute('aria-label', `${count}. Show projects.`);
+  waitingButton.title = `${announcement}\nShow waiting projects in the sidebar.`;
+  if (waitingAnnouncement.textContent !== announcement) waitingAnnouncement.textContent = announcement;
+}
+function showWaitingProjects(): void {
+  if (!waitingProjects().length) return;
+  filter = ''; search.value = '';
+  if (matchMedia('(max-width: 700px)').matches) app.classList.add('drawer-open');
+  else { sidebarCollapsed = false; save('sidebar-collapsed', sidebarCollapsed); applySidebar(); }
+  renderRail();
+  const first = projectList.querySelector<HTMLButtonElement>('[data-claude-status="waiting"]');
+  first?.focus({ preventScroll: true }); first?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
 function choose(key: string, tab?: string): void {
   selected = key; save('selection', key);
   if (tab) { selectedTabs[key] = tab; save('tabs', selectedTabs); }
@@ -130,6 +159,7 @@ function choose(key: string, tab?: string): void {
 }
 let draggedProject = '';
 function renderRail(): void {
+  renderWaitingProjects();
   const generalScroll = generalList.scrollTop; generalList.replaceChildren();
   for (const { key, link } of generalEntries()) {
     const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `General on ${link.state!.machine.name}, ${link.online ? 'online' : 'offline'}`);

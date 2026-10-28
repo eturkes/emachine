@@ -176,3 +176,132 @@ test('Claude indicators fit both themes and phone drawers with reduced motion', 
     } finally { await motionBrowser.close(); }
   } finally { await f.close(); }
 });
+
+test('header waiting indicator reveals a filtered hidden project without changing the active terminal', async ({ page }) => {
+  const f = await fixture();
+  try {
+    await page.goto(f.origin);
+    const alpha = page.locator('.project-item').filter({ has: page.locator('strong', { hasText: /^alpha$/ }) });
+    const beta = page.locator('.project-item').filter({ has: page.locator('strong', { hasText: /^beta$/ }) });
+    await beta.click();
+    const pane = page.locator('.terminal-pane:not([hidden])');
+    await expect(pane).toHaveAttribute('data-mode', 'control');
+    const terminal = await pane.locator('.xterm').elementHandle();
+    const selection = await page.evaluate(() => localStorage.getItem('emachine:selection'));
+    await page.getByRole('searchbox', { name: 'Filter projects' }).fill('beta');
+    await page.getByRole('button', { name: 'Collapse project sidebar', exact: true }).click();
+    const waiting = page.locator('.tab-header .waiting-projects');
+    await expect(waiting).toBeHidden();
+    const session = await claudeSession(f, 'waiting');
+    await expect(waiting).toHaveText('Waiting (1)');
+    await expect(waiting).toHaveAccessibleName('1 project waiting for input. Show projects.');
+    await expect(waiting).toHaveAttribute('title', /alpha on Test workstation/);
+    await expect(waiting).toHaveAttribute('aria-controls', 'project-sidebar');
+    await expect(page.locator('#project-sidebar')).toBeHidden();
+    await expect(page.locator('.waiting-announcement')).toContainText('1 project waiting for input');
+    await waiting.focus(); await page.keyboard.press('Enter');
+    await expect(page.locator('#project-sidebar')).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: 'Filter projects' })).toHaveValue('');
+    await expect(alpha).toBeFocused();
+    await expect(alpha).toBeInViewport({ ratio: 1 });
+    await expect(beta).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => localStorage.getItem('emachine:selection'))).toBe(selection);
+    expect(await pane.locator('.xterm').evaluate((node, original) => node === original, terminal)).toBe(true);
+    for (const source of ['busy', 'idle']) {
+      await claudeSession(f, source);
+      await expect(waiting).toBeHidden();
+      await expect(page.locator('.waiting-announcement')).toHaveText('No projects waiting for input.');
+      await claudeSession(f, 'waiting');
+      await expect(waiting).toHaveText('Waiting (1)');
+    }
+    await rm(session.path);
+    await expect(waiting).toBeHidden();
+    await page.locator('.general-item').click();
+    await claudeSession(f, 'waiting');
+    await expect(waiting).toHaveText('Waiting (1)');
+    await expect(page.getByRole('tab', { name: 'general', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await rm(join(f.config.projectRoot, 'alpha'), { recursive: true });
+    await expect(waiting).toBeHidden();
+  } finally { await f.close(); }
+});
+
+test('header waiting indicator counts unique online projects across machines and clears stale activity', async ({ page }) => {
+  const a = await fixture({ name: 'Waiting A' });
+  const b = await fixture({ name: 'Waiting B', origins: [a.origin] });
+  try {
+    await claudeSession(a, 'waiting'); await claudeSession(b, 'waiting');
+    await page.addInitScript(({ first, second }) => {
+      localStorage.setItem('emachine:connections:v1', JSON.stringify([
+        { key: 'first', name: 'Waiting A', direct: first },
+        { key: 'duplicate', name: 'Same machine again', direct: first },
+        { key: 'second', name: 'Waiting B', direct: second },
+      ]));
+      localStorage.setItem('emachine:sidebar-collapsed', 'true');
+    }, { first: a.origin, second: b.origin });
+    await page.goto(a.origin);
+    const waiting = page.locator('.tab-header .waiting-projects');
+    await expect(waiting).toHaveText('Waiting (2)');
+    await expect(waiting).toHaveAccessibleName('2 projects waiting for input. Show projects.');
+    await expect(waiting).toHaveAttribute('title', /alpha on Waiting A/);
+    await expect(waiting).toHaveAttribute('title', /alpha on Waiting B/);
+    await expect(page.locator('.machine-count')).toHaveText('2 of 2 machines online');
+    await b.stop();
+    await expect(waiting).toHaveText('Waiting (1)');
+    await expect(waiting).not.toHaveAttribute('title', /Waiting B/);
+    await claudeSession(a, 'idle');
+    await expect(waiting).toBeHidden();
+    await page.reload();
+    await expect(page.locator('.machine-count')).toHaveText('1 of 2 machines online');
+    await expect(waiting).toBeHidden();
+    await b.start();
+    await expect(waiting).toHaveText('Waiting (1)');
+    await expect(waiting).toHaveAttribute('title', /alpha on Waiting B/);
+  } finally { await b.close(); await a.close(); }
+});
+
+for (const engine of ['chromium', 'webkit'] as const) {
+  test(`header waiting indicator fits desktop and phone controls in ${engine}`, async ({ page }) => {
+    const f = await fixture();
+    const browser = engine === 'webkit' ? await webkit.launch(webkitOptions()) : undefined;
+    const target = browser ? await browser.newPage() : page;
+    try {
+      await claudeSession(f, 'waiting');
+      await target.addInitScript(() => {
+        const state = { status: 'unconfigured' as const, source: '', revision: 'fixture', bundled: true, message: '' };
+        const getState = async () => state;
+        window.emachineInterface = { getState, setSource: getState, check: getState, refresh: getState, restore: getState, ready: getState, onState: () => () => {} };
+      });
+      await target.goto(f.origin);
+      const waiting = target.locator('.tab-header .waiting-projects');
+      await expect(waiting).toHaveText('Waiting (1)');
+      await target.evaluate(() => document.fonts.ready);
+      for (const width of [1360, 720, 701, 700, 390, 320]) {
+        await target.setViewportSize({ width, height: 900 });
+        for (const theme of ['light', 'dark']) {
+          if (await target.locator('html').getAttribute('data-theme') !== theme) await target.getByRole('button', { name: /^Theme:/ }).click();
+          await expect(target.locator('html')).toHaveAttribute('data-theme', theme);
+          for (const control of await target.locator('.header-actions button:visible').all()) {
+            await expect(control).toBeInViewport({ ratio: 1 });
+            expect(await control.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+          }
+          expect((await target.locator('.tabs').boundingBox())!.width).toBeGreaterThan(40);
+          if (width <= 700) expect((await waiting.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+          expect(await target.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          if (width === 1360 || width === 320) await target.screenshot({ path: `test-results/header-waiting-${engine}-${width}-${theme}.png`, animations: 'disabled' });
+        }
+      }
+      await target.setViewportSize({ width: 1360, height: 900 });
+      await target.getByRole('button', { name: 'Collapse project sidebar', exact: true }).click();
+      await target.screenshot({ path: `test-results/header-waiting-${engine}-collapsed.png`, animations: 'disabled' });
+      await target.setViewportSize({ width: 320, height: 700 });
+      await waiting.click();
+      await expect(target.locator('.app')).toHaveClass(/drawer-open/);
+      await expect(target.locator('[data-claude-status="waiting"]')).toBeFocused();
+      await expect(target.locator('[data-claude-status="waiting"]')).toBeInViewport({ ratio: 1 });
+      expect(await target.evaluate(() => localStorage.getItem('emachine:sidebar-collapsed'))).toBe('true');
+      await target.getByRole('button', { name: 'Close projects', exact: true }).click();
+      await target.setViewportSize({ width: 1360, height: 900 });
+      await expect(target.locator('#project-sidebar')).toBeHidden();
+    } finally { await browser?.close(); await f.close(); }
+  });
+}

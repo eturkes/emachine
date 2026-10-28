@@ -61,6 +61,7 @@ Dark mode uses pure-black terminal and panel backgrounds, with borders and small
 The light terminal uses native-reference charcoal text and preserves programs' text colors. Dark mode improves low-contrast text, so Claude Code can keep its light-mode setting while emachine stays dark. Copied text and terminal output are preserved.
 On desktop, **Hide projects** collapses the sidebar and **Show projects** restores it. The client remembers this choice, and the active terminal or feature view stays open as it resizes.
 On narrow screens, **Projects** opens the project drawer independently of the desktop preference.
+When Claude Code needs input, **Waiting (N)** appears in the top bar with the number of waiting projects across online machines, even when Projects is hidden or filtered. Hover for project and machine names, or select it to reveal Projects, clear the search, and focus the first waiting project. Your active terminal or view stays selected. The indicator clears when no online projects are waiting.
 The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.
