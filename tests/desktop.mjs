@@ -96,6 +96,31 @@ try {
   await expect(page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
+  const sidebar = page.locator('.project-rail');
+  const workspace = page.locator('.workspace');
+  const activeTerminal = page.locator('.terminal-pane:not([hidden]) .xterm');
+  const terminalElement = await activeTerminal.elementHandle();
+  const terminalRows = activeTerminal.locator('.xterm-rows');
+  await expect.poll(async () => (await terminalRows.boundingBox())?.width ?? 0).toBeGreaterThan(0);
+  const initialWorkspace = (await workspace.boundingBox()).width;
+  const initialTerminal = (await terminalRows.boundingBox()).width;
+  const collapseSidebar = page.getByRole('button', { name: 'Collapse project sidebar', exact: true });
+  await expect(collapseSidebar).toHaveAttribute('aria-expanded', 'true');
+  await collapseSidebar.click();
+  const expandSidebar = page.getByRole('button', { name: 'Expand project sidebar', exact: true });
+  await expect(expandSidebar).toHaveAttribute('aria-expanded', 'false');
+  await expect(sidebar).toBeHidden();
+  await expect.poll(async () => (await workspace.boundingBox()).width).toBeGreaterThan(initialWorkspace + 200);
+  await expect.poll(async () => (await terminalRows.boundingBox()).width).toBeGreaterThan(initialTerminal + 150);
+  assert.equal(await activeTerminal.evaluate((element, original) => element === original, terminalElement), true);
+  await page.screenshot({ path: join(root, 'test-results/sidebar-desktop-collapsed.png') });
+  await expandSidebar.click();
+  await expect(sidebar).toBeVisible();
+  await expect.poll(async () => (await workspace.boundingBox()).width).toBe(initialWorkspace);
+  await expect.poll(async () => (await terminalRows.boundingBox()).width).toBe(initialTerminal);
+  await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
+  assert.equal(await activeTerminal.evaluate((element, original) => element === original, terminalElement), true);
+  console.log('Desktop sidebar passed: collapse, expand, retained terminal, and refitted columns.');
   // Keep the user's clipboard inside the native process; never expose its bytes to test output.
   await app.evaluate(async ({ clipboard, ClipboardItem }) => {
     globalThis.savedTestClipboard = await Promise.all((await clipboard.read()).map(async item =>

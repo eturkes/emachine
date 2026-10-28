@@ -214,6 +214,104 @@ for (const environment of ['light', 'dark'] as const) {
   });
 }
 
+test('desktop sidebar toggles without replacing terminals or feature views', async ({ page }) => {
+  const input: string[] = [], connections: string[] = [];
+  let send!: (data: string | Buffer) => void;
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    connections.push(ws.url()); send = data => ws.send(data);
+    ws.onMessage(data => { if (Buffer.isBuffer(data)) input.push(data.toString()); });
+    send(JSON.stringify({ type: 'state', mode: 'control', session: 'sidebar-fixture', cols: 80, rows: 24 }));
+    send(Buffer.from('sidebar ready\r\n'));
+  });
+  await page.goto(a.origin);
+  const pane = page.locator('.terminal-pane:not([hidden])');
+  await expect(pane.locator('.xterm-rows')).toContainText('sidebar ready');
+  const collapse = page.getByRole('button', { name: 'Collapse project sidebar', exact: true });
+  const expand = page.getByRole('button', { name: 'Expand project sidebar', exact: true });
+  await expect(collapse).toBeVisible();
+  await expect(collapse).toHaveText('Hide projects');
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  await expect(collapse).toHaveAttribute('aria-controls', 'project-sidebar');
+  const rail = page.locator('#project-sidebar');
+  await expect(rail).toHaveAttribute('aria-label', 'Projects');
+  const host = pane.locator('.terminal-host'), rows = pane.locator('.xterm-rows');
+  const terminal = await pane.locator('.xterm').elementHandle();
+  const expandedWidth = (await host.boundingBox())!.width, expandedRows = (await rows.boundingBox())!.width;
+  await collapse.focus(); await page.keyboard.press('Enter');
+  await expect(rail).toBeHidden();
+  await expect(expand).toHaveText('Show projects');
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(async () => (await host.boundingBox())!.width).toBeGreaterThan(expandedWidth + 200);
+  await expect.poll(async () => (await rows.boundingBox())!.width).toBeGreaterThan(expandedRows);
+  await page.screenshot({ path: 'test-results/emachine-desktop-sidebar-collapsed.png', animations: 'disabled' });
+  send(Buffer.from('sidebar output continues\r\n'));
+  await expect(rows).toContainText('sidebar output continues');
+  await expand.focus(); await page.keyboard.press('Space');
+  await expect(rail).toBeVisible();
+  await expect.poll(async () => (await host.boundingBox())!.width).toBe(expandedWidth);
+  await expect.poll(async () => (await rows.boundingBox())!.width).toBe(expandedRows);
+  expect(await pane.locator('.xterm').evaluate((element, original) => element === original, terminal)).toBe(true);
+  const workspace = JSON.parse(await a.cli('feature', 'create', 'alpha', 'sidebar-view', 'Sidebar view')).workspace;
+  try {
+    await writeFile(join(workspace, 'index.html'), '<!doctype html><title>Sidebar view</title><label>Draft<input></label>');
+    await a.cli('feature', 'activate', 'alpha', 'sidebar-view');
+    const tab = page.getByRole('tab', { name: 'Sidebar view', exact: true });
+    await tab.click();
+    const iframe = page.locator('iframe[title="Sidebar view — alpha"]');
+    const frame = page.frameLocator('iframe[title="Sidebar view — alpha"]');
+    await frame.getByLabel('Draft').fill('Retain this draft');
+    const originalFrame = await iframe.elementHandle();
+    await collapse.click(); await expect(rail).toBeHidden();
+    await expand.click(); await expect(rail).toBeVisible();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    await expect(frame.getByLabel('Draft')).toHaveValue('Retain this draft');
+    expect(await iframe.evaluate((element, original) => element === original, originalFrame)).toBe(true);
+    await page.getByRole('tab', { name: 'Terminal', exact: true }).click();
+    expect(await pane.locator('.xterm').evaluate((element, original) => element === original, terminal)).toBe(true);
+    await expect(rows).toContainText('sidebar output continues');
+    expect(connections).toHaveLength(1); expect(input).toEqual([]);
+  } finally { await a.cli('feature', 'remove', 'alpha', 'sidebar-view'); }
+});
+
+test('desktop sidebar preference survives reloads independently of the phone drawer', async ({ page }) => {
+  await page.goto(a.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const collapse = page.getByRole('button', { name: 'Collapse project sidebar', exact: true });
+  const expand = page.getByRole('button', { name: 'Expand project sidebar', exact: true });
+  const rail = page.locator('#project-sidebar');
+  const preference = () => page.evaluate(() => localStorage.getItem('emachine:sidebar-collapsed'));
+  await expect(collapse).toBeVisible(); await collapse.click();
+  expect(await preference()).toBe('true');
+  await page.reload();
+  await expect(expand).toBeVisible(); await expect(rail).toBeHidden();
+  await page.setViewportSize({ width: 700, height: 900 });
+  await expect(page.locator('.sidebar-toggle')).toBeHidden();
+  const drawer = page.getByRole('button', { name: 'Open project drawer', exact: true });
+  await drawer.click();
+  await expect(page.getByRole('button', { name: 'alpha on Workstation A, online', exact: true })).toBeInViewport();
+  await page.getByRole('button', { name: 'Close projects', exact: true }).click();
+  await expect(page.locator('.app')).not.toHaveClass(/drawer-open/);
+  await drawer.click();
+  await page.getByRole('button', { name: 'beta on Workstation A, online', exact: true }).click();
+  await expect(page.locator('.app')).not.toHaveClass(/drawer-open/);
+  expect(await preference()).toBe('true');
+  await page.setViewportSize({ width: 701, height: 900 });
+  await expect(expand).toBeVisible(); await expect(rail).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Close project drawer', exact: true })).toBeHidden();
+  await expand.click(); await expect(rail).toBeVisible();
+  await expect(page.getByRole('button', { name: 'beta on Workstation A, online', exact: true })).toHaveAttribute('aria-current', 'page');
+  expect(await preference()).toBe('false');
+  await page.reload(); await expect(collapse).toBeVisible(); await expect(rail).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await drawer.click();
+  await page.getByRole('button', { name: 'Close project drawer', exact: true }).click({ position: { x: 380, y: 400 } });
+  await expect(page.locator('.app')).not.toHaveClass(/drawer-open/);
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await expect(collapse).toBeVisible(); await expect(rail).toBeVisible();
+  expect(await preference()).toBe('false');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test('streamlined layout ignores old collapse state and removes decorative strips', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('emachine:collapsed', 'true'));
   await page.goto(a.origin);

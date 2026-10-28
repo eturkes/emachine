@@ -59,7 +59,8 @@ The theme button shows **Light** or **Dark**. Select it to switch colors. The fi
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
 Dark mode uses pure-black terminal and panel backgrounds, with borders and small neutral highlights for controls.
 The terminal improves low-contrast text in either theme, so Claude Code can keep its light-mode setting while emachine stays dark. Copied text and terminal output are preserved.
-The desktop sidebar stays expanded. On narrow screens, **Projects** opens the project drawer.
+On desktop, **Hide projects** collapses the sidebar and **Show projects** restores it. The client remembers this choice, and the active terminal or feature view stays open as it resizes.
+On narrow screens, **Projects** opens the project drawer independently of the desktop preference.
 The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
 **Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
 Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.

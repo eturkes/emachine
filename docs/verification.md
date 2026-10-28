@@ -8,7 +8,7 @@
 | `pnpm test:gateway` | Real Caddy authentication, hostile headers and origins, HTTP and WebSocket proxying, native fixture terminal, and phone-sized PWA without private-route requests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, absent app-updater bridge and dependency, a real fixture machine, and zmx attachment |
-| `node tests/desktop.mjs --interface` | Existing AppImage with the built interface, system clipboard buttons, shortcuts, context menu, terminal focus, and feature-frame permission denial |
+| `node tests/desktop.mjs --interface` | Existing AppImage with the built interface, sidebar collapse and terminal refitting, system clipboard buttons, shortcuts, context menu, terminal focus, and feature-frame permission denial |
 | `pnpm test:interface` | Manifest and source boundaries, selective caching, offline startup, readiness rollback, concurrent pointer writes and cleanup, unavailable-cache recovery, and isolated IPC |
 | `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
 | `pnpm test:window-state` | Saved dimensions and maximized state, startup rounding, special-state bounds, malformed preferences, display constraints, atomic writes, close flushing, and profile isolation |
@@ -24,7 +24,7 @@ They also cover recovered jobs, neutral light colors, explicit theme persistence
 Project checks cover root `CLAUDE.md` eligibility, uncommitted phase changes, inventory events, unknown states, and `.snapshots` + `.pnpm-store` exclusion, including registered identities. Other dot-prefixed directories remain eligible.
 Sidebar checks cover cached snapshot and pnpm-store exclusion, terminal continuity, and readable one-word phase labels in both themes.
 Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
-Layout checks reject collapsed sidebars, decorative initials, redundant strips, and Jobs or Workspaces buttons.
+Layout checks cover a persistent desktop sidebar toggle, terminal and feature-view continuity, and an independent phone drawer; legacy collapse preferences remain ignored. They reject decorative initials, redundant strips, and Jobs or Workspaces buttons.
 Shortcut checks compare outgoing terminal bytes, verify clipboard selection and failure handling, and retain observer control without a footer.
 Clipboard checks cover Ctrl+Shift+C/V, unchanged Ctrl+C, single bracketed paste, selection actions, keyboard navigation, menu dismissal, and mouse-reporting applications.
 The browser clipboard fixture specifies Linux explicitly because ChromiumFish advertises Windows by default.

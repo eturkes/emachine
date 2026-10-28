@@ -76,6 +76,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .machine-pending { display: grid; gap: 6px; overflow-wrap: anywhere; }
 .workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding-right: env(safe-area-inset-right); }
 .tab-header { display: flex; flex-shrink: 0; align-items: stretch; min-width: 0; height: var(--bar); min-height: var(--bar); border-bottom: 1px solid var(--border); background: var(--surface); }
+.sidebar-toggle { flex-shrink: 0; align-self: center; margin-left: 6px; }
 .tabs { display: flex; overflow-x: auto; flex: 1; min-width: 0; padding-left: 12px; scrollbar-width: thin; }
 .tab { position: relative; flex-shrink: 0; color: var(--muted); padding: 0 19px; font-size: 13px; white-space: nowrap; }
 .tab:hover { color: var(--text); background: var(--accent-soft); }
@@ -203,6 +204,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .toast-region { position: fixed; bottom: calc(25px + env(safe-area-inset-bottom)); right: 24px; z-index: 100; display: grid; gap: 8px; pointer-events: none; }
 .toast { max-width: min(480px,calc(100vw - 40px)); padding: 13px 17px; border-radius: 9px; border: 1px solid var(--border); background: var(--raised); box-shadow: 0 8px 32px #0004; font-size: 13px; overflow-wrap: anywhere; }
 .drawer-scrim, .mobile-close, .mobile-menu { display: none; }
+@media (width > 700px) {
+  .app.rail-collapsed { grid-template-columns: minmax(0,1fr); }
+  .rail-collapsed .project-rail { display: none; }
+  .rail-collapsed .workspace { padding-left: env(safe-area-inset-left); }
+}
 @media (max-width: 950px) {
   :root { --rail: 212px; }
   .header-actions { gap: 0; padding: 0 5px; }
@@ -210,6 +216,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 @media (max-width: 700px) {
   .app { display: block; }
+  .sidebar-toggle { display: none; }
   .workspace { height: 100%; }
   .project-rail { position: fixed; inset: 0 auto 0 0; width: min(300px,85vw); z-index: 40; padding-top: env(safe-area-inset-top); transform: translateX(-100%); transition: transform .18s; }
   .drawer-open .project-rail { transform: translateX(0); }

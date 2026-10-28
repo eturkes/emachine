@@ -21,6 +21,7 @@ let selectedTabs = read<Record<string, string>>('tabs', {});
 const savedTheme = read<unknown>('theme', null);
 let theme: Theme = savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 save('theme', theme);
+let sidebarCollapsed = read<unknown>('sidebar-collapsed', false) === true;
 let filter = '';
 let orderedProjects = read<string[]>('project-order', []);
 const orderTabs = read<Record<string, string[]>>('tab-order', {});
@@ -30,7 +31,7 @@ const frames = new Map<string, FeatureFrame>();
 const jobs = new Map<string, { link: Link; job: Job }>();
 const app = $('div', 'app'); document.querySelector('#app')!.append(app);
 const scrim = button('', () => app.classList.remove('drawer-open'), 'drawer-scrim', 'Close project drawer');
-const rail = $('aside', 'project-rail'); rail.setAttribute('aria-label', 'Projects');
+const rail = $('aside', 'project-rail'); rail.id = 'project-sidebar'; rail.setAttribute('aria-label', 'Projects');
 const brand = $('header', 'brand'); brand.append($('div', 'brand-name', 'emachine'), button('Close', () => app.classList.remove('drawer-open'), 'text-button mobile-close', 'Close projects'));
 const search = $('input', 'project-search'); search.type = 'search'; search.placeholder = 'Find a project'; search.setAttribute('aria-label', 'Filter projects'); search.oninput = () => { filter = search.value; renderRail(); };
 const projectList = $('nav', 'project-list'); projectList.setAttribute('aria-label', 'Project list');
@@ -42,12 +43,16 @@ rail.append(brand, generalList, $('div', 'rail-label', 'PROJECTS'), search, proj
 const workspace = $('main', 'workspace');
 const tabHeader = $('header', 'tab-header');
 const mobileMenu = button('Projects', () => app.classList.toggle('drawer-open'), 'text-button mobile-menu', 'Open project drawer');
+const sidebarToggle = button('', () => {
+  sidebarCollapsed = !sidebarCollapsed; save('sidebar-collapsed', sidebarCollapsed); applySidebar();
+}, 'text-button sidebar-toggle');
+sidebarToggle.setAttribute('aria-controls', rail.id);
 const tabs = $('nav', 'tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project views');
 const newGeneral = button('+', () => addGeneralTerminal(), 'new-terminal', 'New General terminal'); newGeneral.hidden = true;
 const themeButton = button('', () => { theme = theme === 'dark' ? 'light' : 'dark'; save('theme', theme); applyTheme(); }, 'text-button');
 const actions = $('div', 'header-actions'); actions.append(themeButton, button('Settings', () => openSettings(), 'text-button', 'Machine settings'));
 attachInterfaceUpdates(actions, dialog, () => fleet.links[0]?.config.direct ?? '');
-tabHeader.append(mobileMenu, tabs, newGeneral, actions);
+tabHeader.append(mobileMenu, sidebarToggle, tabs, newGeneral, actions);
 const diagnostics = $('details', 'diagnostics');
 const diagnosticTitle = $('summary'); const diagnosticText = $('pre'); diagnostics.append(diagnosticTitle, diagnosticText); diagnostics.hidden = true;
 actions.append(diagnostics);
@@ -62,6 +67,14 @@ const toastRegion = $('div', 'toast-region'); toastRegion.setAttribute('aria-liv
 function notice(message: string): void {
   const toast = $('div', 'toast', message); toastRegion.append(toast); window.setTimeout(() => toast.remove(), 7000);
 }
+function applySidebar(): void {
+  app.classList.toggle('rail-collapsed', sidebarCollapsed);
+  sidebarToggle.textContent = sidebarCollapsed ? 'Show projects' : 'Hide projects';
+  sidebarToggle.title = sidebarCollapsed ? 'Expand project sidebar' : 'Collapse project sidebar';
+  sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+  sidebarToggle.setAttribute('aria-expanded', String(!sidebarCollapsed));
+}
+applySidebar();
 function applyTheme(): void {
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
