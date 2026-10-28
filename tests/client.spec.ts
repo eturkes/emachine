@@ -219,8 +219,14 @@ test('desktop sidebar toggles without replacing terminals or feature views', asy
   let send!: (data: string | Buffer) => void;
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     connections.push(ws.url()); send = data => ws.send(data);
-    ws.onMessage(data => { if (Buffer.isBuffer(data)) input.push(data.toString()); });
-    send(JSON.stringify({ type: 'state', mode: 'control', session: 'sidebar-fixture', cols: 80, rows: 24 }));
+    const url = new URL(ws.url());
+    const state = { type: 'state', mode: 'control', session: 'sidebar-fixture', cols: Number(url.searchParams.get('cols')), rows: Number(url.searchParams.get('rows')) };
+    ws.onMessage(data => {
+      if (Buffer.isBuffer(data)) { input.push(data.toString()); return; }
+      const message = JSON.parse(data);
+      if (message.type === 'resize') ws.send(JSON.stringify({ ...state, cols: message.cols, rows: message.rows }));
+    });
+    send(JSON.stringify(state));
     send(Buffer.from('sidebar ready\r\n'));
   });
   await page.goto(a.origin);
