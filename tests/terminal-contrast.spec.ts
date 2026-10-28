@@ -18,7 +18,7 @@ const samples = [
 ] as const;
 const output = '\u001b[2J\u001b[H' + samples.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
 
-async function terminal(page: Page) {
+async function terminal(page: Page, content = output, lastLabel = 'dimBlack') {
   const input: string[] = [];
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'iPhone' });
@@ -30,12 +30,12 @@ async function terminal(page: Page) {
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     ws.onMessage(data => { if (Buffer.isBuffer(data)) input.push(data.toString()); });
     ws.send(JSON.stringify({ type: 'state', mode: 'control', session: 'contrast-fixture', cols: 80, rows: 24 }));
-    ws.send(Buffer.from(output));
+    ws.send(Buffer.from(content));
   });
   await page.goto(machine.origin);
   const pane = page.locator('.terminal-pane:not([hidden])');
   await expect(pane).toHaveAttribute('data-mode', 'control');
-  await expect(pane.locator('.xterm-rows')).toContainText('dimBlack');
+  await expect(pane.locator('.xterm-rows')).toContainText(lastLabel);
   // ChromiumFish may keep the host appearance despite colorScheme emulation.
   if (await page.locator('html').getAttribute('data-theme') !== 'dark') await page.getByRole('button', { name: /^Theme:/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -73,20 +73,56 @@ async function colors(element: Locator) {
   });
 }
 
-test('terminal corrects explicit dark text against each cell background in both themes', async ({ page }) => {
+test('terminal corrects explicit dark text against each cell background in dark mode across theme changes', async ({ page }) => {
   const t = await terminal(page);
   for (const theme of ['dark', 'light', 'dark']) {
     if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     // Changing a theme schedules xterm's row redraw on the next frame.
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    for (const [label] of samples.filter(([label]) => label !== 'dimBlack')) {
+    for (const [label] of samples.filter(([label]) => label !== 'dimBlack' && (theme === 'dark' || label !== 'blackOnDark'))) {
       const rendered = await colors(sample(t.pane, label));
       expect.soft(rendered.contrast, `${theme}: ${label} (${JSON.stringify(rendered)})`).toBeGreaterThanOrEqual(4.5);
     }
     expect((await colors(sample(t.pane, 'blackOnWhite'))).foreground).toEqual([0, 0, 0]);
     expect((await colors(sample(t.pane, 'readableGreen'))).foreground).toEqual([0, 255, 0]);
   }
+  expect(t.input).toEqual([]);
+});
+
+test('light terminal preserves native reference text colors across theme changes and reload', async ({ page }, testInfo) => {
+  const native = [
+    ['nativeDefault', '', [66, 66, 66]],
+    ['nativeBlack', '38;2;0;0;0', [0, 0, 0]],
+    ['nativeMuted', '38;2;102;102;102', [102, 102, 102]],
+    ['nativeFaint', '38;2;157;157;157', [157, 157, 157]],
+    ['nativeBlue', '38;2;87;105;247', [87, 105, 247]],
+    ['nativeSuccess', '38;2;44;122;57', [44, 122, 57]],
+    ['nativeSpinner', '38;2;215;119;87', [215, 119, 87]],
+    ['nativeWarning', '38;2;171;43;63', [171, 43, 63]],
+    ['nativeEffort', '38;2;246;116;0', [246, 116, 0]],
+    ['nativeTime', '38;2;0;166;0', [0, 166, 0]],
+    ['nativeAdv', '38;2;71;130;200', [71, 130, 200]],
+  ] as const;
+  const reference = '\u001b[2J\u001b[H' + native.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
+  const t = await terminal(page, reference, 'nativeAdv');
+  for (const theme of ['light', 'dark', 'light']) {
+    await page.getByRole('button', { name: /^Theme:/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    for (const [label, , rgb] of native) {
+      const rendered = await colors(sample(t.pane, label));
+      if (theme === 'light') expect.soft(rendered.foreground, label).toEqual(rgb);
+      else expect.soft(rendered.contrast, label).toBeGreaterThanOrEqual(4.5);
+      expect.soft(rendered.background, `${theme}: ${label}`).toEqual(theme === 'light' ? [247, 247, 247] : [0, 0, 0]);
+    }
+    if (theme === 'dark') expect((await colors(sample(t.pane, 'nativeDefault'))).foreground).toEqual([231, 231, 231]);
+    await page.screenshot({ path: `test-results/native-text-${theme}-${testInfo.project.name}.png`, animations: 'disabled' });
+  }
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(t.pane.locator('.xterm-rows')).toContainText('nativeAdv');
+  for (const [label, , rgb] of native) expect.soft((await colors(sample(t.pane, label))).foreground, `reloaded: ${label}`).toEqual(rgb);
   expect(t.input).toEqual([]);
 });
 

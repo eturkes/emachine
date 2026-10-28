@@ -58,7 +58,7 @@ Use **Control+Shift+P** to find a project or view. Select a project from the sid
 The theme button shows **Light** or **Dark**. Select it to switch colors. The first launch uses your environment's color preference.
 The client saves that choice and later changes. **Settings** opens machine connections and route details.
 Dark mode uses pure-black terminal and panel backgrounds, with borders and small neutral highlights for controls.
-The terminal improves low-contrast text in either theme, so Claude Code can keep its light-mode setting while emachine stays dark. Copied text and terminal output are preserved.
+The light terminal uses native-reference charcoal text and preserves programs' text colors. Dark mode improves low-contrast text, so Claude Code can keep its light-mode setting while emachine stays dark. Copied text and terminal output are preserved.
 On desktop, **Hide projects** collapses the sidebar and **Show projects** restores it. The client remembers this choice, and the active terminal or feature view stays open as it resizes.
 On narrow screens, **Projects** opens the project drawer independently of the desktop preference.
 The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.

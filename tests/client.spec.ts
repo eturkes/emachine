@@ -528,6 +528,7 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
       selection: getComputedStyle(document.documentElement, '::selection').backgroundColor,
       terminalText: getComputedStyle(document.querySelector('.xterm-rows')!).color,
       terminalBackground: getComputedStyle(document.querySelector('.xterm-scrollable-element')!).backgroundColor,
+      terminalScrollbar: getComputedStyle(document.querySelector('.xterm-scrollable-element > .scrollbar > .slider')!).backgroundColor,
       chrome: document.querySelector('meta[name="theme-color"]')!.getAttribute('content'),
     };
   });
@@ -540,8 +541,9 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
   for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText, terminalBackground: light.terminalBackground })) {
     expect(new Set(rgb(color)).size, `${name} must have no color tint`).toBe(1);
   }
-  expect(rgb(light.terminalText)).toEqual(rgb(light.tokens.text));
+  expect(rgb(light.terminalText)).toEqual([66, 66, 66]);
   expect(rgb(light.terminalBackground)).toEqual(rgb(light.tokens.bg));
+  expect(light.terminalScrollbar).toBe('rgba(41, 41, 41, 0.2)');
   expect(light.chrome).toBe(light.tokens.bg);
   for (const foreground of ['text', 'muted', 'accent']) for (const background of ['bg', 'surface', 'hover']) {
     const values = [luminance(light.tokens[foreground]), luminance(light.tokens[background])].sort((a, b) => a - b);
