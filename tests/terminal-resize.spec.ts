@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 // @ts-expect-error This JavaScript fixture drives the real native server.
 import { fixture } from './network-helper.mjs';
+// @ts-expect-error This fixture runs a selector inside a real manual zmx attachment.
+import { manualSelector } from './terminal-session-fixture.mjs';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
 let server: any;
@@ -133,6 +135,201 @@ test('terminal synchronizes fitted dimensions on control before repainting live 
   await expect.poll(async () => (await dimensions(page)).rows).toBeLessThan(fitted.rows);
   await expect.poll(() => remote).toEqual(await dimensions(page));
   expect(input).toEqual([]);
+});
+
+test('controller parses in-flight redraws at the acknowledged terminal size', async ({ page }) => {
+  let remote = { cols: 80, rows: 24 };
+  let send!: (data: string | Buffer) => void;
+  const resizes: { cols: number; rows: number }[] = [];
+  const input: string[] = [];
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    const url = new URL(ws.url());
+    remote = { cols: Number(url.searchParams.get('cols')), rows: Number(url.searchParams.get('rows')) };
+    send = data => ws.send(data);
+    ws.onMessage(data => {
+      if (Buffer.isBuffer(data)) { input.push(data.toString()); return; }
+      const message = JSON.parse(data);
+      if (message.type === 'resize') resizes.push({ cols: message.cols, rows: message.rows });
+    });
+    send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+    send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(remote.cols, 0)}`));
+  });
+  await page.goto(server.origin);
+  const rows = page.locator('.xterm-rows > div');
+  await expect(rows.nth(1)).toContainText('> First option');
+  expect(resizes).toEqual([]);
+
+  await page.setViewportSize({ width: 290, height: 600 });
+  await expect.poll(() => resizes.length).toBe(1);
+  const requested = resizes[0];
+  expect(requested.cols).toBeLessThan(remote.cols);
+  // The resize request and old-grid output cross in flight on a real connection.
+  send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(remote.cols, 1)}`));
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(remote.cols, 1).split('\r\n'),
+  ]);
+  expect(await dimensions(page)).toEqual(remote);
+
+  remote = requested;
+  send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+  send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(remote.cols, 2)}`));
+  await expect.poll(() => dimensions(page)).toEqual(remote);
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.slice(0, remote.cols).trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(remote.cols, 2).split('\r\n'),
+  ]);
+  expect(resizes).toEqual([remote]);
+  expect(input).toEqual([]);
+});
+
+test('control takeover preserves the replay grid until its fitted resize is acknowledged', async ({ page }) => {
+  const remote = { cols: 80, rows: 24 };
+  let send!: (data: string | Buffer) => void;
+  const resizes: { cols: number; rows: number }[] = [];
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    send = data => ws.send(data);
+    ws.onMessage(data => {
+      if (typeof data !== 'string') return;
+      const message = JSON.parse(data);
+      if (message.type === 'claim') {
+        send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+        send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(remote.cols, 1)}`));
+      } else if (message.type === 'resize') resizes.push({ cols: message.cols, rows: message.rows });
+    });
+    send(JSON.stringify({ type: 'state', mode: 'observe', ...remote }));
+    send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(remote.cols, 0)}`));
+  });
+  await page.goto(server.origin);
+  const rows = page.locator('.xterm-rows > div');
+  await expect(rows.nth(1)).toContainText('> First option');
+  await page.getByRole('button', { name: 'Take control', exact: true }).click();
+  await expect.poll(() => resizes.length).toBe(1);
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(remote.cols, 1).split('\r\n'),
+  ]);
+  expect(await dimensions(page)).toEqual(remote);
+  send(JSON.stringify({ type: 'state', mode: 'control', ...resizes[0] }));
+  await expect.poll(() => dimensions(page)).toEqual(resizes[0]);
+});
+
+test('controller coalesces rapid viewport reversals behind the outstanding resize', async ({ page }) => {
+  let remote = { cols: 80, rows: 24 };
+  let send!: (data: string | Buffer) => void;
+  const resizes: { cols: number; rows: number }[] = [];
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    const url = new URL(ws.url());
+    remote = { cols: Number(url.searchParams.get('cols')), rows: Number(url.searchParams.get('rows')) };
+    send = data => ws.send(data);
+    ws.onMessage(data => {
+      if (typeof data !== 'string') return;
+      const message = JSON.parse(data);
+      if (message.type === 'resize') resizes.push({ cols: message.cols, rows: message.rows });
+    });
+    send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+    send(Buffer.from('READY'));
+  });
+  await page.goto(server.origin);
+  await expect(page.locator('.xterm-rows')).toContainText('READY');
+  await page.setViewportSize({ width: 290, height: 600 });
+  await expect.poll(() => resizes.length).toBe(1);
+  await page.setViewportSize({ width: 340, height: 700 });
+  // Let each viewport's 100 ms layout debounce settle while the server reply is withheld.
+  await page.waitForTimeout(200);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  expect(resizes).toHaveLength(1);
+  send(JSON.stringify({ type: 'state', mode: 'control', ...resizes[0] }));
+  await expect.poll(() => resizes.length).toBe(2);
+  expect(resizes[1]).toEqual(remote);
+  send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+  await expect.poll(() => dimensions(page)).toEqual(remote);
+});
+
+test('shared screen geometry is independent from the controller viewport request', async ({ page }) => {
+  let desired = { cols: 80, rows: 24 };
+  let screen = { screenCols: 100, screenRows: 30 };
+  let send!: (data: string | Buffer) => void;
+  const resizes: { cols: number; rows: number }[] = [];
+  const input: string[] = [];
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
+    const url = new URL(ws.url());
+    desired = { cols: Number(url.searchParams.get('cols')), rows: Number(url.searchParams.get('rows')) };
+    send = data => ws.send(data);
+    ws.onMessage(data => {
+      if (Buffer.isBuffer(data)) { input.push(data.toString()); return; }
+      const message = JSON.parse(data);
+      if (message.type === 'resize') {
+        desired = { cols: message.cols, rows: message.rows };
+        resizes.push(desired);
+        send(JSON.stringify({ type: 'state', mode: 'control', ...desired, ...screen }));
+      }
+    });
+    send(JSON.stringify({ type: 'state', mode: 'control', ...desired, ...screen }));
+    send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(screen.screenCols, 0)}`));
+  });
+  await page.goto(server.origin);
+  const rows = page.locator('.xterm-rows > div');
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(screen.screenCols, 0).split('\r\n'),
+  ]);
+  expect(resizes).toEqual([]);
+  await page.setViewportSize({ width: 290, height: 600 });
+  await expect.poll(() => resizes.length).toBe(1);
+  expect(desired.cols).toBeLessThan(screen.screenCols);
+  send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(screen.screenCols, 1)}`));
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(screen.screenCols, 1).split('\r\n'),
+  ]);
+  expect(await dimensions(page)).toEqual({ cols: screen.screenCols, rows: screen.screenRows });
+
+  // The actual zmx leader changes independently of emachine's resize acknowledgement.
+  screen = { screenCols: desired.cols, screenRows: desired.rows };
+  send(JSON.stringify({ type: 'state', mode: 'control', ...desired, ...screen }));
+  send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(screen.screenCols, 2)}`));
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.slice(0, screen.screenCols).trimEnd()).filter(Boolean)).toEqual([
+    'Question', ...selectorFrame(screen.screenCols, 2).split('\r\n'),
+  ]);
+  expect(await dimensions(page)).toEqual(desired);
+  expect(resizes).toHaveLength(1);
+  expect(input).toEqual([]);
+});
+
+test('a manual zmx leader stays readable before and after phone input takes leadership', async ({ page }, testInfo) => {
+  const shared = await fixture();
+  let manual: any;
+  try {
+    manual = await manualSelector(shared);
+    await expect.poll(() => manual.text).toContain('Shared question');
+    await page.goto(shared.origin);
+    const rows = page.locator('.xterm-rows > div');
+    const expected = (width: number, active: number) => ['Shared question', ...selectorFrame(width, active).split('\r\n')];
+    const screen = (width: number) => rows.allTextContents().then(lines => lines.map(row => row.slice(0, width).trimEnd()).filter(Boolean));
+    await expect.poll(() => screen(100)).toEqual(expected(100, 0));
+    expect(await dimensions(page)).toEqual({ cols: 100, rows: 30 });
+    await page.screenshot({ path: testInfo.outputPath('shared-session.png') });
+
+    for (const [active, width, height] of [[1, 290, 600], [2, 340, 700], [0, 390, 500]]) {
+      await page.setViewportSize({ width, height });
+      await page.waitForTimeout(200);
+      await manual.render(active);
+      await expect.poll(() => screen(100)).toEqual(expected(100, active));
+      expect(await dimensions(page)).toEqual({ cols: 100, rows: 30 });
+    }
+
+    // A real input promotes emachine in stock zmx; the fixture consumes it without editing a command.
+    await page.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.type(' ');
+    await expect.poll(async () => (await dimensions(page)).cols).toBeLessThan(100);
+    const fitted = await dimensions(page);
+    for (const active of [1, 2, 0]) {
+      await manual.render(active);
+      await expect.poll(() => screen(fitted.cols)).toEqual(expected(fitted.cols, active));
+    }
+    await page.screenshot({ path: testInfo.outputPath('phone-session.png') });
+  } finally {
+    await page.goto('about:blank');
+    await manual?.close();
+    await shared.close();
+  }
 });
 
 test('queued selector redraws stay in order across terminal geometry changes', async ({ page }) => {

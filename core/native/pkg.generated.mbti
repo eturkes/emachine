@@ -20,6 +20,10 @@ pub fn resize_pty(Int32, Int32, Int32) -> Unit raise
 
 pub fn secure_equal(String, String) -> Bool
 
+pub fn session_pty_identity(Int32) -> String?
+
+pub fn session_pty_size(Int32, String) -> (Int32, Int32)?
+
 pub fn sha256(Bytes) -> String raise
 
 pub fn sync_directory(String) -> Unit raise

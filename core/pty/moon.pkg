@@ -1,15 +1,15 @@
 import {
+  "eturkes/emachine/native",
   "moonbit-community/pty" @system_pty,
   "moonbitlang/async",
   "moonbitlang/async/io",
+  "moonbitlang/async/process",
+  "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
 }
 
 import {
-  "eturkes/emachine/native",
   "moonbitlang/async/fs",
-  "moonbitlang/async/process",
-  "moonbitlang/core/encoding/utf8",
 } for "test"
 
 supported_targets = "-all+native"

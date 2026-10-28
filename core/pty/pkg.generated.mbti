@@ -16,7 +16,9 @@ pub struct Pty {
 }
 pub fn Pty::close(Self) -> Unit
 pub async fn Pty::read(Self) -> Bytes
+pub async fn Pty::refresh_screen(Self) -> Unit
 pub fn Pty::resize(Self, Int32, Int32) -> Unit raise
+pub fn Pty::screen_size(Self) -> (Int32, Int32)?
 pub async fn Pty::wait(Self) -> Int32
 pub async fn Pty::write(Self, Bytes) -> Unit
 

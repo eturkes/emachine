@@ -170,3 +170,45 @@ pub fn open_pty(cols : Int, rows : Int) -> (Int, String) raise {
 pub fn resize_pty(fd : Int, cols : Int, rows : Int) -> Unit raise {
   check(pty_resize_ffi(fd, cols, rows), "resize PTY")
 }
+
+///|
+#borrow(out)
+extern "C" fn session_pty_identity_ffi(
+  pid : Int,
+  out : FixedArray[Byte],
+  capacity : Int,
+) -> Int = "em_session_pty_identity"
+
+///|
+#borrow(identity, out)
+extern "C" fn session_pty_size_ffi(
+  pid : Int,
+  identity : Bytes,
+  out : FixedArray[Int],
+) -> Int = "em_session_pty_size"
+
+///|
+pub fn session_pty_identity(pid : Int) -> String? {
+  let out : FixedArray[Byte] = FixedArray::make(96, 0)
+  if session_pty_identity_ffi(pid, out, 96) != 1 {
+    return None
+  }
+  Some(from_c_string(out))
+}
+
+///|
+pub fn session_pty_size(pid : Int, identity : String) -> (Int, Int)? {
+  if identity.is_empty() || identity.length() >= 96 {
+    return None
+  }
+  for byte in @utf8.encode(identity) {
+    if byte != 58 && (byte < 48 || byte > 57) {
+      return None
+    }
+  }
+  let out = FixedArray::make(2, 0)
+  if session_pty_size_ffi(pid, c_string(identity), out) != 1 {
+    return None
+  }
+  Some((out[0], out[1]))
+}

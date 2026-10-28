@@ -69,6 +69,7 @@ export class TerminalPane {
   private route = '';
   private remoteSize = '';
   private pendingSize = '';
+  private desiredSize?: { cols: number; rows: number };
   constructor(public link: Link, public target: TerminalTarget, theme: Theme, private notice: (text: string) => void) {
     this.element.className = 'terminal-pane view';
     this.element.classList.toggle('terminal-ios', isIOS());
@@ -193,7 +194,6 @@ export class TerminalPane {
     this.terminal.onBinary(data => {
       if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(Uint8Array.from(data, character => character.charCodeAt(0) & 255));
     });
-    this.terminal.onResize(() => this.syncSize());
     this.observer = new ResizeObserver(() => {
       // Keyboard animations produce several temporary grids; resize the PTY once they settle.
       window.clearTimeout(this.layoutTimer);
@@ -230,9 +230,9 @@ export class TerminalPane {
     if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(new TextEncoder().encode(data));
   }
   private syncSize(): void {
-    if (this.mode !== 'control' || this.ws?.readyState !== WebSocket.OPEN) return;
-    const { cols, rows } = this.terminal, size = `${cols}x${rows}`;
-    if (size === this.remoteSize || size === this.pendingSize) return;
+    if (!this.visible || !this.desiredSize || this.mode !== 'control' || this.ws?.readyState !== WebSocket.OPEN || this.pendingSize) return;
+    const { cols, rows } = this.desiredSize, size = `${cols}x${rows}`;
+    if (size === this.remoteSize) return;
     this.pendingSize = size;
     this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   }
@@ -269,7 +269,11 @@ export class TerminalPane {
     if (fontSize > 0 && this.terminal.options.fontSize !== fontSize) this.terminal.options.fontSize = fontSize;
     if (this.mode === 'observe' && this.ws) return;
     const proposed = this.fit.proposeDimensions();
-    if (proposed) this.terminal.resize(Math.max(2, Math.min(500, proposed.cols)), Math.max(2, Math.min(500, proposed.rows)));
+    if (!proposed) return;
+    this.desiredSize = { cols: Math.max(2, Math.min(500, proposed.cols)), rows: Math.max(2, Math.min(500, proposed.rows)) };
+    // Keep parsing in-flight output on its old grid until the server orders the resize.
+    if (this.ws) this.syncSize();
+    else this.terminal.resize(this.desiredSize.cols, this.desiredSize.rows);
   }
   update(link: Link, target: TerminalTarget): void {
     this.link = link; this.target = target;
@@ -320,18 +324,20 @@ export class TerminalPane {
               this.remoteSize = `${message.cols}x${message.rows}`;
               if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
               this.mode = mode;
+              // zmx can keep a manual terminal's grid even after accepting our attachment size.
+              const cols = message.screenCols ?? message.cols, rows = message.screenRows ?? message.rows;
+              this.terminal.resize(cols, rows);
               this.textInput?.refresh();
               this.prompts.refresh();
               this.element.dataset.mode = this.mode;
               this.control.hidden = this.mode === 'control';
-              if (this.mode === 'observe') this.terminal.resize(message.cols, message.rows);
-              else {
+              if (this.mode === 'control') {
                 if (gainedControl) this.fitTerminal();
-                // A fit completed before control can leave onResize silent despite a remote mismatch.
+                // Coalesce viewport changes while a previous resize is awaiting acknowledgement.
                 this.syncSize();
               }
               this.status.hidden = this.mode === 'control';
-              this.status.textContent = this.mode === 'control' ? '' : `Observing · ${message.cols} × ${message.rows} · another device controls this shell`;
+              this.status.textContent = this.mode === 'control' ? '' : `Observing · ${cols} × ${rows} · another device controls this shell`;
             } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
           });
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }

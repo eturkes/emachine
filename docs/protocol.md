@@ -84,7 +84,7 @@ The project-only **History** button toggles a right-hand sidebar with selectable
 General tab state belongs to each machine in the client: open session names, selected session, and the next number survive reload. Tabs attach lazily. Closing a tab preserves its zmx session and does not reuse its number for the next new tab. An existing session with the next name is attached without resetting its shell state.
 
 Server binary frames contain raw terminal bytes. Server text frames:
-- `{type:"state", session:string, mode:"control"|"observe", cols:number, rows:number}`.
+- `{type:"state", session:string, mode:"control"|"observe", cols:number, rows:number, screenCols?:number, screenRows?:number}`.
 - `{type:"error", message:string}`.
 - `{type:"pong"}`.
 
@@ -93,9 +93,11 @@ Client binary frames contain raw UTF-8 input, accepted only from the controller.
 - `{type:"claim"}` (explicit take-control action).
 - `{type:"ping"}`.
 
-First connection controls; others observe until claiming control or controller disconnection. All native attachments use the controller's dimensions. Observer terminals render those dimensions instead of resizing the shared shell. Clear the browser terminal before reconnecting: zmx replays terminal state. Do not interpret terminal OSC as authority to read clipboard or open external URLs automatically.
+First connection controls; others observe until claiming control or controller disconnection. All native attachments request the controller's dimensions. `cols` and `rows` acknowledge that attachment request. The client keeps its desired viewport size separate, sends one resize at a time, and coalesces further viewport changes until that request is acknowledged. It applies received state geometry in order with parsed output; sending a resize request must not immediately change the local parser grid. Hidden panes do not send stale viewport dimensions on automatic control transfer.
 
-The controller policy applies only to Emachine clients. Manual zmx attachments can also send input and affect terminal dimensions.
+The controller policy applies only to Emachine clients. Stock zmx uses the last input-producing attachment as its size leader, including manual terminals. Optional `screenCols` and `screenRows` report the observed session PTY dimensions, which can differ from the acknowledged attachment request. Both controllers and observers render that actual grid, with scrolling when it exceeds their viewport, without feeding it back as a resize request. A bounded metadata lookup identifies the exact session's child process; read-only Linux PTY queries validate its identity, owner and controlling terminal, close every descriptor, and never send synthetic input or retain the slave PTY. Unavailable metadata falls back to the legacy attachment dimensions; a transient query failure retains the last observed grid. Geometry observations precede the corresponding forwarded data but are not an atomic resize boundary in stock zmx's raw byte stream.
+
+Clear the browser terminal before reconnecting: zmx replays terminal state. Do not interpret terminal OSC as authority to read clipboard or open external URLs automatically.
 
 ## Feature frames and jobs
 

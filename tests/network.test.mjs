@@ -14,10 +14,11 @@ async function sessions(f) {
     .map(([, name, pid, clients]) => ({ name, pid: Number(pid), clients: Number(clients) }));
 }
 
-function manualTerminal(f, name) {
+function manualTerminal(f, name, dimensions) {
   const child = spawn('script', ['--quiet', '--return', '--command',
-    'exec zmx attach "$EMACHINE_TEST_SESSION" /bin/bash --noprofile --norc', '/dev/null'], {
-    cwd: f.home, env: { ...f.env, TERM: 'xterm-256color', EMACHINE_TEST_SESSION: name },
+    `${dimensions ? 'stty rows "$EMACHINE_TEST_ROWS" cols "$EMACHINE_TEST_COLS"; ' : ''}exec zmx attach "$EMACHINE_TEST_SESSION" /bin/bash --noprofile --norc`, '/dev/null'], {
+    cwd: f.home, env: { ...f.env, TERM: 'xterm-256color', EMACHINE_TEST_SESSION: name,
+      ...(dimensions ? { EMACHINE_TEST_COLS: String(dimensions.cols), EMACHINE_TEST_ROWS: String(dimensions.rows) } : {}) },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let text = '';
@@ -41,6 +42,79 @@ function manualTerminal(f, name) {
 }
 
 test('project-named zmx session interoperability', { timeout: 120000 }, async t => {
+  await t.test('manual leader geometry precedes replay and stays distinct from requested resize', async t => {
+    const f = await fixture();
+    const clients = [];
+    t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+    const project = (await f.state()).projects.find(p => p.name === 'alpha');
+    const manual = manualTerminal(f, project.name, { cols: 100, rows: 30 }); clients.push(manual);
+    manual.command("printf '__MANUAL_''GRID__'; stty size; printf '__REPLAY_''MARKER__\\n'");
+    await until(() => manual.text.includes('__MANUAL_GRID__30 100'));
+
+    const frames = [];
+    let currentState;
+    const ws = new WebSocket(`${f.origin.replace('http', 'ws')}/api/v1/terminal/${project.id}?cols=40&rows=20`, { headers: { Origin: f.origin } });
+    const client = {
+      async close() {
+        if (ws.readyState === WebSocket.CLOSED) return;
+        const done = new Promise(resolve => ws.once('close', resolve));
+        ws.close(); const timer = setTimeout(() => ws.terminate(), 1000);
+        try { await done; } finally { clearTimeout(timer); }
+      },
+      command(line) { ws.send(Buffer.from(line + '\r')); },
+    };
+    clients.push(client);
+    let text = '';
+    ws.on('message', (data, binary) => {
+      if (binary) {
+        text = (text + data.toString()).slice(-65536);
+        frames.push({ state: currentState, bytes: data.toString(), through: text });
+        if (data.includes(Buffer.from('\x1b[c'))) ws.send(Buffer.from('\x1b[?1;2c'));
+        if (data.includes(Buffer.from('\x1b[6n'))) ws.send(Buffer.from('\x1b[1;1R'));
+      } else {
+        const packet = JSON.parse(data.toString());
+        if (packet.type === 'state') currentState = packet;
+      }
+    });
+    await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
+    await until(() => text.includes('__REPLAY_MARKER__'));
+    assert.deepEqual(frames[0].state, {
+      type: 'state', session: 'alpha', mode: 'control', cols: 40, rows: 20, screenCols: 100, screenRows: 30,
+    });
+
+    ws.send(JSON.stringify({ type: 'resize', cols: 55, rows: 17 }));
+    await until(() => currentState.cols === 55 && currentState.rows === 17);
+    manual.command("printf '__AFTER_''RESIZE__'; stty size");
+    await until(() => text.includes('__AFTER_RESIZE__30 100'));
+    assert.equal(currentState.screenCols, 100);
+    assert.equal(currentState.screenRows, 30);
+
+    ws.send(Buffer.from(' '));
+    await sleep(200);
+    client.command("printf '__AFTER_''INPUT__'; stty size");
+    await until(() => text.includes('__AFTER_INPUT__17 55'));
+    assert.equal(currentState.screenCols, 55);
+    assert.equal(currentState.screenRows, 17);
+    const inputFrame = frames.find(frame => frame.through.includes('__AFTER_INPUT__17 55'));
+    assert.equal(inputFrame?.state.screenCols, 55);
+    assert.equal(inputFrame?.state.screenRows, 17);
+  });
+
+  await t.test('silent terminal resize publishes the observed grid without more input or output', async t => {
+    const f = await fixture();
+    let client;
+    t.after(async () => { await client?.close(); await f.close(); });
+    const project = (await f.state()).projects.find(p => p.name === 'alpha');
+    client = await socket(f, `api/v1/terminal/${project.id}?cols=80&rows=24`);
+    client.command("stty -echo; printf '__SILENT_''READY__\\n'; sleep 5; printf '__SILENT_''DONE__\\n'");
+    await until(() => client.text.includes('__SILENT_READY__'));
+    await until(() => client.packets.some(packet => packet.screenCols === 80 && packet.screenRows === 24));
+    const quiet = client.text;
+    client.control({ type: 'resize', cols: 72, rows: 19 });
+    await until(() => client.packets.some(packet => packet.screenCols === 72 && packet.screenRows === 19), 1500);
+    assert.equal(client.text, quiet, 'geometry updates must not require program output or injected input');
+  });
+
   await t.test('missing sessions use the exact project name in the default namespace', async t => {
     const f = await fixture();
     const clients = [];

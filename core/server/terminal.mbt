@@ -10,6 +10,7 @@ struct Peer {
   terminal : @pty.Pty
   output : @async.Queue[Packet]
   mut alive : Bool
+  mut screen_size : (Int, Int)?
 }
 
 ///|
@@ -22,6 +23,23 @@ struct Room {
 }
 
 ///|
+fn terminal_state(room : Room, peer : Peer) -> Json {
+  let mode = if peer.id == room.controller { "control" } else { "observe" }
+  let fields : Map[String, Json] = {
+    "type": "state",
+    "session": room.session.to_json(),
+    "mode": mode.to_json(),
+    "cols": room.cols.to_json(),
+    "rows": room.rows.to_json(),
+  }
+  if peer.screen_size is Some((cols, rows)) {
+    fields["screenCols"] = cols.to_json()
+    fields["screenRows"] = rows.to_json()
+  }
+  Json(fields)
+}
+
+///|
 fn update_room(room : Room) -> Unit {
   for peer in room.peers {
     if !peer.alive {
@@ -29,16 +47,10 @@ fn update_room(room : Room) -> Unit {
     }
     let okay = try {
       peer.terminal.resize(room.cols, room.rows)
-      let mode = if peer.id == room.controller { "control" } else { "observe" }
-      peer.output.try_put(
-        Control({
-          "type": "state",
-          "session": room.session.to_json(),
-          "mode": mode.to_json(),
-          "cols": room.cols.to_json(),
-          "rows": room.rows.to_json(),
-        }),
-      )
+      if peer.terminal.screen_size() is Some(size) {
+        peer.screen_size = Some(size)
+      }
+      peer.output.try_put(Control(terminal_state(room, peer)))
     } catch {
       _ => false
     }
@@ -46,6 +58,18 @@ fn update_room(room : Room) -> Unit {
       peer.alive = false
       peer.terminal.close()
     }
+  }
+}
+
+///|
+async fn refresh_terminal_screen(room : Room, peer : Peer) -> Unit {
+  if !peer.alive {
+    return
+  }
+  peer.terminal.refresh_screen()
+  if peer.terminal.screen_size() is Some(size) && peer.screen_size != Some(size) {
+    peer.screen_size = Some(size)
+    peer.output.put(Control(terminal_state(room, peer)))
   }
 }
 
@@ -142,6 +166,7 @@ async fn terminal_session(
         terminal,
         output: @async.Queue(kind=Blocking(256)),
         alive: true,
+        screen_size: None,
       }
       room.peers.push(peer)
       if room.controller.is_empty() {
@@ -163,6 +188,14 @@ async fn terminal_session(
       update_room(room)
       group.spawn_bg(no_wait=true, () => {
         for ;; {
+          // Silent programs and manual zmx clients can resize without producing bytes.
+          // This samples cached identity at 4 Hz; unavailable metadata discovery backs off to 30 s.
+          @async.sleep(250)
+          refresh_terminal_screen(room, peer)
+        }
+      })
+      group.spawn_bg(no_wait=true, () => {
+        for ;; {
           match peer.output.get() {
             Data(bytes) => socket.send_binary(bytes)
             Control(value) => socket.send_text(value.stringify())
@@ -175,6 +208,13 @@ async fn terminal_session(
           if data.is_empty() {
             socket.close()
             break
+          }
+          // zmx follows its last input leader, which may be a manual terminal outside this room.
+          // Report its observed screen grid before bytes without replacing our requested attach size.
+          if terminal.screen_size() is Some(size) &&
+            peer.screen_size != Some(size) {
+            peer.screen_size = Some(size)
+            peer.output.put(Control(terminal_state(room, peer)))
           }
           peer.output.put(Data(data))
         }
@@ -206,7 +246,10 @@ async fn terminal_session(
                 room.controller = peer.id
                 update_room(room)
               }
-              "ping" => peer.output.put(Control({ "type": "pong" }))
+              "ping" => {
+                refresh_terminal_screen(room, peer)
+                peer.output.put(Control({ "type": "pong" }))
+              }
               _ => ()
             }
           }
