@@ -102,6 +102,8 @@ test('light terminal preserves native reference text colors across theme changes
     ['nativeWarning', '38;2;171;43;63', [171, 43, 63]],
     ['nativeEffort', '38;2;246;116;0', [246, 116, 0]],
     ['nativeTime', '38;2;0;166;0', [0, 166, 0]],
+    ['nativeAnsiYellow', '33', [246, 116, 0]],
+    ['nativeIndexedYellow', '38;5;3', [246, 116, 0]],
     ['nativeAdv', '38;2;71;130;200', [71, 130, 200]],
   ] as const;
   const reference = '\u001b[2J\u001b[H' + native.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
@@ -123,6 +125,36 @@ test('light terminal preserves native reference text colors across theme changes
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(t.pane.locator('.xterm-rows')).toContainText('nativeAdv');
   for (const [label, , rgb] of native) expect.soft((await colors(sample(t.pane, label))).foreground, `reloaded: ${label}`).toEqual(rgb);
+  expect(t.input).toEqual([]);
+});
+
+test('native yellow text preserves dim styling, cell backgrounds and explicit RGB colors', async ({ page }) => {
+  const samples = [
+    ['yellow', '33'], ['dimYellow', '2;33'], ['yellowBackground', '37;43'],
+    ['rgbThinking', '38;2;150;108;30'], ['brightYellow', '93'],
+    ['boldYellow', '1;33'], ['rgbYellow', '38;2;136;98;26'],
+  ] as const;
+  const output = '\u001b[2J\u001b[H' + samples.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
+  const t = await terminal(page, output, 'rgbYellow');
+  const read = async () => Object.fromEntries(await Promise.all(samples.map(async ([label]) => [label, await colors(sample(t.pane, label))])));
+  const dark = await read();
+  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  const light = await read();
+  expect(light.yellow.foreground).toEqual([246, 116, 0]);
+  for (let channel = 0; channel < 3; channel++) {
+    expect(light.dimYellow.foreground[channel]).toBeCloseTo((light.yellow.foreground[channel] + light.dimYellow.background[channel]) / 2, 0);
+  }
+  expect(light.yellowBackground.background).toEqual([136, 98, 26]);
+  expect(light.rgbThinking.foreground).toEqual([150, 108, 30]);
+  expect(light.rgbYellow.foreground).toEqual([136, 98, 26]);
+  expect(light.brightYellow.foreground).toEqual([144, 109, 36]);
+  expect(light.boldYellow.foreground).toEqual([144, 109, 36]);
+  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await read()).toEqual(dark);
   expect(t.input).toEqual([]);
 });
 
