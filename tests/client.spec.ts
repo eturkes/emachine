@@ -287,6 +287,9 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     await expect(alt).toHaveAttribute('aria-pressed', 'false');
     await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
   }
+  // The following unmodified shortcuts exercise normal mode after the application-mode loop.
+  send(Buffer.from('\u001b[?1lNormal cursor restored\r\n'));
+  await expect(page.locator('.xterm-rows')).toContainText('Normal cursor restored');
   for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
     await page.getByRole('group', { name: 'Terminal keyboard controls', exact: true }).getByRole('button', { name, exact: true }).click(); await received(value);
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
