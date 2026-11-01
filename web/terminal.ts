@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
+import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalOutput } from './terminal-output';
 import { TerminalTextInput } from './terminal-text';
@@ -63,6 +64,7 @@ export class TerminalPane {
   private prompts: TerminalPrompts;
   private history?: TerminalHistory;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
+  private copyOutput?: TerminalCopyOutput;
   private fit = new FitAddon();
   private ws?: WebSocket;
   private observer: ResizeObserver;
@@ -121,7 +123,8 @@ export class TerminalPane {
     keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
     const copy = () => { void this.copy(); };
     const paste = () => { clearModifiers(); void this.paste(); };
-    keys.append(button('Copy', copy), button('Paste', paste), this.status);
+    const copyButton = button('Copy', copy);
+    keys.append(copyButton, button('Paste', paste), this.status);
     this.keyboard = button('Keyboard', event => {
       const hide = (event.detail > 0 ? this.keyboardTap : undefined) ?? this.keyboardShown;
       this.keyboardTap = undefined;
@@ -157,6 +160,8 @@ export class TerminalPane {
     const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
     if (isIOS()) {
+      this.copyOutput = new TerminalCopyOutput(this.terminal, copyButton);
+      this.element.append(this.copyOutput.element);
       this.textInput = new TerminalTextInput({
         canSend: canInput,
         send: text => {
@@ -248,6 +253,7 @@ export class TerminalPane {
   }
   private async copy(): Promise<void> {
     const text = this.terminal.getSelection();
+    if (!text && this.copyOutput) { this.copyOutput.open(); return; }
     this.terminal.focus();
     if (!text) { this.notice('Select terminal text to copy.'); return; }
     try { await navigator.clipboard.writeText(text); }
@@ -266,7 +272,7 @@ export class TerminalPane {
     this.element.hidden = !show;
     if (!show) this.clipboard.close();
     // A render hides every pane before showing the active one again.
-    if (!show) queueMicrotask(() => { if (!this.visible) { this.prompts.close(false); this.history?.close(false); } });
+    if (!show) queueMicrotask(() => { if (!this.visible) { this.prompts.close(false); this.history?.close(false); this.copyOutput?.close(false); } });
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
@@ -393,6 +399,7 @@ export class TerminalPane {
     this.detachInput?.(); this.detachTouch?.(); this.clipboard.dispose(); this.textInput?.dispose();
     this.prompts.dispose();
     this.history?.dispose();
+    this.copyOutput?.dispose();
     this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminal.dispose(); this.element.remove();
   }
 }

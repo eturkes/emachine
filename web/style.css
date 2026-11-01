@@ -158,6 +158,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .prompt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
 .prompt-actions button { min-height: 44px; }
 .prompt-actions .text-button { border: 1px solid var(--border); }
+.terminal-copy-dialog { width: min(760px,calc(100vw - 28px)); height: min(640px,calc(var(--app-height,100dvh) - 28px)); max-height: calc(var(--app-height,100dvh) - 28px); padding: 16px; overflow: auto; }
+.terminal-copy-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.terminal-copy-dialog .dialog-header, .terminal-copy-hint, .terminal-copy-status, .terminal-copy-actions { flex-shrink: 0; }
+.terminal-copy-dialog h2 { font-size: 20px; }
+.terminal-copy-dialog button { min-height: 44px; }
+.terminal-copy-hint, .terminal-copy-status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.terminal-copy-status:empty { display: none; }
+.terminal-copy-output { flex: 1; width: 100%; min-height: 64px; padding: 10px; resize: none; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--bg); font: 16px/1.4 'JetBrains Mono',monospace; user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; touch-action: auto; overscroll-behavior: contain; }
+.terminal-copy-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.terminal-copy-actions button { border: 1px solid var(--border); }
 .history-sidebar { display: flex; flex-direction: column; flex: 0 0 clamp(300px,36%,440px); min-width: 0; min-height: 0; gap: 12px; padding: 16px; padding-right: max(16px,env(safe-area-inset-right)); padding-bottom: max(16px,env(safe-area-inset-bottom)); overflow: hidden; border-left: 1px solid var(--border); background: var(--surface); }
 .history-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .history-header h2 { margin: 0; font-size: 18px; font-weight: 550; letter-spacing: -.4px; }

@@ -90,6 +90,22 @@ The arrow buttons preserve the keyboard's current state, so you can hide it and 
 They also work when the session is already open in an SSH or desktop terminal. You do not need to type another key first.
 Keyboard animations settle before the terminal sends its new dimensions to the running program.
 
+## Copy terminal output
+
+On iPhone or iPad, scroll the terminal shortcut bar to **Copy** and tap it.
+When no terminal text is already selected, this opens **Copy terminal output** with a selectable snapshot.
+Press and hold the text to select a passage and adjust the native selection handles, then tap **Copy selection** or the device's **Copy** command.
+Tap **Copy all** to copy the whole snapshot, including the available terminal scrollback.
+
+The snapshot stays still while the terminal continues running. Close and reopen it to capture newer output.
+Full-screen programs show their current screen; shell scrollback is available when the normal terminal screen is active.
+Terminal-wrapped lines are joined when possible, while actual line breaks and printed spaces are preserved.
+
+Copying works while observing another device's shell or while disconnected; it never sends terminal input.
+If clipboard access is unavailable, the text stays selectable for the device's native **Copy** command.
+Closing the view returns to the Copy button without opening the terminal keyboard.
+Snapshots are discarded when closed, when switching away from their terminal, or when the page closes.
+
 ## Type with native spelling tools
 
 On iPhone or iPad, select **Text** in the terminal keyboard bar.
