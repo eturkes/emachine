@@ -217,13 +217,15 @@ try {
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await neutralTheme(page.locator('body'), {
       tokens: ['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft', 'selection', 'backdrop', 'scrim'],
-      selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows', '.xterm-scrollable-element'],
+      selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows'],
       surfaces: ['bg', 'surface', 'raised', 'hover'], semantic: ['warning', 'danger'],
     });
+    await expect(activeTerminal.locator('.xterm-scrollable-element')).toHaveCSS('background-color', theme === 'light' ? 'rgb(246, 245, 244)' : 'rgb(0, 36, 81)');
+    await expect(terminalRows).toHaveCSS('color', theme === 'light' ? 'rgb(66, 66, 66)' : 'rgb(252, 252, 252)');
     await page.screenshot({ path: join(root, `test-results/emachine-appimage-${theme}.png`) });
   }
   await page.screenshot({ path: join(root, 'test-results/emachine-appimage.png') });
-  console.log('AppImage passed: PWA-matched packaged/launcher icons, neutral light/dark themes, isolated renderer, real machine connection and zmx terminal.');
+  console.log('AppImage passed: PWA-matched packaged/launcher icons, neutral light/dark shell with native terminal palettes, isolated renderer, real machine connection and zmx terminal.');
 } finally {
   await app?.close(); await f.close(); await rm(profile, { recursive: true, force: true });
 }

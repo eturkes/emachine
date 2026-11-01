@@ -18,15 +18,15 @@ const samples = [
 ] as const;
 const output = '\u001b[2J\u001b[H' + samples.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
 
-async function terminal(page: Page, content = output, lastLabel = 'dimBlack') {
+async function terminal(page: Page, content = output, lastLabel = 'dimBlack', platform: 'ios' | 'desktop' = 'ios') {
   const input: string[] = [];
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'iPhone' });
-    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
+  await page.addInitScript(platform => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: platform === 'ios' ? 'MacIntel' : 'Linux x86_64' });
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: platform === 'ios' ? 5 : 0 });
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
       writeText: async (text: string) => { (window as any).contrastCopiedText = text; },
     } });
-  });
+  }, platform);
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     ws.onMessage(data => { if (Buffer.isBuffer(data)) input.push(data.toString()); });
     ws.send(JSON.stringify({ type: 'state', mode: 'control', session: 'contrast-fixture', cols: 80, rows: 24 }));
@@ -116,7 +116,7 @@ test('light terminal preserves native reference text colors across theme changes
       const rendered = await colors(sample(t.pane, label));
       if (theme === 'light') expect.soft(rendered.foreground, label).toEqual(rgb);
       else expect.soft(rendered.contrast, label).toBeGreaterThanOrEqual(4.5);
-      expect.soft(rendered.background, `${theme}: ${label}`).toEqual(theme === 'light' ? [247, 247, 247] : [0, 0, 0]);
+      expect.soft(rendered.background, `${theme}: ${label}`).toEqual(theme === 'light' ? [246, 245, 244] : [0, 0, 0]);
     }
     if (theme === 'dark') expect((await colors(sample(t.pane, 'nativeDefault'))).foreground).toEqual([231, 231, 231]);
     await page.screenshot({ path: `test-results/native-text-${theme}-${testInfo.project.name}.png`, animations: 'disabled' });
@@ -146,11 +146,11 @@ test('native yellow text preserves dim styling, cell backgrounds and explicit RG
   for (let channel = 0; channel < 3; channel++) {
     expect(light.dimYellow.foreground[channel]).toBeCloseTo((light.yellow.foreground[channel] + light.dimYellow.background[channel]) / 2, 0);
   }
-  expect(light.yellowBackground.background).toEqual([136, 98, 26]);
+  expect(light.yellowBackground.background).toEqual([246, 116, 0]);
   expect(light.rgbThinking.foreground).toEqual([150, 108, 30]);
   expect(light.rgbYellow.foreground).toEqual([136, 98, 26]);
-  expect(light.brightYellow.foreground).toEqual([144, 109, 36]);
-  expect(light.boldYellow.foreground).toEqual([144, 109, 36]);
+  expect(light.brightYellow.foreground).toEqual([243, 228, 48]);
+  expect(light.boldYellow.foreground).toEqual([246, 116, 0]);
   await page.getByRole('button', { name: /^Theme:/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -188,4 +188,82 @@ test('phone dark theme keeps the terminal and surrounding surfaces pure black ac
   }
   await page.screenshot({ path: `test-results/emachine-oled-${testInfo.project.name}.png`, animations: 'disabled' });
   expect(t.input).toEqual([]);
+});
+
+test('iOS dark terminal uses black and makes dark ANSI and RGB text readable', async ({ page }) => {
+  const content = '\u001b[2J\u001b[H' + [
+    ['iosDefault', ''], ['iosBlack', '30'], ['iosDarkRgb', '38;2;33;33;33'], ['iosBlue', '34'],
+  ].map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
+  const t = await terminal(page, content, 'iosBlue');
+  for (const label of ['iosDefault', 'iosBlack', 'iosDarkRgb', 'iosBlue']) {
+    const rendered = await colors(sample(t.pane, label));
+    expect.soft(rendered.background, label).toEqual([0, 0, 0]);
+    expect.soft(rendered.contrast, label).toBeGreaterThanOrEqual(4.5);
+  }
+  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await page.getByRole('button', { name: /^Theme:/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect.poll(async () => (await colors(sample(t.pane, 'iosDarkRgb'))).contrast).toBeGreaterThanOrEqual(4.5);
+  expect((await colors(sample(t.pane, 'iosDefault'))).background).toEqual([0, 0, 0]);
+});
+
+test.describe('desktop terminal palette', () => {
+  test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
+
+  test('desktop terminal preserves native palettes and raw RGB across themes and reload', async ({ page }) => {
+    // Render independent color samples, including low-contrast RGB that desktop must preserve.
+    const native = [
+      ['defaultText', '', [252, 252, 252], [66, 66, 66]],
+      ['ansiBlack', '30', [35, 38, 39], [33, 33, 33]],
+      ['ansiRed', '31', [237, 21, 21], [237, 21, 21]],
+      ['ansiGreen', '32', [17, 209, 22], [0, 166, 0]],
+      ['ansiBlue', '34', [29, 153, 243], [0, 142, 196]],
+      ['indexedYellow', '38;5;3', [246, 116, 0], [246, 116, 0]],
+      ['indexedBlack', '38;5;16', [0, 0, 0], [0, 0, 0]],
+      ['indexedGray', '38;5;232', [8, 8, 8], [8, 8, 8]],
+      ['explicitRgb', '38;2;33;33;33', [33, 33, 33], [33, 33, 33]],
+      ['explicitBright', '38;2;250;250;250', [250, 250, 250], [250, 250, 250]],
+      ['normalYellow', '33', [246, 116, 0], [246, 116, 0]],
+      ['brightYellow', '93', [253, 188, 75], [243, 228, 48]],
+      ['boldYellow', '1;33', [246, 116, 0], [246, 116, 0]],
+      ['dimYellow', '2;33', null, null],
+      ['yellowBackground', '37;43', [252, 252, 252], [66, 66, 66]],
+      ['rgbBackground', '38;2;1;2;3;48;2;9;10;11', [1, 2, 3], [1, 2, 3]],
+    ] as const;
+    const content = '\u001b[2J\u001b[H' + native.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
+    const t = await terminal(page, content, 'rgbBackground', 'desktop');
+    const check = async (theme: 'dark' | 'light') => {
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(t.pane.locator('.xterm-rows')).toContainText('rgbBackground');
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      for (const [label, , dark, light] of native) {
+        const rendered = await colors(sample(t.pane, label));
+        const foreground = theme === 'dark' ? dark : light;
+        const background = label === 'yellowBackground' ? [246, 116, 0]
+          : label === 'rgbBackground' ? [9, 10, 11]
+          : theme === 'dark' ? [0, 36, 81] : [246, 245, 244];
+        expect.soft(rendered.background, `${theme}: ${label} background`).toEqual(background);
+        if (foreground) expect.soft(rendered.foreground, `${theme}: ${label} foreground`).toEqual(foreground);
+        else for (let channel = 0; channel < 3; channel++) {
+          expect.soft(rendered.foreground[channel], `${theme}: dim yellow channel ${channel}`)
+            .toBeCloseTo(([246, 116, 0][channel] + background[channel]) / 2, 0);
+        }
+      }
+      await expect(sample(t.pane, 'boldYellow')).toHaveCSS('font-weight', '700');
+    };
+    for (const theme of ['dark', 'light', 'dark'] as const) {
+      if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
+      await check(theme);
+      await page.reload();
+      await check(theme);
+    }
+    const target = sample(t.pane, 'explicitRgb');
+    const bounds = await target.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.dblclick(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+    await expect(target).toHaveClass(/xterm-decoration-top/);
+    await t.pane.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).contrastCopiedText)).toBe('explicitRgb');
+    expect(t.input).toEqual([]);
+  });
 });

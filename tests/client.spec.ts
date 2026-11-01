@@ -514,7 +514,7 @@ test('terminal cells match the loaded font after a delayed font response', async
   expect(Math.abs(metrics.cell - metrics.glyph)).toBeLessThanOrEqual(metrics.pixel);
 });
 
-test('light palette stays neutral across the shell, terminal and phone layout', async ({ page }) => {
+test('light palette keeps the shell neutral and matches native terminal colors across phone layouts', async ({ page }) => {
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   const toggle = page.getByRole('button', { name: /^Theme:/ });
@@ -538,11 +538,11 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
   const rgb = (color: string) => color.startsWith('#') ? color.slice(1, 7).match(/../g)!.map(hex => parseInt(hex, 16)) : color.match(/[\d.]+/g)!.slice(0, 3).map(Number);
   const luminance = (color: string) => rgb(color).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
   const light = await colors();
-  for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText, terminalBackground: light.terminalBackground })) {
+  for (const [name, color] of Object.entries({ ...light.tokens, selection: light.selection, terminalText: light.terminalText })) {
     expect(new Set(rgb(color)).size, `${name} must have no color tint`).toBe(1);
   }
   expect(rgb(light.terminalText)).toEqual([66, 66, 66]);
-  expect(rgb(light.terminalBackground)).toEqual(rgb(light.tokens.bg));
+  expect(rgb(light.terminalBackground)).toEqual([246, 245, 244]);
   expect(light.terminalScrollbar).toBe('rgba(41, 41, 41, 0.2)');
   expect(light.chrome).toBe(light.tokens.bg);
   for (const foreground of ['text', 'muted', 'accent']) for (const background of ['bg', 'surface', 'hover']) {
@@ -566,16 +566,18 @@ test('light palette stays neutral across the shell, terminal and phone layout', 
   expect(await colors()).toEqual(dark);
 });
 
-test('dark structural palette stays neutral with readable controls and terminal', async ({ page }) => {
+test('dark structural palette stays neutral with native terminal colors', async ({ page }) => {
   await page.goto(a.origin);
   if (await page.locator('html').getAttribute('data-theme') !== 'dark') await page.getByRole('button', { name: /^Theme:/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   await neutralTheme(page.locator('body'), {
     tokens: ['bg', 'surface', 'raised', 'hover', 'text', 'muted', 'border', 'accent', 'accent-soft', 'selection', 'backdrop', 'scrim'],
-    selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows', '.xterm-scrollable-element'],
+    selectors: ['.project-item.active', '.tab.active', '.header-actions', '.terminal-keys button', '.xterm-rows'],
     surfaces: ['bg', 'surface', 'raised', 'hover'], semantic: ['warning', 'danger'],
   });
+  await expect(page.locator('.xterm-scrollable-element')).toHaveCSS('background-color', 'rgb(0, 36, 81)');
+  await expect(page.locator('.xterm-rows')).toHaveCSS('color', 'rgb(252, 252, 252)');
   await page.screenshot({ path: 'test-results/emachine-neutral-dark-desktop.png', animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();

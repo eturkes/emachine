@@ -12,17 +12,25 @@ import { TerminalHistory } from './terminal-history';
 import { socketUrl, type Link } from './transport';
 export type Theme = 'dark' | 'light';
 export type TerminalTarget = { kind: 'project'; id: string } | { kind: 'general'; session: string };
+// Match the local Black Box terminal palettes.
 export const terminalTheme = (theme: Theme) => theme === 'dark' ? {
+  background: '#002451', foreground: '#fcfcfc', cursor: '#d6d6d6', cursorAccent: '#002451', selectionBackground: '#a3a3a380',
+  black: '#232627', red: '#ed1515', green: '#11d116', yellow: '#f67400', blue: '#1d99f3', magenta: '#9b59b6', cyan: '#1abc9c', white: '#fcfcfc',
+  brightBlack: '#7f8c8d', brightRed: '#c0392b', brightGreen: '#1cdc9a', brightYellow: '#fdbc4b', brightBlue: '#3daee9', brightMagenta: '#8e44ad', brightCyan: '#16a085', brightWhite: '#ffffff',
+} : {
+  background: '#f6f5f4', foreground: '#424242', cursor: '#454545', cursorAccent: '#f6f5f4', selectionBackground: '#a3a3a380',
+  scrollbarSliderBackground: '#29292933', scrollbarSliderHoverBackground: '#29292966', scrollbarSliderActiveBackground: '#29292980',
+  black: '#212121', red: '#ed1515', green: '#00a600', yellow: '#f67400', blue: '#008ec4', magenta: '#a37acc', cyan: '#1abc9c', white: '#424242',
+  brightBlack: '#424242', brightRed: '#fb007a', brightGreen: '#5fd7af', brightYellow: '#f3e430', brightBlue: '#20bbfc', brightMagenta: '#6855de', brightCyan: '#4fb8cc', brightWhite: '#424242',
+};
+// iOS uses a black OLED surface and a readable dark palette independently of desktop.
+const iosDarkTheme = {
   background: '#000000', foreground: '#e7e7e7', cursor: '#d6d6d6', cursorAccent: '#000000', selectionBackground: '#a3a3a380',
   black: '#000000', red: '#ed7985', green: '#82d9a3', yellow: '#ecc780', blue: '#8aaff1', magenta: '#c49ae8', cyan: '#7ad6d2', white: '#dedede',
   brightBlack: '#858585', brightRed: '#ff9d9d', brightGreen: '#a4efb6', brightYellow: '#ffe19b', brightBlue: '#b0caff', brightMagenta: '#e0b9ff', brightCyan: '#a2f4df', brightWhite: '#ffffff',
-} : {
-  background: '#f7f7f7', foreground: '#424242', cursor: '#454545', cursorAccent: '#f7f7f7', selectionBackground: '#a3a3a380',
-  // Keep the existing scrollbar colors, which otherwise follow the text foreground.
-  scrollbarSliderBackground: '#29292933', scrollbarSliderHoverBackground: '#29292966', scrollbarSliderActiveBackground: '#29292980',
-  black: '#292929', red: '#a73748', green: '#21744a', yellow: '#88621a', blue: '#345daa', magenta: '#835096', cyan: '#267d7b', white: '#666666',
-  brightBlack: '#666666', brightRed: '#bb4355', brightGreen: '#217c50', brightYellow: '#906d24', brightBlue: '#486caf', brightMagenta: '#9564a9', brightCyan: '#2b8580', brightWhite: '#202020',
 };
+const displayTheme = (theme: Theme) => isIOS() && theme === 'dark' ? iosDarkTheme : terminalTheme(theme);
+const contrastRatio = (theme: Theme) => isIOS() && theme === 'dark' ? 4.5 : 1;
 function button(label: string, action: (event: MouseEvent) => void, title = label): HTMLButtonElement {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.onclick = action; return b;
 }
@@ -138,9 +146,9 @@ export class TerminalPane {
     toolbar.append(this.keyboard, escape, tab, keys);
     const main = document.createElement('div'); main.className = 'terminal-main';
     main.append(this.host, toolbar); this.element.append(main);
-    // Preserve native colors in light mode; keep light-themed programs readable on dark surfaces.
+    // Only iOS dark mode corrects contrast; bold keeps the requested palette entry.
     this.terminal = new Terminal({
-      theme: terminalTheme(theme), minimumContrastRatio: theme === 'dark' ? 4.5 : 1,
+      theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
       fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false,
     });
@@ -374,8 +382,8 @@ export class TerminalPane {
     this.layout();
   }
   theme(theme: Theme): void {
-    this.terminal.options.minimumContrastRatio = theme === 'dark' ? 4.5 : 1;
-    this.terminal.options.theme = terminalTheme(theme);
+    this.terminal.options.minimumContrastRatio = contrastRatio(theme);
+    this.terminal.options.theme = displayTheme(theme);
   }
   dispose(): void {
     this.closed = true; this.generation++;
