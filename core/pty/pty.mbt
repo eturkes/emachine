@@ -34,6 +34,15 @@ pub async fn[G] spawn(
   environment["COLORTERM"] = "truecolor"
   // The pinned client brackets complete restores; live output keeps its original modes.
   environment["ZMX_SYNC_RESTORE"] = "1"
+  // Discover an existing grid before Init serialization can occupy its daemon.
+  // Missing sessions still start after the bounded probe and retry on output.
+  let screen_identity = session_identity(session, environment)
+  let mut restore_rows = rows
+  if screen_identity is Some((pid, identity)) &&
+    @native.session_pty_size(pid, identity) is Some((_, observed_rows)) {
+    restore_rows = observed_rows
+  }
+  environment["ZMX_RESTORE_ROWS"] = restore_rows.to_string()
   let ready : @async.Queue[@system_pty.Pty] = @async.Queue(kind=Blocking(1))
   let lifetime = group.spawn(no_wait=true, allow_failure=true, () => {
     (@async.with_task_group() <| inner_group => {
@@ -67,7 +76,7 @@ pub async fn[G] spawn(
     probe_lock: @async.Mutex(),
     next_probe_at: 0L,
     probe_interval: 1000,
-    screen_identity: None,
+    screen_identity,
   }
 }
 

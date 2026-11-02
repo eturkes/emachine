@@ -67,6 +67,8 @@ async test "real zmx cwd, Unicode, resize and persistent shell" {
       "HISTFILE": root + "/history",
     })
     defer reattached.close()
+    // An existing session's grid must be available before restored bytes are read.
+    assert_eq(reattached.screen_size(), Some((111, 37)))
     reattached.write(
       @utf8.encode(
         "printf '__VA''LUE__%s\\n' \"$EMACHINE_PROBE\"; printf '__SE''COND_DONE__\\n'\r",

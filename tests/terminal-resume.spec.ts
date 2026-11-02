@@ -271,3 +271,44 @@ for (const outcome of ['control', 'observe', 'fresh']) {
     expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: 3 });
   });
 }
+
+test('fragmented replay coalesces parser writes across frames and preserves action checkpoints', async ({ page }) => {
+  const history = Array.from({ length: 1600 }, (_, index) => 'line ' + String(index).padStart(4, '0') + ' \u754ce\u0301').join('\r\n') + '\r\n';
+  const bytes = Buffer.from('\u001b[2J\u001b[3J\u001b[H' + history);
+  const fragments: Buffer[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 64) fragments.push(bytes.subarray(offset, offset + 64));
+  const checkpoint = fragments.length + 4;
+  await captureSocket(page);
+  const t = await terminal(page, (ws, count) => {
+    if (count === 1) {
+      start(ws); ws.send(frame(2, 'initial output'));
+    } else {
+      ws.send(JSON.stringify({ type: 'resume', attachment, sequence: checkpoint, resumed: true }));
+      ws.send(JSON.stringify({ type: 'state', sequence: checkpoint + 1, mode: 'observe', cols: 20, rows: 10 }));
+    }
+    ready(ws);
+  });
+  await expect(t.pane.locator('.xterm-rows')).toContainText('initial output');
+  const packets = fragments.map((data, index) => [...frame(index + 3, data)]) as Array<string | number[]>;
+  packets.push(JSON.stringify({ type: 'state', sequence: checkpoint - 1, mode: 'observe', cols: 20, rows: 10 }));
+  packets.push([...frame(checkpoint, 'after barrier')]);
+  await page.evaluate(packets => {
+    const pane = (window as any).resumePane, socket: WebSocket = pane.ws;
+    const terminal = pane.terminal, write = terminal.write.bind(terminal);
+    const writes: number[] = []; (window as any).fragmentWrites = writes;
+    terminal.write = (data: Uint8Array, callback?: () => void) => { writes.push(data.length); write(data, callback); };
+    for (const packet of packets) socket.dispatchEvent(new MessageEvent('message', {
+      data: typeof packet === 'string' ? packet : new Uint8Array(packet).buffer,
+    }));
+    socket.dispatchEvent(new CloseEvent('close'));
+    window.dispatchEvent(new Event('online'));
+  }, packets);
+  await expect.poll(() => t.sockets.length).toBe(2);
+  await expect(t.pane.locator('.xterm-rows')).toContainText('after barrier');
+  expect(await t.snapshot()).toBe(history.replaceAll('\r\n', '\n') + 'after barrier');
+  const writes: number[] = await page.evaluate(() => (window as any).fragmentWrites);
+  // The initial live fragment and the post-resize payload may each need their own write.
+  expect(writes.length).toBeLessThanOrEqual(Math.ceil(bytes.length / (16 * 1024)) + 2);
+  expect(writes.reduce((total, length) => total + length, 0)).toBe(bytes.length + Buffer.byteLength('after barrier'));
+  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: checkpoint });
+});

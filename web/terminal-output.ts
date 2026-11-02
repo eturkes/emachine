@@ -37,22 +37,37 @@ export class TerminalOutput {
     try {
       while (typeof this.queue[0] === 'function') (this.queue.shift() as () => void)();
       if (this.queue.length) {
-        const batch: Array<{ data: Uint8Array; parsed?: () => void }> = [];
+        const batch: Array<{ data: Uint8Array; parsed: Array<() => void> }> = [];
         let bytes = 0;
         while (this.queue.length && bytes < maxPendingBytes) {
-          const update = this.queue[0];
-          if (typeof update === 'function') break;
-          const end = Math.min(update.data.length, update.offset + parseChunkBytes, update.offset + maxPendingBytes - bytes);
-          const data = update.data.subarray(update.offset, end);
-          update.offset = end; bytes += data.length;
-          const complete = end === update.data.length;
-          batch.push({ data, parsed: complete ? update.parsed : undefined });
-          if (complete) this.queue.shift();
+          if (typeof this.queue[0] === 'function') break;
+          const parts: Uint8Array[] = [], parsed: Array<() => void> = [];
+          const limit = Math.min(parseChunkBytes, maxPendingBytes - bytes);
+          let length = 0;
+          while (this.queue.length && length < limit) {
+            const update = this.queue[0];
+            if (typeof update === 'function') break;
+            const end = Math.min(update.data.length, update.offset + limit - length);
+            parts.push(update.data.subarray(update.offset, end));
+            length += end - update.offset; update.offset = end;
+            if (end === update.data.length) {
+              this.queue.shift();
+              if (update.parsed) parsed.push(update.parsed);
+            }
+          }
+          let data = parts[0];
+          if (parts.length > 1) {
+            data = new Uint8Array(length);
+            let offset = 0;
+            for (const part of parts) { data.set(part, offset); offset += part.length; }
+          }
+          bytes += length; batch.push({ data, parsed });
         }
         // Keep xterm's own time-sliced parser supplied without adding a timer per packet.
         // Raw slices retain split UTF-8/parser state; actions never cross this bounded burst.
         batch.forEach((part, index) => this.terminal.write(part.data, () => {
-          if (!this.disposed) part.parsed?.();
+          // A combined chunk can complete several frames; checkpoint them only after parsing it.
+          if (!this.disposed) for (const parsed of part.parsed) parsed();
           if (index === batch.length - 1) {
             // Leave the parser stack before resizing, resetting, or submitting another burst.
             queueMicrotask(() => { this.busy = false; this.drain(); });

@@ -116,46 +116,63 @@ async function instrument(page: Page) {
   });
 }
 
-test('cold stock-zmx attachment keeps all native history, Unicode, cursor and modes', async ({ page }) => {
-  expect(occurrences(snapshot, beginSync), 'The initial large restore must begin one synchronized update.').toBe(1);
-  expect(occurrences(snapshot, endSync), 'The initial large restore must finish its synchronized update.').toBe(1);
-  expect(snapshot.indexOf(beginSync)).toBeLessThan(snapshot.indexOf('OLD_00000'));
-  expect(snapshot.lastIndexOf(endSync)).toBeGreaterThan(snapshot.indexOf(finalMarker));
-  await instrument(page);
-  await page.goto(machine.origin);
-  await expect(page.locator('.xterm-rows')).toContainText(finalMarker);
-  await expect.poll(() => page.evaluate(() => [window.attachProbe.terminal.cols, window.attachProbe.terminal.rows])).toEqual([100, 30]);
-  const state = await page.evaluate(() => {
-    const terminal = window.attachProbe.terminal, buffer = terminal.buffer.active;
-    const firstCell = buffer.getLine(0)?.getCell(0);
-    return {
-      oldest: buffer.getLine(0)?.translateToString(true),
-      oldestForeground: { palette: firstCell?.isFgPalette(), color: firstCell?.getFgColor() },
-      type: buffer.type, cursor: [buffer.cursorX, buffer.cursorY],
-      applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
-      bracketedPaste: terminal.modes.bracketedPasteMode,
-      synchronizedOutput: terminal.modes.synchronizedOutputMode,
-    };
+for (const size of [
+  { name: 'larger viewport', viewport: { width: 1360, height: 900 }, larger: true },
+  { name: 'smaller viewport', viewport: { width: 900, height: 560 }, larger: false },
+]) {
+  test(`cold stock-zmx attachment keeps all native history, Unicode, cursor and modes (${size.name})`, async ({ page }) => {
+    await page.setViewportSize(size.viewport);
+    expect(occurrences(snapshot, beginSync), 'The initial large restore must begin one synchronized update.').toBe(1);
+    expect(occurrences(snapshot, endSync), 'The initial large restore must finish its synchronized update.').toBe(1);
+    expect(snapshot.indexOf(beginSync)).toBeLessThan(snapshot.indexOf('OLD_00000'));
+    expect(snapshot.lastIndexOf(endSync)).toBeGreaterThan(snapshot.indexOf(finalMarker));
+    await instrument(page);
+    const connecting = page.waitForEvent('websocket', socket => socket.url().includes('/api/v1/terminal/'));
+    await page.goto(machine.origin);
+    const requested = new URL((await connecting).url()).searchParams;
+    for (const [dimension, manualSize] of [['cols', 100], ['rows', 30]] as const) {
+      if (size.larger) expect(Number(requested.get(dimension))).toBeGreaterThan(manualSize);
+      else expect(Number(requested.get(dimension))).toBeLessThan(manualSize);
+    }
+    await expect(page.locator('.xterm-rows')).toContainText(finalMarker);
+    await expect.poll(() => page.evaluate(() => [window.attachProbe.terminal.cols, window.attachProbe.terminal.rows])).toEqual([100, 30]);
+    const state = await page.evaluate(() => {
+      const terminal = window.attachProbe.terminal, buffer = terminal.buffer.active;
+      const firstCell = buffer.getLine(0)?.getCell(0);
+      return {
+        oldest: buffer.getLine(0)?.translateToString(true),
+        oldestForeground: { palette: firstCell?.isFgPalette(), color: firstCell?.getFgColor() },
+        historyIds: Array.from({ length: terminal.buffer.normal.length }, (_, row) => terminal.buffer.normal.getLine(row)?.translateToString(true) ?? '')
+          .flatMap(line => Array.from(line.matchAll(/OLD_(\d{5})/g), match => Number(match[1]))),
+        type: buffer.type, cursor: [buffer.cursorX, buffer.cursorY],
+        applicationCursorKeys: terminal.modes.applicationCursorKeysMode,
+        bracketedPaste: terminal.modes.bracketedPasteMode,
+        synchronizedOutput: terminal.modes.synchronizedOutputMode,
+      };
+    });
+    expect(state.oldest).toContain('OLD_00000 ' + historyText);
+    expect(state.oldestForeground).toEqual({ palette: true, color: 6 });
+    const expectedIds = Array.from(originalHistory.matchAll(/OLD_(\d{5})/g), match => Number(match[1]));
+    expect(expectedIds).toHaveLength(10000);
+    expect(state.historyIds, 'Every daemon history row must survive the scrollback-to-screen boundary in order.').toEqual(expectedIds);
+    expect(state.type).toBe('normal');
+    expect(state.cursor).toEqual([21, 29]);
+    expect(state.applicationCursorKeys).toBe(true);
+    expect(state.bracketedPaste).toBe(true);
+    expect(state.synchronizedOutput).toBe(false);
+    await page.evaluate(() => window.attachProbe.terminal.scrollToTop());
+    await expect(page.locator('.xterm-rows > div').first()).toContainText('OLD_00000 ' + historyText);
+    await page.evaluate(() => window.attachProbe.terminal.selectAll());
+    await page.locator('.terminal-pane:not([hidden])').getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.attachProbe.copied.length)).toBe(1);
+    const copied = await page.evaluate(() => window.attachProbe.copied[0]);
+    expect(copied).toContain('OLD_00000 ' + historyText);
+    expect(copied).toContain('OLD_05000 ' + historyText);
+    expect(copied).toContain(finalMarker);
+    expect(await sessionHistory()).toBe(originalHistory);
+    expect(await sessionPid()).toBe(originalPid);
   });
-  expect(state.oldest).toContain('OLD_00000 ' + historyText);
-  expect(state.oldestForeground).toEqual({ palette: true, color: 6 });
-  expect(state.type).toBe('normal');
-  expect(state.cursor).toEqual([21, 29]);
-  expect(state.applicationCursorKeys).toBe(true);
-  expect(state.bracketedPaste).toBe(true);
-  expect(state.synchronizedOutput).toBe(false);
-  await page.evaluate(() => window.attachProbe.terminal.scrollToTop());
-  await expect(page.locator('.xterm-rows > div').first()).toContainText('OLD_00000 ' + historyText);
-  await page.evaluate(() => window.attachProbe.terminal.selectAll());
-  await page.locator('.terminal-pane:not([hidden])').getByRole('button', { name: 'Copy', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.attachProbe.copied.length)).toBe(1);
-  const copied = await page.evaluate(() => window.attachProbe.copied[0]);
-  expect(copied).toContain('OLD_00000 ' + historyText);
-  expect(copied).toContain('OLD_05000 ' + historyText);
-  expect(copied).toContain(finalMarker);
-  expect(await sessionHistory()).toBe(originalHistory);
-  expect(await sessionPid()).toBe(originalPid);
-});
+}
 
 test('a split restore hides partial history until the current screen is complete', async ({ page }) => {
   await instrument(page);
