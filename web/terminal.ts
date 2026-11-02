@@ -7,6 +7,7 @@ import { attachTerminalClipboard } from './terminal-clipboard';
 import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalOutput } from './terminal-output';
+import { TerminalReplies } from './terminal-resume';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
 import { TerminalHistory } from './terminal-history';
@@ -58,6 +59,11 @@ export class TerminalPane {
   private keyboardEvents = new AbortController();
   private terminal: Terminal;
   private output: TerminalOutput;
+  private terminalReplies: TerminalReplies;
+  private replies: Array<{ epoch: number; data: string }> = [];
+  private ready = false;
+  private attachment?: { attachment: string; sequence: number };
+  private attachmentEpoch = 0;
   private detachTouch?: () => void;
   private detachInput?: () => void;
   private textInput?: TerminalTextInput;
@@ -89,7 +95,7 @@ export class TerminalPane {
     else this.element.dataset.terminalSession = target.session;
     this.host.className = 'terminal-host';
     this.status.className = 'terminal-status'; this.status.textContent = 'Connecting to the shell…'; this.status.setAttribute('role', 'status');
-    this.control = button('Take control', () => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
+    this.control = button('Take control', () => { if (this.ready && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
     const keys = document.createElement('div'); keys.className = 'terminal-keys';
     let useCtrl = false, useAlt = false;
@@ -153,11 +159,12 @@ export class TerminalPane {
     this.terminal = new Terminal({
       theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
-      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 6000, allowProposedApi: false, convertEol: false,
+      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 10000, allowProposedApi: false, convertEol: false,
     });
     this.output = new TerminalOutput(this.terminal);
+    this.terminalReplies = new TerminalReplies(this.terminal);
     this.terminal.loadAddon(this.fit);
-    const canInput = () => !this.closed && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
+    const canInput = () => this.canInput();
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
     if (isIOS()) {
       this.copyOutput = new TerminalCopyOutput(this.terminal, copyButton);
@@ -202,12 +209,19 @@ export class TerminalPane {
       this.connect();
     });
     this.terminal.onData(data => {
+      if (this.terminalReplies.generated) {
+        if (this.canInput()) this.send(data);
+        // These replies have never been sent. Parsing may finish after socket loss,
+        // and catch-up can contain old observer roles. Ready supplies the current role.
+        else if (!this.closed && !this.ready && this.attachment) this.replies.push({ epoch: this.attachmentEpoch, data });
+        return;
+      }
       data = modifiedInput(data, useCtrl, useAlt);
       clearModifiers();
       this.send(data);
     });
     this.terminal.onBinary(data => {
-      if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(Uint8Array.from(data, character => character.charCodeAt(0) & 255));
+      if (this.canInput()) this.ws!.send(Uint8Array.from(data, character => character.charCodeAt(0) & 255));
     });
     this.observer = new ResizeObserver(() => {
       // Keyboard animations produce several temporary grids; resize the PTY once they settle.
@@ -240,16 +254,19 @@ export class TerminalPane {
     viewport.addEventListener('resize', resized, { signal });
     resized();
   }
+  private canInput(): boolean {
+    return !this.closed && this.ready && this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN;
+  }
   private send(data: string): void {
     // Input is deliberately discarded while disconnected, never buffered for reconnection.
-    if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.ws.send(new TextEncoder().encode(data));
+    if (this.canInput()) this.ws!.send(new TextEncoder().encode(data));
   }
   private syncSize(): void {
-    if (!this.visible || !this.desiredSize || this.mode !== 'control' || this.ws?.readyState !== WebSocket.OPEN || this.pendingSize) return;
+    if (!this.visible || !this.desiredSize || !this.canInput() || this.pendingSize) return;
     const { cols, rows } = this.desiredSize, size = `${cols}x${rows}`;
     if (size === this.remoteSize) return;
     this.pendingSize = size;
-    this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    this.ws!.send(JSON.stringify({ type: 'resize', cols, rows }));
   }
   private async copy(): Promise<void> {
     const text = this.terminal.getSelection();
@@ -263,7 +280,7 @@ export class TerminalPane {
     this.terminal.focus();
     try {
       const text = await navigator.clipboard.readText();
-      if (this.mode === 'control' && this.ws?.readyState === WebSocket.OPEN) this.terminal.paste(text);
+      if (this.canInput()) this.terminal.paste(text);
       else this.notice('Reconnect and take control before pasting.');
     } catch { this.notice('Clipboard access was not granted. Use your device’s Paste command.'); }
   }
@@ -289,7 +306,7 @@ export class TerminalPane {
     this.desiredSize = { cols: Math.max(2, Math.min(500, proposed.cols)), rows: Math.max(2, Math.min(500, proposed.rows)) };
     // Keep parsing in-flight output on its old grid until the server orders the resize.
     if (this.ws) this.syncSize();
-    else this.terminal.resize(this.desiredSize.cols, this.desiredSize.rows);
+    else if (!this.attachment) this.terminal.resize(this.desiredSize.cols, this.desiredSize.rows);
   }
   update(link: Link, target: TerminalTarget): void {
     this.link = link; this.target = target;
@@ -301,7 +318,10 @@ export class TerminalPane {
   private connect(): void {
     if (this.connecting || this.closed || !this.terminal.element || !this.visible && !this.route || !this.link.online || !this.link.route || this.ws) return;
     this.connecting = true;
-    this.output.reset(() => { this.connecting = false; this.attach(); });
+    // Resume only from a checkpoint whose accepted bytes and geometry have all been parsed.
+    const attach = () => { this.connecting = false; this.attach(); };
+    if (this.attachment) this.output.run(attach);
+    else this.output.reset(attach);
   }
   private attach(): void {
     // Attach only after font-backed fitting; a default-sized replay can corrupt a live TUI.
@@ -313,51 +333,109 @@ export class TerminalPane {
     const path = this.target.kind === 'project' ? this.target.id : `general/${this.target.session}`;
     const url = new URL(socketUrl(this.route, `api/v1/terminal/${path}`));
     url.searchParams.set('cols', String(this.terminal.cols)); url.searchParams.set('rows', String(this.terminal.rows));
-    this.terminal.reset();
-    this.remoteSize = this.pendingSize = '';
-    this.mode = 'observe'; this.control.hidden = true;
+    url.searchParams.set('resume', '1');
+    const checkpoint = this.attachment && { ...this.attachment };
+    let protocol: 'waiting' | 'resume' | 'legacy' = 'waiting';
+    let epoch = this.attachmentEpoch, received = checkpoint?.sequence ?? 0;
+    this.ready = false; this.pendingSize = '';
+    if (!this.attachment) this.replies = [];
+    this.control.hidden = true; this.element.dataset.mode = 'attaching';
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
+    const current = () => !this.closed && generation === this.generation && this.ws === ws;
+    const sameAttachment = () => !this.closed && epoch === this.attachmentEpoch;
+    const reset = () => {
+      epoch = ++this.attachmentEpoch;
+      this.replies = [];
+      this.output.reset(() => {
+        if (!sameAttachment()) return;
+        this.terminal.reset(); this.remoteSize = this.pendingSize = ''; this.mode = 'observe';
+      });
+    };
+    const legacy = () => {
+      if (protocol !== 'waiting') return;
+      protocol = 'legacy'; this.attachment = undefined; reset();
+    };
+    const accept = (sequence: unknown): number => {
+      if (!Number.isSafeInteger(sequence) || sequence !== received + 1) throw new Error('Invalid terminal sequence');
+      received = sequence as number;
+      return received;
+    };
+    const applied = (sequence: number) => {
+      if (sameAttachment() && this.attachment) this.attachment.sequence = sequence;
+    };
+    const invalid = () => {
+      this.attachment = undefined; this.attachmentEpoch++;
+      this.disconnect(ws);
+      this.status.textContent = 'Terminal restoration was interrupted. Reattaching to the shell...';
+    };
     this.textInput?.refresh();
     this.prompts.refresh();
     this.status.hidden = false; this.status.textContent = 'Attaching to the persistent shell…';
     this.seen = Date.now();
     ws.onopen = () => {
-      if (this.closed || generation !== this.generation || this.ws !== ws) return;
-      this.reconnects = 0; this.seen = Date.now();
+      if (!current()) return;
+      this.seen = Date.now();
+      ws.send(JSON.stringify({ type: 'resume', ...checkpoint }));
     };
     ws.onmessage = event => {
-      if (this.closed || generation !== this.generation || this.ws !== ws) return;
+      if (!current()) return;
       this.seen = Date.now();
-      if (event.data instanceof ArrayBuffer) { this.output.write(new Uint8Array(event.data)); return; }
       try {
+        if (event.data instanceof ArrayBuffer) {
+          if (protocol === 'waiting') legacy();
+          const data = new Uint8Array(event.data);
+          if (protocol === 'legacy') this.output.write(data);
+          else {
+            if (data.length < 8) throw new Error('Missing terminal sequence');
+            const sequence = accept(Number(new DataView(event.data).getBigUint64(0)));
+            this.output.write(data.subarray(8), () => applied(sequence));
+          }
+          return;
+        }
         const message = JSON.parse(String(event.data));
-        if (message.type === 'state') {
+        if (message.type === 'resume') {
+          if (protocol !== 'waiting' || !/^[a-f0-9]{32}$/.test(message.attachment) || typeof message.resumed !== 'boolean' || !Number.isSafeInteger(message.sequence)) throw new Error('Invalid terminal resume');
+          if (message.resumed) {
+            if (!checkpoint || message.attachment !== checkpoint.attachment || message.sequence !== checkpoint.sequence) throw new Error('Mismatched terminal resume');
+          } else {
+            if (message.sequence !== 0) throw new Error('Invalid fresh terminal checkpoint');
+            reset(); this.attachment = { attachment: message.attachment, sequence: 0 };
+          }
+          received = message.sequence; protocol = 'resume';
+        } else if (message.type === 'state') {
+          legacy();
+          const sequence = protocol === 'resume' ? accept(message.sequence) : undefined;
+          const cols = message.screenCols ?? message.cols, rows = message.screenRows ?? message.rows;
+          if (![message.cols, message.rows, cols, rows].every(value => Number.isInteger(value) && value >= 2 && value <= 500)) throw new Error('Invalid terminal geometry');
           this.output.run(() => {
-            if (this.closed || generation !== this.generation || this.ws !== ws) return;
-            try {
-              const mode = message.mode === 'control' ? 'control' : 'observe';
-              const gainedControl = mode === 'control' && this.mode !== 'control';
-              this.remoteSize = `${message.cols}x${message.rows}`;
-              if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
-              this.mode = mode;
-              // zmx can keep a manual terminal's grid even after accepting our attachment size.
-              const cols = message.screenCols ?? message.cols, rows = message.screenRows ?? message.rows;
-              this.terminal.resize(cols, rows);
-              this.textInput?.refresh();
-              this.prompts.refresh();
-              this.element.dataset.mode = this.mode;
-              this.control.hidden = this.mode === 'control';
-              if (this.mode === 'control') {
-                if (gainedControl) this.fitTerminal();
-                // Coalesce viewport changes while a previous resize is awaiting acknowledgement.
-                this.syncSize();
-              }
-              this.status.hidden = this.mode === 'control';
-              this.status.textContent = this.mode === 'control' ? '' : `Observing · ${cols} × ${rows} · another device controls this shell`;
-            } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
+            // Accepted state belongs to the attachment, including while its socket is lost.
+            if (!sameAttachment()) return;
+            const mode = message.mode === 'control' ? 'control' : 'observe';
+            const gainedControl = mode === 'control' && this.mode !== 'control';
+            this.remoteSize = `${message.cols}x${message.rows}`;
+            if (this.remoteSize === this.pendingSize || mode !== this.mode) this.pendingSize = '';
+            this.mode = mode;
+            if (this.ready && mode !== 'control') this.replies = [];
+            // zmx can keep a manual terminal's grid even after accepting our attachment size.
+            this.terminal.resize(cols, rows);
+            if (sequence !== undefined) applied(sequence);
+            if (current()) {
+              if (protocol === 'legacy') { this.ready = true; this.reconnects = 0; }
+              this.refreshControl(gainedControl);
+            }
+          });
+        } else if (message.type === 'ready' && protocol === 'resume') {
+          // Ready ends reconnect catch-up. A fresh attachment still negotiates zmx's
+          // capabilities and receives its initial snapshot as subsequent live output.
+          this.output.run(() => {
+            if (!sameAttachment() || !current()) return;
+            this.ready = true; this.reconnects = 0;
+            this.refreshControl(true);
+            for (const reply of this.replies) if (reply.epoch === epoch) this.send(reply.data);
+            this.replies = [];
           });
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
-      } catch { this.status.hidden = false; this.status.textContent = 'The server sent an invalid terminal control message.'; }
+      } catch { invalid(); }
     };
     const disconnect = () => { if (generation === this.generation) this.disconnect(ws); };
     ws.onclose = disconnect;
@@ -369,11 +447,24 @@ export class TerminalPane {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
     }, 10000);
   }
+  private refreshControl(fit = false): void {
+    this.textInput?.refresh(); this.prompts.refresh();
+    if (!this.ready || this.ws?.readyState !== WebSocket.OPEN) return;
+    this.element.dataset.mode = this.mode;
+    this.control.hidden = this.mode === 'control';
+    if (this.mode === 'control') {
+      if (fit) this.fitTerminal();
+      // Coalesce viewport changes while a previous resize is awaiting acknowledgement.
+      this.syncSize();
+    }
+    this.status.hidden = this.mode === 'control';
+    this.status.textContent = this.mode === 'control' ? '' : `Observing · ${this.terminal.cols} × ${this.terminal.rows} · another device controls this shell`;
+  }
   private disconnect(ws: WebSocket | undefined): void {
     if (!ws || this.closed || this.ws !== ws) return;
     // Drop local input/control immediately, independently of the browser's close handshake.
-    this.ws = undefined; this.generation++;
-    this.mode = 'observe'; this.element.dataset.mode = 'disconnected';
+    this.ws = undefined; this.generation++; this.ready = false;
+    this.element.dataset.mode = 'disconnected';
     this.textInput?.refresh();
     this.prompts.refresh();
     this.control.hidden = true; this.status.hidden = false; this.status.textContent = 'Disconnected · the shell remains on its machine';
@@ -400,6 +491,7 @@ export class TerminalPane {
     this.prompts.dispose();
     this.history?.dispose();
     this.copyOutput?.dispose();
-    this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminal.dispose(); this.element.remove();
+    if (this.attachment && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'detach' }));
+    this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminalReplies.dispose(); this.terminal.dispose(); this.element.remove();
   }
 }

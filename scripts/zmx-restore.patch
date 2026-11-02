@@ -1,0 +1,82 @@
+diff --git a/src/loop.zig b/src/loop.zig
+--- a/src/loop.zig
++++ b/src/loop.zig
+@@ -58,6 +58,9 @@
+     var stdout_buf = try std.ArrayList(u8).initCapacity(gpa, 4096);
+     defer stdout_buf.deinit(gpa);
+ 
++    const sync_restore = std.mem.eql(u8, lib_posix.getenv("ZMX_SYNC_RESTORE") orelse "", "1");
++    var first_output = true;
++
+     const stdin_fd = lib_posix.STDIN_FILENO;
+ 
+     // Make stdin non-blocking. O_NONBLOCK is set on the open file description,
+@@ -154,6 +157,10 @@
+                     .Output => {
+                         if (msg.payload.len > 0) {
++                            const sync_output = first_output and sync_restore and util.shouldSynchronizeRestore(msg.payload);
++                            first_output = false;
++                            if (sync_output) try stdout_buf.appendSlice(gpa, "\x1b[?2026h");
+                             try stdout_buf.appendSlice(gpa, msg.payload);
++                            if (sync_output) try stdout_buf.appendSlice(gpa, "\x1b[?2026l");
+                         }
+                     },
+                     .Resize => {
+diff --git a/src/util.zig b/src/util.zig
+--- a/src/util.zig
++++ b/src/util.zig
+@@ -893,3 +893,54 @@
++/// Synchronize only the complete, history-bearing first restore used by the pinned daemon.
++/// Unknown formats, incomplete streams, and application-owned synchronized updates stay untouched.
++pub fn shouldSynchronizeRestore(payload: []const u8) bool {
++    if (payload.len <= 4096 or
++        std.mem.indexOf(u8, payload, "\x1b[2J\x1b[H\x1b[0m") == null or
++        !std.unicode.utf8ValidateSlice(payload)) return false;
++
++    var parser = ghostty_vt.Parser.init();
++    defer parser.deinit();
++    for (payload) |byte| {
++        for (parser.next(byte)) |action_opt| {
++            const action = action_opt orelse continue;
++            switch (action) {
++                .csi_dispatch => |csi| {
++                    if ((csi.final == 'h' or csi.final == 'l') and
++                        std.mem.indexOfScalar(u16, csi.params, 2026) != null) return false;
++                },
++                else => {},
++            }
++        }
++    }
++    return parser.state == .ground;
++}
++
++test "restore synchronization preserves application modes and complete stream boundaries" {
++    const alloc = testing.allocator;
++    const history = try alloc.alloc(u8, 8192);
++    defer alloc.free(history);
++    @memset(history, 'x');
++    const frame = try std.mem.concat(alloc, u8, &.{
++        history, "\x1b[2J\x1b[H\x1b[0m", "screen 2026 \xc3\xa9\xe7\x95\x8c\x1b[1;1H",
++    });
++    defer alloc.free(frame);
++    try testing.expect(shouldSynchronizeRestore(frame));
++    try testing.expect(!shouldSynchronizeRestore(history));
++    try testing.expect(!shouldSynchronizeRestore("\x1b[2J\x1b[H\x1b[0mscreen"));
++
++    for ([_][]const u8{
++        "\x1b[?2026h", "\x1b[?2026l", "\x1b[?25;2026h", "\x1b[?2026;25l",
++        "\x1b[", "\x1b]0;unfinished", "\xc3",
++    }) |suffix| {
++        const incomplete_or_owned = try std.mem.concat(alloc, u8, &.{ frame, suffix });
++        defer alloc.free(incomplete_or_owned);
++        try testing.expect(!shouldSynchronizeRestore(incomplete_or_owned));
++    }
++    const title = try std.mem.concat(alloc, u8, &.{ frame, "\x1b]2;year 2026\x07" });
++    defer alloc.free(title);
++    try testing.expect(shouldSynchronizeRestore(title));
++}
++
++
+ pub const HistoryFormat = enum(u8) {
+     plain = 0,
+     vt = 1,

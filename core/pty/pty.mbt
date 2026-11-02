@@ -1,14 +1,14 @@
 ///|
 pub struct Pty {
   priv inner : @system_pty.Pty
-  priv lifetime : @async.Task[Int]
+  priv lifetime : @async.Task[Int32]
   priv mut closed : Bool
   priv session : String
   priv environment : Map[String, String]
   priv probe_lock : @async.Mutex
   priv mut next_probe_at : Int64
-  priv mut probe_interval : Int
-  priv mut screen_identity : (Int, String)?
+  priv mut probe_interval : Int32
+  priv mut screen_identity : (Int32, String)?
 }
 
 ///|
@@ -17,9 +17,9 @@ pub async fn[G] spawn(
   cwd : String,
   session : String,
   shell : String,
-  cols : Int,
-  rows : Int,
-  extra_env? : Map[String, String] = {},
+  cols : Int32,
+  rows : Int32,
+  extra_env~ : Map[String, String] = {},
 ) -> Pty {
   if cols < 2 || cols > 500 || rows < 2 || rows > 500 {
     fail("Terminal dimensions must be between 2 and 500")
@@ -32,6 +32,8 @@ pub async fn[G] spawn(
   }
   environment["TERM"] = "xterm-256color"
   environment["COLORTERM"] = "truecolor"
+  // The pinned client brackets complete restores; live output keeps its original modes.
+  environment["ZMX_SYNC_RESTORE"] = "1"
   let ready : @async.Queue[@system_pty.Pty] = @async.Queue(kind=Blocking(1))
   let lifetime = group.spawn(no_wait=true, allow_failure=true, () => {
     (@async.with_task_group() <| inner_group => {
@@ -100,9 +102,9 @@ pub async fn Pty::refresh_screen(self : Pty) -> Unit {
 }
 
 ///|
-fn session_pid(output : String, session : String) -> Int? {
+fn session_pid(output : String, session : String) -> Int32? {
   let prefix = "name=" + session + "\tpid="
-  let mut found : Int? = None
+  let mut found : Int32? = None
   for raw_line in output.split("\n") {
     let line = raw_line.trim_start()
     if !line.has_prefix(prefix) {
@@ -136,7 +138,7 @@ fn session_pid(output : String, session : String) -> Int? {
 async fn session_identity(
   session : String,
   environment : Map[String, String],
-) -> (Int, String)? {
+) -> (Int32, String)? {
   // Listing is optional metadata; never let a stale zmx socket delay terminal output indefinitely.
   if session.contains("\n") || session.contains("\r") || session.contains("\t") {
     return None
@@ -186,7 +188,7 @@ async fn session_identity(
 }
 
 ///|
-pub fn Pty::screen_size(self : Pty) -> (Int, Int)? {
+pub fn Pty::screen_size(self : Pty) -> (Int32, Int32)? {
   if self.closed {
     return None
   }
@@ -205,7 +207,7 @@ pub async fn Pty::write(self : Pty, data : Bytes) -> Unit {
 }
 
 ///|
-pub fn Pty::resize(self : Pty, cols : Int, rows : Int) -> Unit raise {
+pub fn Pty::resize(self : Pty, cols : Int32, rows : Int32) -> Unit raise {
   if self.closed {
     fail("Terminal attachment is closed")
   }
@@ -224,7 +226,7 @@ pub fn Pty::close(self : Pty) -> Unit {
 }
 
 ///|
-pub async fn Pty::wait(self : Pty) -> Int {
+pub async fn Pty::wait(self : Pty) -> Int32 {
   self.lifetime.wait() catch {
     error if @async.is_cancellation_error(error) && self.closed => 0
     error => raise error

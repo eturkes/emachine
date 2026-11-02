@@ -9,10 +9,12 @@ import { fileURLToPath } from 'node:url';
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL('../', import.meta.url));
 const tools = join(root, '.tools');
-const patchPath = join(root, 'scripts/zmx-arrows.patch');
+const patches = ['arrows', 'restore'].map(name => ({
+  name, bytes: readFileSync(join(root, 'scripts/zmx-' + name + '.patch')),
+}));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export const upstreamVersion = '0.8.1';
-export const clientVersion = '0.8.1-emachine-arrows.1';
+export const clientVersion = '0.8.1-emachine-restore.1';
 const sourceCommit = '8bab1f0173b07e79835ea372d749af3dbf0d0842';
 const sourceHash = '4929008140cd66ea29d5c7504c59198a82ec793e635b70bd0ece5aac2cad1767';
 const zigVersion = '0.16.0';
@@ -20,10 +22,9 @@ const toolchains = {
   x64: { target: 'x86_64', sha256: '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' },
   arm64: { target: 'aarch64', sha256: 'ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17' },
 };
-const patchBytes = readFileSync(patchPath);
-const patchHash = digest(patchBytes);
+const patchHashes = Object.fromEntries(patches.map(({ name, bytes }) => [name, digest(bytes)]));
 const recipe = { clientVersion, sourceCommit, sourceHash, zigVersion, platform: process.platform,
-  arch: process.arch, toolchainHash: toolchains[process.arch]?.sha256, patchHash, optimize: 'ReleaseSafe', abi: 'musl' };
+  arch: process.arch, toolchainHash: toolchains[process.arch]?.sha256, patchHashes, optimize: 'ReleaseSafe', abi: 'musl' };
 const recipeHash = digest(JSON.stringify(recipe));
 export const zmxDirectory = join(tools, 'zmx-' + clientVersion + '-' + process.arch + '-' + recipeHash.slice(0, 12));
 export const zmxExecutable = join(zmxDirectory, 'zmx');
@@ -85,13 +86,15 @@ export async function ensureZmx() {
       toolchain.sha256, 128 * 1024 * 1024);
     const source = join(staging, 'source'), compiler = join(staging, 'compiler');
     await mkdir(source); await mkdir(compiler);
-    const stagedPatch = join(staging, 'arrows.patch');
-    await writeFile(stagedPatch, patchBytes, { flag: 'wx', mode: 0o600 });
     await exec('tar', ['-xf', sourceArchive, '--strip-components=1', '-C', source], { timeout: 120000 });
     await exec('tar', ['-xf', zigArchive, '--strip-components=1', '-C', compiler], { timeout: 120000 });
     await exec('git', ['init', '--quiet'], { cwd: source, timeout: 30000 });
-    await exec('git', ['apply', '--check', stagedPatch], { cwd: source, timeout: 30000 });
-    await exec('git', ['apply', stagedPatch], { cwd: source, timeout: 30000 });
+    for (const { name, bytes } of patches) {
+      const stagedPatch = join(staging, name + '.patch');
+      await writeFile(stagedPatch, bytes, { flag: 'wx', mode: 0o600 });
+      await exec('git', ['apply', '--check', stagedPatch], { cwd: source, timeout: 30000 });
+      await exec('git', ['apply', stagedPatch], { cwd: source, timeout: 30000 });
+    }
     const zig = join(compiler, 'zig');
     if ((await exec(zig, ['version'], { timeout: 15000 })).stdout.trim() !== zigVersion) throw new Error('The private Zig version differs from its pin.');
     const env = { ...process.env, ZIG_GLOBAL_CACHE_DIR: join(tools, 'zig-cache-' + zigVersion),

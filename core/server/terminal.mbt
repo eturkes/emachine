@@ -9,15 +9,16 @@ struct Peer {
   id : String
   terminal : @pty.Pty
   output : @async.Queue[Packet]
+  lease : TerminalLease?
   mut alive : Bool
-  mut screen_size : (Int, Int)?
+  mut screen_size : (Int32, Int32)?
 }
 
 ///|
 struct Room {
   session : String
-  mut cols : Int
-  mut rows : Int
+  mut cols : Int32
+  mut rows : Int32
   mut controller : String
   mut peers : Array[Peer]
 }
@@ -41,6 +42,7 @@ fn terminal_state(room : Room, peer : Peer) -> Json {
 
 ///|
 fn update_room(room : Room) -> Unit {
+  ensure_terminal_controller(room)
   for peer in room.peers {
     if !peer.alive {
       continue
@@ -50,13 +52,12 @@ fn update_room(room : Room) -> Unit {
       if peer.terminal.screen_size() is Some(size) {
         peer.screen_size = Some(size)
       }
-      peer.output.try_put(Control(terminal_state(room, peer)))
+      publish_terminal_packet(peer, Control(terminal_state(room, peer)))
     } catch {
       _ => false
     }
     if !okay {
-      peer.alive = false
-      peer.terminal.close()
+      close_terminal_peer(peer)
     }
   }
 }
@@ -69,7 +70,7 @@ async fn refresh_terminal_screen(room : Room, peer : Peer) -> Unit {
   peer.terminal.refresh_screen()
   if peer.terminal.screen_size() is Some(size) && peer.screen_size != Some(size) {
     peer.screen_size = Some(size)
-    peer.output.put(Control(terminal_state(room, peer)))
+    send_terminal_packet(peer, Control(terminal_state(room, peer)))
   }
 }
 
@@ -130,6 +131,21 @@ async fn terminal_session(
   cwd : String,
   query : String,
 ) -> Unit {
+  if query.split("&").any(part => part == "resume=1") {
+    resumable_terminal_session(runtime, exchange, session, cwd, query)
+  } else {
+    legacy_terminal_session(runtime, exchange, session, cwd, query)
+  }
+}
+
+///|
+async fn legacy_terminal_session(
+  runtime : Runtime,
+  exchange : Exchange,
+  session : String,
+  cwd : String,
+  query : String,
+) -> Unit {
   let cols = dimension(query, "cols", 100)
   let rows = dimension(query, "rows", 30)
   let room = match runtime.rooms.get(session) {
@@ -165,6 +181,7 @@ async fn terminal_session(
         id: @native.random_id(),
         terminal,
         output: @async.Queue(kind=Blocking(256)),
+        lease: None,
         alive: true,
         screen_size: None,
       }
@@ -177,11 +194,7 @@ async fn terminal_session(
         peer.output.close()
         room.peers = room.peers.filter(candidate => candidate.id != peer.id)
         if room.controller == peer.id {
-          room.controller = if room.peers.is_empty() {
-            ""
-          } else {
-            room.peers[0].id
-          }
+          room.controller = ""
         }
         update_room(room)
       }

@@ -105,6 +105,8 @@ The first connected Emachine device controls the terminal. Other devices observe
 
 The shell survives an emachine service restart. It does not survive an operating-system reboot. Input entered after a detected disconnection is discarded, never queued for replay.
 
+Short connection interruptions retain the terminal's native scrollback and resume only missed output. This fast path lasts up to 30 seconds while the bounded output journal remains available. Opening a new pane, reloading the application, or recovering after a longer interruption restores zmx's retained history; synchronized rendering reduces visible scrollback playback. Scrolling, selecting, and copying still use the terminal's own buffer, with up to 10,000 scrollback rows.
+
 Use **Machines** to add another server's direct address and optional gateway address. Each server must allow the client's exact origin. The desktop origin is `emachine://app`.
 
 ## Ask Codexify for a view
@@ -189,7 +191,7 @@ pnpm test:desktop-window-state
 
 The core uses MoonBit's native backend and the pinned module dependencies. This checkout was built with MoonBit `0.1.20261016`. Required host tools include zmx, OpenSSL development libraries, a C compiler, Node.js, and pnpm. Browser tests use ChromiumFish. The AppImage test needs a working graphical session.
 
-The server build prepares a pinned zmx client under `.tools/`. The first build downloads verified source and Zig compiler archives. The installed service uses this client so arrow input reaches sessions that are already open in another terminal. The system zmx installation and running sessions stay available. Run `node scripts/setup-zmx.mjs` to prepare the client separately.
+The server build prepares a pinned zmx client under `.tools/`. The first build downloads verified source and Zig compiler archives. The installed service uses this client so arrow input reaches sessions that are already open in another terminal and full history restores can render together. The system zmx installation and running sessions stay available. Run `node scripts/setup-zmx.mjs` to prepare the client separately.
 
 To install the server on another Linux machine, build it first, then run:
 

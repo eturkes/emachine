@@ -1,7 +1,8 @@
 import type { Terminal } from '@xterm/xterm';
 
-type Update = (() => void) | { parts: Uint8Array[]; bytes: number };
-const maxBatchBytes = 64 * 1024;
+type Update = (() => void) | { data: Uint8Array; offset: number; parsed?: () => void };
+const parseChunkBytes = 16 * 1024;
+const maxPendingBytes = 256 * 1024;
 
 // xterm parses writes asynchronously; geometry and resets must wait for those bytes.
 export class TerminalOutput {
@@ -10,12 +11,11 @@ export class TerminalOutput {
   private disposed = false;
   constructor(private terminal: Pick<Terminal, 'write'>) {}
 
-  write(data: Uint8Array): void {
-    if (this.disposed || !data.length) return;
-    const previous = this.queue.at(-1);
-    if (previous && typeof previous !== 'function' && previous.bytes + data.length <= maxBatchBytes) {
-      previous.parts.push(data); previous.bytes += data.length;
-    } else this.queue.push({ parts: [data], bytes: data.length });
+  // parsed only commits a checkpoint; terminal mutations must use run outside the parser.
+  write(data: Uint8Array, parsed?: () => void): void {
+    if (this.disposed) return;
+    if (!data.length) { if (parsed) this.run(parsed); return; }
+    this.queue.push({ data, offset: 0, parsed });
     this.drain();
   }
 
@@ -35,20 +35,29 @@ export class TerminalOutput {
     if (this.busy || this.disposed) return;
     this.busy = true;
     try {
-      while (this.queue.length) {
-        const update = this.queue.shift()!;
-        if (typeof update === 'function') { update(); continue; }
-        // Bounded batches preserve parser yields without decoding split UTF-8 or crossing actions.
-        let data = update.parts[0];
-        if (update.parts.length > 1) {
-          data = new Uint8Array(update.bytes);
-          let offset = 0;
-          for (const part of update.parts) { data.set(part, offset); offset += part.length; }
+      while (typeof this.queue[0] === 'function') (this.queue.shift() as () => void)();
+      if (this.queue.length) {
+        const batch: Array<{ data: Uint8Array; parsed?: () => void }> = [];
+        let bytes = 0;
+        while (this.queue.length && bytes < maxPendingBytes) {
+          const update = this.queue[0];
+          if (typeof update === 'function') break;
+          const end = Math.min(update.data.length, update.offset + parseChunkBytes, update.offset + maxPendingBytes - bytes);
+          const data = update.data.subarray(update.offset, end);
+          update.offset = end; bytes += data.length;
+          const complete = end === update.data.length;
+          batch.push({ data, parsed: complete ? update.parsed : undefined });
+          if (complete) this.queue.shift();
         }
-        this.terminal.write(data, () => {
-          // Leave xterm's parser stack before resizing, resetting, or submitting more bytes.
-          queueMicrotask(() => { this.busy = false; this.drain(); });
-        });
+        // Keep xterm's own time-sliced parser supplied without adding a timer per packet.
+        // Raw slices retain split UTF-8/parser state; actions never cross this bounded burst.
+        batch.forEach((part, index) => this.terminal.write(part.data, () => {
+          if (!this.disposed) part.parsed?.();
+          if (index === batch.length - 1) {
+            // Leave the parser stack before resizing, resetting, or submitting another burst.
+            queueMicrotask(() => { this.busy = false; this.drain(); });
+          }
+        }));
         return;
       }
     } catch (error) { this.busy = false; throw error; }
