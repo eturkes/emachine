@@ -8,6 +8,8 @@ test.afterAll(async () => { await machine?.close(); });
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
 const attachment = '1'.repeat(32);
+const restoreBegin = '\u001b]1337;EmachineRestore=begin\u0007';
+const restoreEnd = '\u001b]1337;EmachineRestore=end\u0007';
 function frame(sequence: number, text: string | Buffer): Buffer {
   const data = Buffer.isBuffer(text) ? text : Buffer.from(text);
   const result = Buffer.alloc(8 + data.length);
@@ -311,4 +313,83 @@ test('fragmented replay coalesces parser writes across frames and preserves acti
   expect(writes.length).toBeLessThanOrEqual(Math.ceil(bytes.length / (16 * 1024)) + 2);
   expect(writes.reduce((total, length) => total + length, 0)).toBe(bytes.length + Buffer.byteLength('after barrier'));
   expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: checkpoint });
+});
+
+test('initial restore visibility survives warm reconnect and rearms only for a fresh attachment', async ({ page }) => {
+  const t = await terminal(page, (ws, count) => {
+    if (count === 1) {
+      start(ws, 'control'); ws.send(frame(2, 'initial output'));
+    } else if (count === 2) {
+      ws.send(JSON.stringify({ type: 'resume', attachment, sequence: 3, resumed: true }));
+      ws.send(JSON.stringify({ type: 'state', sequence: 4, mode: 'control', cols: 40, rows: 24 }));
+    } else {
+      ws.send(JSON.stringify({ type: 'resume', attachment: String(count - 1).repeat(32), sequence: 0, resumed: false }));
+      ws.send(JSON.stringify({ type: 'state', sequence: 1, mode: 'control', cols: 40, rows: 24 }));
+      ws.send(frame(2, 'fresh output'));
+    }
+    ready(ws);
+  });
+  await expect(t.pane.locator('.xterm-rows')).toContainText('initial output');
+  const surface = t.pane.locator('.xterm');
+  await surface.evaluate(element => { (element as HTMLElement).style.opacity = '0.7'; });
+  t.sockets[0].send(frame(3, restoreBegin + '\u001b[2J\u001b[Hheld output'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('held output');
+  await expect(surface).toHaveCSS('opacity', '0');
+  await expect(t.pane.locator('.terminal-status')).toHaveText('Restoring terminal history\u2026');
+  // The cold restore hold changes visibility only; live input remains usable.
+  await t.pane.getByRole('button', { name: 'Tab', exact: true }).tap();
+  await expect.poll(() => t.input.join('')).toBe('\t');
+  await t.reconnect();
+  await expect(t.pane).toHaveAttribute('data-mode', 'control');
+  await expect(surface).toHaveCSS('opacity', '0');
+  t.sockets[1].send(frame(5, '\u001b[2J\u001b[Hrestored output' + restoreEnd));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('restored output');
+  await expect(surface).toHaveCSS('opacity', '0.7');
+  await expect(t.pane.locator('.terminal-status')).toBeHidden();
+  t.sockets[1].send(frame(6, restoreBegin + ' ignored second marker'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('ignored second marker');
+  await expect(surface).toHaveCSS('opacity', '0.7');
+  await t.reconnect();
+  await expect(t.pane.locator('.xterm-rows')).toContainText('fresh output');
+  t.sockets[2].send(frame(3, restoreBegin + ' fresh hold'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('fresh hold');
+  await expect(surface).toHaveCSS('opacity', '0');
+  await t.reconnect();
+  await expect(t.pane.locator('.xterm-rows')).toContainText('fresh output');
+  await expect(surface).toHaveCSS('opacity', '0.7');
+  expect(t.input).toEqual(['\t']);
+});
+
+test('restore visibility expires safely and disposal restores the previous inline opacity', async ({ page }) => {
+  await captureSocket(page);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const t = await terminal(page, (ws, count) => {
+    ws.send(JSON.stringify({ type: 'resume', attachment: String(count).repeat(32), sequence: 0, resumed: false }));
+    ws.send(JSON.stringify({ type: 'state', sequence: 1, mode: 'control', cols: 40, rows: 24 }));
+    ws.send(frame(2, 'initial output')); ready(ws);
+  });
+  await expect(t.pane.locator('.xterm-rows')).toContainText('initial output');
+  await page.clock.install();
+  const surface = t.pane.locator('.xterm');
+  await surface.evaluate(element => { (element as HTMLElement).style.setProperty('opacity', '0.4', 'important'); });
+  t.sockets[0].send(frame(3, restoreBegin + ' pending output'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('pending output');
+  await expect(surface).toHaveCSS('opacity', '0');
+  await page.clock.fastForward(11000);
+  await expect(surface).toHaveCSS('opacity', '0.4');
+  await expect(t.pane.locator('.terminal-status')).toBeHidden();
+  t.sockets[0].send(frame(4, restoreBegin + ' ignored repeat'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('ignored repeat');
+  await expect(surface).toHaveCSS('opacity', '0.4');
+  await t.reconnect();
+  await expect(t.pane.locator('.xterm-rows')).toContainText('initial output');
+  t.sockets[1].send(frame(3, restoreBegin + ' disposal hold'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('disposal hold');
+  await expect(surface).toHaveCSS('opacity', '0');
+  expect(await page.evaluate(() => {
+    const pane = (window as any).resumePane, element = pane.terminal.element as HTMLElement;
+    pane.dispose();
+    return { opacity: element.style.opacity, priority: element.style.getPropertyPriority('opacity'), connected: element.isConnected };
+  })).toEqual({ opacity: '0.4', priority: 'important', connected: false });
+  expect(errors).toEqual([]);
 });

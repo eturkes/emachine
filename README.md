@@ -105,7 +105,7 @@ The first connected Emachine device controls the terminal. Other devices observe
 
 The shell survives an emachine service restart. It does not survive an operating-system reboot. Input entered after a detected disconnection is discarded, never queued for replay.
 
-Short connection interruptions retain the terminal's native scrollback and resume only missed output. This fast path lasts up to 30 seconds while the bounded output journal remains available. Opening a new pane, reloading the application, or recovering after a longer interruption restores zmx's retained history; synchronized rendering reduces visible scrollback playback. Scrolling, selecting, and copying still use the terminal's own buffer, with up to 10,000 scrollback rows.
+Short connection interruptions retain the terminal's native scrollback and resume only missed output. This fast path lasts up to 30 seconds while the bounded output journal remains available. Opening a new pane, reloading the application, or recovering after a longer interruption restores zmx's retained history. The initial restore shows **Restoring terminal history...** while preparing the current screen, with a bounded fallback for stalled transfers. Scrolling, selecting, and copying still use the terminal's own buffer, with up to 10,000 scrollback rows.
 
 Use **Machines** to add another server's direct address and optional gateway address. Each server must allow the client's exact origin. The desktop origin is `emachine://app`.
 

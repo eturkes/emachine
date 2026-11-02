@@ -68,13 +68,13 @@ diff --git a/src/util.zig b/src/util.zig
 +    rows: u16,
 +) !void {
 +    const boundary = std.mem.indexOf(u8, payload, restore_boundary).?;
-+    try output.appendSlice(alloc, "\x1b[?2026h");
++    try output.appendSlice(alloc, "\x1b]1337;EmachineRestore=begin\x07\x1b[?2026h");
 +    try output.appendSlice(alloc, payload[0..boundary]);
 +    // ED2 erases the visible tail of phase-one history. Real CRLF scrolling first
 +    // moves that tail into native scrollback; CSI S would discard it in xterm.
 +    for (0..rows) |_| try output.appendSlice(alloc, "\r\n");
 +    try output.appendSlice(alloc, payload[boundary..]);
-+    try output.appendSlice(alloc, "\x1b[?2026l");
++    try output.appendSlice(alloc, "\x1b[?2026l\x1b]1337;EmachineRestore=end\x07");
 +}
 +
 +test "restore synchronization preserves application modes and complete stream boundaries" {
@@ -110,7 +110,7 @@ diff --git a/src/util.zig b/src/util.zig
 +    defer output.deinit(alloc);
 +    try appendSynchronizedRestore(alloc, &output, "history\x1b[2J\x1b[H\x1b[0mscreen", 2);
 +    try testing.expectEqualStrings(
-+        "\x1b[?2026hhistory\r\n\r\n\x1b[2J\x1b[H\x1b[0mscreen\x1b[?2026l",
++        "\x1b]1337;EmachineRestore=begin\x07\x1b[?2026hhistory\r\n\r\n\x1b[2J\x1b[H\x1b[0mscreen\x1b[?2026l\x1b]1337;EmachineRestore=end\x07",
 +        output.items,
 +    );
 +    try testing.expectEqual(@as(u16, 30), restoreRows("30", 39));

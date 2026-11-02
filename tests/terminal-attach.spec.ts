@@ -20,7 +20,7 @@ let originalPid: string;
 
 declare global {
   interface Window {
-    attachProbe: { terminal: Terminal; parsed: number; frames: string[]; copied: string[] };
+    attachProbe: { terminal: Terminal; parsed: number; frames: string[]; visibleFrames: string[]; copied: string[] };
     captureAttachTerminal(terminal: Terminal): void;
   }
 }
@@ -93,11 +93,12 @@ test.afterAll(async () => {
 async function instrument(page: Page) {
   await page.addInitScript(() => {
     window.captureAttachTerminal = terminal => {
-      const probe = window.attachProbe = { terminal, parsed: 0, frames: [] as string[], copied: [] as string[] };
+      const probe = window.attachProbe = { terminal, parsed: 0, frames: [] as string[], visibleFrames: [] as string[], copied: [] as string[] };
       terminal.onWriteParsed(() => { probe.parsed++; });
       terminal.onRender(() => {
         const rows = terminal.element?.querySelector('.xterm-rows')?.textContent ?? '';
         if (probe.frames.length < 100) probe.frames.push(rows);
+        if (terminal.element?.isConnected && getComputedStyle(terminal.element).opacity !== '0' && probe.visibleFrames.length < 100) probe.visibleFrames.push(rows);
       });
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
         writeText: async (text: string) => { probe.copied.push(text); },
@@ -198,4 +199,48 @@ test('a split restore hides partial history until the current screen is complete
   expect(await page.evaluate(() => window.attachProbe.terminal.modes.synchronizedOutputMode)).toBe(false);
   expect(await page.evaluate(() => window.attachProbe.terminal.buffer.active.getLine(0)?.translateToString(true))).toContain('OLD_00000 ' + historyText);
   expect(await sessionHistory()).toBe(originalHistory);
+});
+
+test('a restore remains visually held after the synchronization watchdog expires', async ({ page }) => {
+  await instrument(page);
+  let deliver!: (data: Buffer | string) => void;
+  await page.routeWebSocket(/\/api\/v1\/terminal\//, socket => {
+    deliver = data => socket.send(data);
+    socket.onMessage(() => {});
+    socket.send(JSON.stringify({ type: 'state', mode: 'observe', session: 'alpha', cols: 100, rows: 30 }));
+  });
+  await page.goto(machine.origin);
+  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'observe');
+  await page.evaluate(() => window.attachProbe.terminal.focus());
+  const textarea = page.locator('.xterm-helper-textarea');
+  await expect(textarea).toBeFocused();
+  const before = await page.evaluate(() => window.attachProbe.parsed);
+  const split = 8193;
+  deliver(snapshot.subarray(0, split));
+  try {
+    await expect.poll(() => page.evaluate(() => window.attachProbe.parsed)).toBeGreaterThan(before);
+    // The emulator's one-second watchdog may resume internal painting before all history arrives.
+    await page.waitForTimeout(1200);
+    await expect.poll(() => page.evaluate(() => window.attachProbe.terminal.modes.synchronizedOutputMode)).toBe(false);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await page.evaluate(() => getComputedStyle(window.attachProbe.terminal.element!).opacity)).toBe('0');
+    await expect(page.locator('.terminal-status')).toContainText('Restoring terminal history');
+    await expect(textarea).toBeFocused();
+    expect(await page.evaluate(() => window.attachProbe.frames.some(frame => frame.includes('OLD_')))).toBe(true);
+    expect(await page.evaluate(() => window.attachProbe.visibleFrames.filter(frame => frame.includes('OLD_')))).toEqual([]);
+  } finally { deliver(snapshot.subarray(split)); }
+  await expect(page.locator('.xterm')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.xterm-rows')).toContainText(finalMarker);
+  await expect(textarea).toBeFocused();
+  const restoredIds = await page.evaluate(() => {
+    const buffer = window.attachProbe.terminal.buffer.normal;
+    return Array.from({ length: buffer.length }, (_, row) => buffer.getLine(row)?.translateToString(true) ?? '')
+      .flatMap(line => Array.from(line.matchAll(/OLD_(\d{5})/g), match => Number(match[1])));
+  });
+  const expectedIds = Array.from(originalHistory.matchAll(/OLD_(\d{5})/g), match => Number(match[1]));
+  expect(expectedIds).toHaveLength(10000);
+  expect(restoredIds).toEqual(expectedIds);
+  expect(await page.evaluate(() => window.attachProbe.visibleFrames.filter(frame => frame.includes('OLD_') && !frame.includes('FINAL_SCREEN_MARKER')))).toEqual([]);
+  expect(await sessionHistory()).toBe(originalHistory);
+  expect(await sessionPid()).toBe(originalPid);
 });

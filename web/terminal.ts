@@ -8,6 +8,7 @@ import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { TerminalOutput } from './terminal-output';
 import { TerminalReplies } from './terminal-resume';
+import { TerminalRestore } from './terminal-restore';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
 import { TerminalHistory } from './terminal-history';
@@ -60,6 +61,7 @@ export class TerminalPane {
   private terminal: Terminal;
   private output: TerminalOutput;
   private terminalReplies: TerminalReplies;
+  private terminalRestore: TerminalRestore;
   private replies: Array<{ epoch: number; data: string }> = [];
   private ready = false;
   private attachment?: { attachment: string; sequence: number };
@@ -163,6 +165,9 @@ export class TerminalPane {
     });
     this.output = new TerminalOutput(this.terminal);
     this.terminalReplies = new TerminalReplies(this.terminal);
+    this.terminalRestore = new TerminalRestore(this.terminal, () => {
+      queueMicrotask(() => { if (!this.closed) this.refreshControl(); });
+    });
     this.terminal.loadAddon(this.fit);
     const canInput = () => this.canInput();
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
@@ -348,7 +353,7 @@ export class TerminalPane {
       this.replies = [];
       this.output.reset(() => {
         if (!sameAttachment()) return;
-        this.terminal.reset(); this.remoteSize = this.pendingSize = ''; this.mode = 'observe';
+        this.terminalRestore.reset(); this.terminal.reset(); this.remoteSize = this.pendingSize = ''; this.mode = 'observe';
       });
     };
     const legacy = () => {
@@ -457,8 +462,9 @@ export class TerminalPane {
       // Coalesce viewport changes while a previous resize is awaiting acknowledgement.
       this.syncSize();
     }
-    this.status.hidden = this.mode === 'control';
-    this.status.textContent = this.mode === 'control' ? '' : `Observing · ${this.terminal.cols} × ${this.terminal.rows} · another device controls this shell`;
+    this.status.hidden = this.mode === 'control' && !this.terminalRestore.active;
+    this.status.textContent = this.terminalRestore.active ? 'Restoring terminal history…'
+      : this.mode === 'control' ? '' : `Observing · ${this.terminal.cols} × ${this.terminal.rows} · another device controls this shell`;
   }
   private disconnect(ws: WebSocket | undefined): void {
     if (!ws || this.closed || this.ws !== ws) return;
@@ -492,6 +498,6 @@ export class TerminalPane {
     this.history?.dispose();
     this.copyOutput?.dispose();
     if (this.attachment && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'detach' }));
-    this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminalReplies.dispose(); this.terminal.dispose(); this.element.remove();
+    this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminalReplies.dispose(); this.terminalRestore.dispose(); this.terminal.dispose(); this.element.remove();
   }
 }
