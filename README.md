@@ -62,8 +62,8 @@ The light terminal uses native-reference charcoal text and preserves programs' t
 On desktop, **Hide projects** collapses the sidebar and **Show projects** restores it. The client remembers this choice, and the active terminal or feature view stays open as it resizes.
 On narrow screens, **Projects** opens the project drawer independently of the desktop preference.
 When Claude Code needs input, **Waiting (N)** appears in the top bar with the number of waiting projects across online machines, even when Projects is hidden or filtered. Hover for project and machine names, or select it to reveal Projects, clear the search, and focus the first waiting project. Your active terminal or view stays selected. The indicator clears when no online projects are waiting.
-The terminal shortcut bar includes **Prompts**, **History**, **Ctrl**, **Alt**, **Esc**, **Tab**, arrow keys, **Ctrl-C**, **Shift + ←**, **Copy**, and **Paste**.
-**Ctrl** and **Alt** apply to the next key. **Copy** copies selected terminal text.
+The terminal shortcut bar includes **Keyboard**, **Esc**, **Tab**, **Enter**, arrow keys, **Shift + ←**, **Ctrl-C**, **Ctrl-O**, **Ctrl-E**, **Ctrl-X Ctrl-S**, **Copy**, **Paste**, **Prompts**, and **History**. On iOS, **Text** opens a native text draft.
+Key combinations send their control bytes directly to the terminal; hardware Ctrl and Alt modifiers keep their normal behavior. **Copy** copies selected terminal text.
 Use **Ctrl+Shift+C** to copy the selection and **Ctrl+Shift+V** to paste. Plain **Ctrl+C** still sends an interrupt.
 Right-click the terminal for **Copy**, **Paste**, **Select all**, and **Clear selection**.
 Use **Shift+F10** or the menu key to open the same menu from the keyboard.

@@ -102,6 +102,7 @@ export class TerminalPane {
       [keys, 'Enter', '\r'],
       [navigation, '←', '\u001b[D'], [navigation, '↓', '\u001b[B'], [navigation, '↑', '\u001b[A'], [navigation, '→', '\u001b[C'],
       [shortcuts, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
+      [shortcuts, 'Ctrl-O', '\u000f'], [shortcuts, 'Ctrl-E', '\u0005'],
     ] as const) {
       const arrow = /^\u001b\[([ABCD])$/.exec(value);
       let keyboardBeforeTap: boolean | undefined;

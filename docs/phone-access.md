@@ -98,7 +98,7 @@ Tap **Keyboard** to type directly in the terminal. Tap it again to hide the keyb
 Tap **Esc** beside it to send Escape to the terminal.
 Tap **Tab** beside Esc for shell completion or the running program's Tab action.
 All three buttons stay visible when you scroll the shortcut bar. Keyboard's pressed state marks active terminal input.
-The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, and **Ctrl-X Ctrl-S**.
+The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, **Ctrl-O**, **Ctrl-E**, and **Ctrl-X Ctrl-S**.
 Connection messages and **Take control** appear above the controls when needed.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.
 Short taps open the keyboard; swipes and long presses keep their existing behavior.

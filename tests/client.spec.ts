@@ -336,7 +336,7 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     for (const key of await page.locator('.terminal-toolbar button:visible').all()) {
       expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
     }
-    for (const name of ['Enter', 'Copy', 'Paste', 'Shift + Arrow Left', 'Ctrl+X then Ctrl+S']) {
+    for (const name of ['Enter', 'Copy', 'Paste', 'Shift + Arrow Left', 'Ctrl-O', 'Ctrl-E', 'Ctrl+X then Ctrl+S']) {
       const key = page.locator('.terminal-toolbar').getByRole('button', { name, exact: true });
       await key.scrollIntoViewIfNeeded();
       await expect(key).toBeInViewport({ ratio: 1 });
@@ -403,6 +403,8 @@ test('terminal shortcuts preserve hardware modifiers and keep session status out
   await page.keyboard.insertText('é'); await received('é');
   await page.keyboard.press('Control+Alt+c'); await received('\u001b\u0003');
   await page.keyboard.press('Control+c'); await received('\u0003');
+  await page.keyboard.press('Control+o'); await received('\u000f');
+  await page.keyboard.press('Control+e'); await received('\u0005');
   await page.keyboard.type('x'); await received('x');
   for (const application of [false, true]) {
     send(Buffer.from(application ? '\u001b[?1h' : '\u001b[?1l'));
@@ -416,7 +418,7 @@ test('terminal shortcuts preserve hardware modifiers and keep session status out
   // The following unmodified shortcuts exercise normal mode after the application-mode loop.
   send(Buffer.from('\u001b[?1lNormal cursor restored\r\n'));
   await expect(page.locator('.xterm-rows')).toContainText('Normal cursor restored');
-  for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003']]) {
+  for (const [name, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Enter', '\r'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Ctrl-O', '\u000f'], ['Ctrl-E', '\u0005']]) {
     await page.getByRole('group', { name: 'Terminal keyboard controls', exact: true }).getByRole('button', { name, exact: true }).click(); await received(value);
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   }

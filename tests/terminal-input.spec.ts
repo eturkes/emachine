@@ -303,7 +303,7 @@ test.describe('terminal input', () => {
     await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true, includeHidden: true })).toHaveCount(0);
     await expect(t.pane.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
     await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['←', '↓', '↑', '→']);
-    await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-X Ctrl-S']);
+    await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-O', 'Ctrl-E', 'Ctrl-X Ctrl-S']);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
       await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
@@ -351,13 +351,14 @@ test.describe('terminal input', () => {
     }
   });
 
-  for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t']] as const) test(`${label} stays reachable without sending drafts or replaying blocked input`, async ({ page }) => {
+  for (const [label, value] of [['Esc', '\u001b'], ['Tab', '\t'], ['Ctrl-O', '\u000f'], ['Ctrl-E', '\u0005']] as const) test(`${label} stays reachable without sending drafts or replaying blocked input`, async ({ page }) => {
     const t = await terminal(page), draft = await openText(t.pane);
     const shortcut = t.pane.getByRole('button', { name: label, exact: true });
     const keyboard = t.pane.locator('.terminal-keyboard');
     await draft.text.fill('unsent draft');
     await page.setViewportSize({ width: 390, height: 420 });
     await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    await shortcut.scrollIntoViewIfNeeded();
     await expect(shortcut).toBeInViewport({ ratio: 1 });
     await expect(shortcut).toHaveCSS('touch-action', 'manipulation');
     await shortcut.tap();
