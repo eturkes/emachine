@@ -198,9 +198,6 @@ test('prompt composition, copy and paste preserve the preview without a final En
   const t = await promptTerminal(page);
   t.send(Buffer.from('\u001b[?2004hbracketed ready\r\n'));
   await expect(t.pane.locator('.xterm-rows')).toContainText('bracketed ready');
-  for (const name of ['Use Control with the next character', 'Use Alt with the next key']) {
-    await t.pane.getByRole('button', { name, exact: true }).click();
-  }
   const p = await openPrompts(page);
   await p.select.selectOption(steered.id);
   await expect(p.copy).toBeDisabled(); await expect(p.paste).toBeDisabled();
@@ -222,9 +219,6 @@ test('prompt composition, copy and paste preserve the preview without a final En
   await expect.poll(() => t.input.join('')).toBe('\u001b[200~' + expected.replaceAll('\n', '\r') + '\u001b[201~');
   await expect(p.dialog).not.toBeVisible();
   await expect(t.pane.locator('.xterm-helper-textarea')).toBeFocused();
-  for (const name of ['Use Control with the next character', 'Use Alt with the next key']) {
-    await expect(t.pane.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'false');
-  }
 });
 
 test('steering stays local through composition, observation and disconnection', async ({ page }) => {

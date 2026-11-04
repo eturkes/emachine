@@ -76,19 +76,15 @@ test('terminal clipboard shortcut copies once without sending input and leaves p
   expect((await clipboard(page)).writes).toEqual(['clipboardFixture']);
 });
 
-test('terminal clipboard shortcut pastes once with bracketed-paste encoding and resets one-shot modifiers', async ({ page }) => {
+test('terminal clipboard shortcut pastes once with bracketed-paste encoding', async ({ page }) => {
   const t = await terminal(page);
   t.send(Buffer.from('\u001b[?2004hbracketed ready\r\n'));
   await expect(t.pane.locator('.xterm-rows')).toContainText('bracketed ready');
   await page.evaluate(() => { (window as any).clipboardFixture.text = 'a\nb'; });
-  const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
-  const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-  await ctrl.click(); await alt.click();
+  await t.textarea.focus();
   await page.keyboard.press('Control+Shift+V');
   await expect.poll(() => t.input.join('')).toBe('\u001b[200~a\rb\u001b[201~');
   expect((await clipboard(page)).reads).toBe(1);
-  await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-  await expect(alt).toHaveAttribute('aria-pressed', 'false');
   await expect(t.textarea).toBeFocused();
 });
 

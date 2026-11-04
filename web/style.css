@@ -111,23 +111,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Safari's focus zoom follows the editable input, independently of the terminal cells. */
 .terminal-host .xterm-helper-textarea { font-size: 16px; }
 .terminal-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 0 16px; min-width: 0; padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0; }
-.terminal-toolbar, .terminal-toolbar button { touch-action: manipulation; }
+.terminal-toolbar, .terminal-toolbar button, .terminal-session, .terminal-session button { touch-action: manipulation; }
 .terminal-keyboard-controls { display: flex; align-items: flex-start; gap: var(--terminal-key-gap); min-width: 0; }
 /* Reserve the shortcut scrollbar so WebKit does not change the terminal height after fitting. */
 .terminal-keys { display: flex; align-items: center; gap: var(--terminal-key-gap); min-width: 0; margin-left: calc(-1 * var(--terminal-key-gap)); padding: 8px var(--terminal-key-gap); flex: 1; overflow-x: scroll; scroll-padding-inline: var(--terminal-key-gap); }
 .terminal-key-group { display: flex; flex-shrink: 0; align-items: center; gap: var(--terminal-key-gap); }
 .terminal-keys > .terminal-key-group { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); }
+.terminal-session { display: flex; flex-shrink: 0; align-items: center; gap: 12px; min-width: 0; padding: 0 0 4px; border-bottom: 1px solid var(--border); }
 .terminal-session:not(:has(> :not([hidden]))) { display: none; }
 .terminal-tools { display: flex; align-items: center; gap: 16px; padding: 8px 0 8px 16px; border-left: 1px solid var(--border); }
 .terminal-tools > .terminal-key-group + .terminal-key-group { padding-left: 16px; border-left: 1px solid var(--border); }
-.terminal-status { flex-shrink: 0; max-width: min(320px,70vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px Iosevka,monospace; color: var(--muted); }
-.terminal-toolbar button { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
-.terminal-toolbar button:hover { color: var(--text); background: var(--hover); }
+.terminal-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.4 Iosevka,monospace; color: var(--muted); }
+.terminal-toolbar button, .terminal-session button { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
+.terminal-toolbar button:hover, .terminal-session button:hover { color: var(--text); background: var(--hover); }
 .terminal-toolbar .terminal-fixed-key { min-width: 44px; margin: 8px 0; }
 .terminal-tools button { padding: 7px 8px; }
 .terminal-toolbar .terminal-keyboard { display: none; margin-right: 10px; }
 .terminal-ios .terminal-keyboard { display: block; }
-.terminal-ios .terminal-toolbar button { min-width: 44px; min-height: 44px; }
+.terminal-ios .terminal-toolbar button, .terminal-ios .terminal-session button { min-width: 44px; min-height: 44px; }
 .terminal-toolbar button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 .terminal-toolbar button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
 @container terminal (max-width: 960px) {
@@ -263,6 +264,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .terminal-toolbar .terminal-keyboard { display: block; }
   .terminal-keys button, .terminal-fixed-key { padding: 9px 10px; min-height: 44px; }
   .terminal-tools button { min-width: 44px; min-height: 44px; }
+  .terminal-session button { min-height: 44px; }
   .connection-form input { font-size: 16px; }
   .dialog { padding: 19px; }
   .toast-region { right: 14px; }

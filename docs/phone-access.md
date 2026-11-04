@@ -98,6 +98,8 @@ Tap **Keyboard** to type directly in the terminal. Tap it again to hide the keyb
 Tap **Esc** beside it to send Escape to the terminal.
 Tap **Tab** beside Esc for shell completion or the running program's Tab action.
 All three buttons stay visible when you scroll the shortcut bar. Keyboard's pressed state marks active terminal input.
+The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, and **Ctrl-X Ctrl-S**.
+Connection messages and **Take control** appear above the controls when needed.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.
 Short taps open the keyboard; swipes and long presses keep their existing behavior.
 
@@ -110,7 +112,7 @@ Keyboard animations settle before the terminal sends its new dimensions to the r
 
 ## Copy terminal output
 
-On iPhone or iPad, scroll the terminal shortcut bar to **Copy** and tap it.
+On iPhone or iPad, tap **Copy** in the text tools row below the terminal keys.
 When no terminal text is already selected, this opens **Copy terminal output** with a selectable snapshot.
 Press and hold the text to select a passage and adjust the native selection handles, then tap **Copy selection** or the device's **Copy** command.
 Tap **Copy all** to copy the whole snapshot, including the available terminal scrollback.
@@ -126,7 +128,7 @@ Snapshots are discarded when closed, when switching away from their terminal, or
 
 ## Type with native spelling tools
 
-On iPhone or iPad, select **Text** in the terminal keyboard bar.
+On iPhone or iPad, select **Text** beside **Copy** and **Paste** in the text tools row.
 Type in the **Terminal text** field and use the keyboard's spelling corrections.
 Select **Send text** to paste the completed draft into the terminal.
 

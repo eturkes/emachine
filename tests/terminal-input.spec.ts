@@ -213,11 +213,8 @@ test.describe('terminal input', () => {
     }
   });
 
-  test('toolbar arrows follow normal and application cursor modes once per tap with one-shot modifiers', async ({ page }) => {
+  test('toolbar arrows follow cursor modes once per tap and hardware modifiers remain native', async ({ page }) => {
     const t = await terminal(page);
-    const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
-    const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-    const up = t.pane.getByRole('button', { name: '\u2191', exact: true });
     const down = t.pane.getByRole('button', { name: '\u2193', exact: true });
     const expected: string[] = [];
     for (const application of [false, true, false]) {
@@ -229,15 +226,11 @@ test.describe('terminal input', () => {
         await t.pane.getByRole('button', { name, exact: true }).tap(); expected.push(prefix + suffix);
         await expect.poll(() => t.input).toEqual(expected);
       }
-      await ctrl.tap(); await up.tap(); expected.push('\u001b[1;5A');
-      await expect.poll(() => t.input).toEqual(expected);
-      await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-      await alt.tap(); await down.tap(); expected.push('\u001b[1;3B');
-      await expect.poll(() => t.input).toEqual(expected);
-      await expect(alt).toHaveAttribute('aria-pressed', 'false');
-      await ctrl.tap(); await alt.tap(); await up.tap(); expected.push('\u001b[1;7A');
-      await expect.poll(() => t.input).toEqual(expected);
-      for (const modifier of [ctrl, alt]) await expect(modifier).toHaveAttribute('aria-pressed', 'false');
+      await t.textarea.focus();
+      for (const [key, value] of [['Control+ArrowUp', '\u001b[1;5A'], ['Alt+ArrowDown', '\u001b[1;3B'], ['Control+Alt+ArrowUp', '\u001b[1;7A']]) {
+        await page.keyboard.press(key); expected.push(value);
+        await expect.poll(() => t.input).toEqual(expected);
+      }
       await down.tap(); expected.push(prefix + 'B');
       await expect.poll(() => t.input).toEqual(expected);
     }
@@ -307,9 +300,10 @@ test.describe('terminal input', () => {
     const promptTools = t.pane.getByRole('group', { name: 'Prompt tools', exact: true });
     await expect(textTools.getByRole('button')).toHaveText(['Text', 'Copy', 'Paste']);
     await expect(promptTools.getByRole('button')).toHaveText(['Prompts', 'History']);
-    await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true }).getByRole('button')).toHaveText(['Ctrl', 'Alt']);
-    await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['←', '↓', '↑', '→', 'Shift + ←']);
-    await expect(t.pane.getByRole('group', { name: 'Control shortcuts', exact: true }).getByRole('button')).toHaveText(['Ctrl-C', 'Ctrl-X Ctrl-S']);
+    await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true, includeHidden: true })).toHaveCount(0);
+    await expect(t.pane.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
+    await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['←', '↓', '↑', '→']);
+    await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-X Ctrl-S']);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
       await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
@@ -320,9 +314,9 @@ test.describe('terminal input', () => {
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
         const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
         const tab = element.querySelector('button[aria-label="Tab"]')!.getBoundingClientRect();
-        const [first, ctrl, alt] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        const [first, left, down] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
         const tools = element.querySelector('.terminal-tools')!.getBoundingClientRect();
-        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: alt.left - ctrl.right, groupGap: ctrl.left - first.right,
+        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: down.left - left.right, groupGap: left.left - first.right,
           keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: first.top,
           toolsTop: tools.top, keyboardBottom: keyboard.bottom,
           keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: first.height };
@@ -375,14 +369,10 @@ test.describe('terminal input', () => {
     await expect(t.textarea).not.toBeFocused();
     await expect(keyboard).toHaveAttribute('aria-pressed', 'false');
 
-    const ctrl = t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true });
-    const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-    await ctrl.tap(); await alt.tap(); await shortcut.tap();
-    await expect.poll(() => t.input).toEqual([value, '\u001b' + value]);
-    await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-    await expect(alt).toHaveAttribute('aria-pressed', 'false');
+    await shortcut.tap();
+    await expect.poll(() => t.input).toEqual([value, value]);
     await page.keyboard.type('x');
-    const sent = value + '\u001b' + value + 'x';
+    const sent = value + value + 'x';
     await expect.poll(() => t.input.join('')).toBe(sent);
 
     t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 80, rows: 24 }));
@@ -506,7 +496,7 @@ test.describe('terminal input', () => {
     await expect.poll(() => t.input.join('')).toBe('theraw');
   });
 
-  test('native spelling preserves IME, whitespace and multiline paste without terminal modifiers', async ({ page }) => {
+  test('native spelling preserves IME, whitespace and multiline paste', async ({ page }) => {
     const t = await terminal(page), draft = await openText(t.pane);
     t.send(Buffer.from('\u001b[?2004hbracketed ready\r\n'));
     await expect(t.pane.locator('.xterm-rows')).toContainText('bracketed ready');
@@ -521,13 +511,8 @@ test.describe('terminal input', () => {
     const expected = '\u304b\n  caf\u00e9 \ud83d\ude42 ';
     await expect(draft.text).toHaveValue(expected);
     expect(t.input).toEqual([]);
-    await t.pane.getByRole('button', { name: 'Use Control with the next character', exact: true }).click();
-    await t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true }).click();
     await draft.send.click();
     await expect.poll(() => t.input.join('')).toBe('\u001b[200~' + expected.replace('\n', '\r') + '\u001b[201~');
-    for (const name of ['Use Control with the next character', 'Use Alt with the next key']) {
-      await expect(t.pane.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'false');
-    }
   });
 
   test('native spelling never sends or replays a draft during observation or disconnection', async ({ page }) => {
@@ -643,11 +628,9 @@ test.describe('terminal input', () => {
     await expect.poll(() => t.input.join('')).toContain('\u001b[200~paste\rtext\u001b[201~');
     expect(await deleteInput(t.textarea, 2)).toEqual([{ cancelled: false, editable: true }, { cancelled: false, editable: true }]);
     await expect.poll(() => t.input.join('')).toBe('abc\u007f\u007f\b\u001b\u007f\r\u007f\u001b[200~paste\rtext\u001b[201~\u007f\u007f');
-    const alt = t.pane.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-    await alt.click();
-    await deleteInput(t.textarea, 2);
+    await page.keyboard.press('Alt+Backspace');
+    await deleteInput(t.textarea);
     await expect.poll(() => t.input.slice(-2)).toEqual(['\u001b\u007f', '\u007f']);
-    await expect(alt).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('iOS leaves composition and cancellation to the IME without leaking helper text', async ({ page }) => {

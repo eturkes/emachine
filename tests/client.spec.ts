@@ -345,10 +345,19 @@ test('streamlined layout ignores old collapse state and removes decorative strip
   }
 });
 
-test('terminal shortcuts encode modifiers and retain observer control without a footer', async ({ page }) => {
+test('terminal shortcuts preserve hardware modifiers and keep session status outside the keys', async ({ page }, testInfo) => {
   const input: string[] = [];
+  await page.addInitScript(() => {
+    // ChromiumFish advertises Windows, where Ctrl+Alt is treated as AltGr.
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Linux x86_64' });
+  });
   let send!: (data: string | Buffer) => void;
   let disconnect!: () => void;
+  let attachments = 0;
+  const attached = () => {
+    send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
+    send(Buffer.from('Shortcut fixture\r\n'));
+  };
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     send = data => ws.send(data);
     disconnect = () => ws.close();
@@ -356,14 +365,31 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
       if (Buffer.isBuffer(data)) input.push(data.toString('hex'));
       else if (JSON.parse(data).type === 'claim') send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
     });
-    send(JSON.stringify({ type: 'state', mode: 'control', session: 'fixture', cols: 80, rows: 24 }));
-    send(Buffer.from('Shortcut fixture\r\n'));
+    if (attachments++) attached();
   });
   await page.goto(a.origin);
-  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
+  const pane = page.locator('.terminal-pane');
   const keys = page.locator('.terminal-toolbar');
-  const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
-  const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
+  const session = pane.getByRole('group', { name: 'Terminal session', exact: true });
+  const layout = () => pane.evaluate(element => Object.fromEntries(['.terminal-host', '.terminal-toolbar'].map(selector => {
+    const { x, y, width, height } = element.querySelector(selector)!.getBoundingClientRect();
+    return [selector, { x, y, width, height }];
+  })));
+  await expect(pane).toHaveAttribute('data-mode', 'attaching');
+  await expect(session).toContainText('Attaching to the persistent shell');
+  await expect(keys.locator('.terminal-status')).toHaveCount(0);
+  await expect(session).toBeInViewport({ ratio: 1 });
+  await page.evaluate(() => document.fonts.ready);
+  const attachingLayout = await layout();
+  const attachingStatus = (await session.boundingBox())!;
+  expect(attachingLayout['.terminal-host'].y + attachingLayout['.terminal-host'].height).toBeLessThanOrEqual(attachingStatus.y);
+  expect(attachingStatus.y + attachingStatus.height).toBeLessThanOrEqual(attachingLayout['.terminal-toolbar'].y);
+  await page.screenshot({ path: testInfo.outputPath('terminal-attaching-status.png') });
+  attached();
+  await expect(pane).toHaveAttribute('data-mode', 'control');
+  await expect(session).toBeHidden();
+  expect((await layout())['.terminal-toolbar']).toEqual(attachingLayout['.terminal-toolbar']);
+  await expect(keys.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
   const enter = keys.getByRole('button', { name: 'Enter', exact: true });
   const shiftLeft = keys.getByRole('button', { name: 'Shift + Arrow Left', exact: true });
   const sequence = keys.getByRole('button', { name: 'Ctrl+X then Ctrl+S', exact: true });
@@ -371,15 +397,13 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   await expect(shiftLeft).toHaveText('Shift + ←');
   await expect(sequence).toHaveText('Ctrl-X Ctrl-S');
   const received = async (value: string) => { await expect.poll(() => input.join('')).toBe(Buffer.from(value).toString('hex')); input.length = 0; };
-  await alt.click(); await expect(alt).toHaveAttribute('aria-pressed', 'true');
-  await page.keyboard.type('b'); await received('\u001bb');
-  await expect(alt).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Alt+b'); await received('\u001bb');
   await page.keyboard.type('b'); await received('b');
-  await alt.click(); await page.keyboard.insertText('é'); await received('\u001bé');
-  await ctrl.click(); await alt.click(); await page.keyboard.type('c'); await received('\u001b\u0003');
-  await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-  await ctrl.click(); await page.keyboard.type('c'); await received('\u0003');
-  await alt.click(); await alt.click(); await page.keyboard.type('x'); await received('x');
+  await page.keyboard.insertText('é'); await received('é');
+  await page.keyboard.press('Control+Alt+c'); await received('\u001b\u0003');
+  await page.keyboard.press('Control+c'); await received('\u0003');
+  await page.keyboard.type('x'); await received('x');
   for (const application of [false, true]) {
     send(Buffer.from(application ? '\u001b[?1h' : '\u001b[?1l'));
     await page.locator('.xterm-helper-textarea').focus();
@@ -387,9 +411,7 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     await page.keyboard.press('Shift+ArrowLeft'); await received('\u001b[1;2D');
     await shiftLeft.click(); await received('\u001b[1;2D');
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
-    await alt.click(); await keys.getByRole('button', { name: '↑', exact: true }).click(); await received('\u001b[1;3A');
-    await expect(alt).toHaveAttribute('aria-pressed', 'false');
-    await alt.click(); await page.keyboard.press('ArrowUp'); await received('\u001b[1;3A');
+    await keys.getByRole('button', { name: '↑', exact: true }).click(); await received(application ? '\u001bOA' : '\u001b[A');
   }
   // The following unmodified shortcuts exercise normal mode after the application-mode loop.
   send(Buffer.from('\u001b[?1lNormal cursor restored\r\n'));
@@ -398,32 +420,44 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
     await page.getByRole('group', { name: 'Terminal keyboard controls', exact: true }).getByRole('button', { name, exact: true }).click(); await received(value);
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   }
-  await ctrl.click(); await enter.click(); await received('\r');
-  await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-  await alt.click(); await enter.click(); await received('\u001b\r');
-  await expect(alt).toHaveAttribute('aria-pressed', 'false');
-  for (const modifiers of [[], [ctrl], [alt], [ctrl, alt]]) {
-    for (const modifier of modifiers) await modifier.click();
-    await sequence.click(); await received('\u0018\u0013');
-    await expect(ctrl).toHaveAttribute('aria-pressed', 'false');
-    await expect(alt).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
-    await page.keyboard.type('s'); await received('s');
-  }
+  await page.keyboard.press('Control+Enter'); await received('\r');
+  await page.keyboard.press('Alt+Enter'); await received('\u001b\r');
+  await sequence.click(); await received('\u0018\u0013');
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  await page.keyboard.type('s'); await received('s');
   for (const key of ['Enter', 'Space']) {
     await sequence.focus(); await page.keyboard.press(key); await received('\u0018\u0013');
     await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
   }
-  send(JSON.stringify({ type: 'state', mode: 'observe', session: 'fixture', cols: 80, rows: 24 }));
-  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'observe');
-  await expect(keys).toContainText('Observing');
-  await enter.click();
-  await sequence.click();
-  await shiftLeft.click();
-  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
-  await keys.getByRole('button', { name: 'Take control', exact: true }).click();
-  await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
-  await page.keyboard.type('retained'); await received('retained');
+  for (const width of [1360, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const controlledLayout = await layout();
+    send(JSON.stringify({ type: 'state', mode: 'observe', session: 'fixture', cols: 80, rows: 24 }));
+    await expect(pane).toHaveAttribute('data-mode', 'observe');
+    await expect(session).toContainText('Observing');
+    await expect(keys).not.toContainText('Observing');
+    const observingLayout = await layout();
+    const observingStatus = (await session.boundingBox())!;
+    expect(observingLayout['.terminal-toolbar']).toEqual(controlledLayout['.terminal-toolbar']);
+    expect(observingLayout['.terminal-host'].y + observingLayout['.terminal-host'].height).toBeLessThanOrEqual(observingStatus.y);
+    expect(observingStatus.y + observingStatus.height).toBeLessThanOrEqual(observingLayout['.terminal-toolbar'].y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+    await enter.click();
+    await sequence.click();
+    await shiftLeft.click();
+    await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.type('dropped');
+    const statusBounds = await session.boundingBox();
+    await keys.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    expect(await session.boundingBox()).toEqual(statusBounds);
+    const takeControl = session.getByRole('button', { name: 'Take control', exact: true });
+    await expect(takeControl).toBeInViewport({ ratio: 1 });
+    if (width === 390) await page.screenshot({ path: testInfo.outputPath('terminal-observer-status-phone.png') });
+    await takeControl.click();
+    await expect(pane).toHaveAttribute('data-mode', 'control');
+    await expect(session).toBeHidden();
+    expect((await layout())['.terminal-toolbar']).toEqual(controlledLayout['.terminal-toolbar']);
+    await page.keyboard.type('retained'); await received('retained');
+  }
   await expect(keys).not.toContainText(/Observing|Live shell/);
   await expect(page.locator('.terminal-footer')).toHaveCount(0);
   disconnect();

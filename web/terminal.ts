@@ -41,18 +41,6 @@ function button(label: string, action: (event: MouseEvent) => void, title = labe
 function controlGroup(label: string, className = 'terminal-key-group'): HTMLDivElement {
   const group = document.createElement('div'); group.className = className; group.setAttribute('role', 'group'); group.setAttribute('aria-label', label); return group;
 }
-function modifiedInput(data: string, ctrl: boolean, alt: boolean): string {
-  const modifiers = (ctrl ? 4 : 0) | (alt ? 2 : 0);
-  if (!modifiers) return data;
-  // Cursor modifiers use CSI parameters, including when the terminal uses application cursor keys.
-  const cursor = /^\u001b(?:\[1;(\d+)|\[|O)([ABCDHF])$/.exec(data);
-  if (cursor) return `\u001b[1;${((Number(cursor[1] ?? 1) - 1) | modifiers) + 1}${cursor[2]}`;
-  const prefix = data.length > 1 && data.startsWith('\u001b') ? '\u001b' : '';
-  const character = data.slice(prefix.length);
-  if (ctrl && /^[a-z@[\]\\^_ ]$/i.test(character)) data = prefix + String.fromCharCode(character.toUpperCase().charCodeAt(0) & 31);
-  else if (ctrl && character === '?') data = prefix + '\u007f';
-  return alt && !prefix ? '\u001b' + data : data;
-}
 export class TerminalPane {
   element = document.createElement('section');
   private host = document.createElement('div');
@@ -105,22 +93,15 @@ export class TerminalPane {
     this.control = button('Take control', () => { if (this.ready && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
     const keys = document.createElement('div'); keys.className = 'terminal-keys';
-    const modifiers = controlGroup('Modifiers');
     const navigation = controlGroup('Navigation');
-    const shortcuts = controlGroup('Control shortcuts');
-    const session = controlGroup('Terminal session', 'terminal-key-group terminal-session');
+    const shortcuts = controlGroup('Key combinations');
+    const session = controlGroup('Terminal session', 'terminal-session');
     const textTools = controlGroup('Text tools');
     const promptTools = controlGroup('Prompt tools');
-    let useCtrl = false, useAlt = false;
-    const ctrl = button('Ctrl', () => { useCtrl = !useCtrl; ctrl.setAttribute('aria-pressed', String(useCtrl)); this.terminal.focus(); }, 'Use Control with the next character');
-    const alt = button('Alt', () => { useAlt = !useAlt; alt.setAttribute('aria-pressed', String(useAlt)); this.terminal.focus(); }, 'Use Alt with the next key');
-    const clearModifiers = () => { useCtrl = useAlt = false; ctrl.setAttribute('aria-pressed', 'false'); alt.setAttribute('aria-pressed', 'false'); };
-    clearModifiers();
-    modifiers.append(ctrl, alt);
     for (const [group, label, value] of [
       [keys, 'Enter', '\r'],
       [navigation, '←', '\u001b[D'], [navigation, '↓', '\u001b[B'], [navigation, '↑', '\u001b[A'], [navigation, '→', '\u001b[C'],
-      [navigation, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
+      [shortcuts, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
     ] as const) {
       const arrow = /^\u001b\[([ABCD])$/.exec(value);
       let keyboardBeforeTap: boolean | undefined;
@@ -143,11 +124,11 @@ export class TerminalPane {
       }
       group.append(key);
     }
-    shortcuts.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
-    session.append(this.control, this.status);
-    keys.prepend(session); keys.append(modifiers, navigation, shortcuts);
+    shortcuts.append(button('Ctrl-X Ctrl-S', () => { this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
+    session.append(this.status, this.control);
+    keys.append(navigation, shortcuts);
     const copy = () => { void this.copy(); };
-    const paste = () => { clearModifiers(); void this.paste(); };
+    const paste = () => { void this.paste(); };
     const copyButton = button('Copy', copy);
     textTools.append(copyButton, button('Paste', paste));
     this.keyboard = button('Keyboard', event => {
@@ -176,7 +157,7 @@ export class TerminalPane {
     const toolbar = controlGroup('Terminal controls', 'terminal-toolbar');
     toolbar.append(keyboardControls, tools);
     const main = document.createElement('div'); main.className = 'terminal-main';
-    main.append(this.host, toolbar); this.element.append(main);
+    main.append(this.host, session, toolbar); this.element.append(main);
     // Only iOS dark mode corrects contrast; bold keeps the requested palette entry.
     this.terminal = new Terminal({
       theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
@@ -198,7 +179,7 @@ export class TerminalPane {
         canSend: canInput,
         send: text => {
           if (!canInput()) return false;
-          clearModifiers(); this.terminal.paste(text); return true;
+          this.terminal.paste(text); return true;
         },
         focusTerminal: () => this.terminal.focus(),
       });
@@ -209,7 +190,7 @@ export class TerminalPane {
       canPaste: () => this.visible && canInput(),
       paste: text => {
         if (!this.visible || !canInput()) return false;
-        clearModifiers(); this.terminal.paste(text); return true;
+        this.terminal.paste(text); return true;
       },
       focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
     });
@@ -241,8 +222,6 @@ export class TerminalPane {
         else if (!this.closed && !this.ready && this.attachment) this.replies.push({ epoch: this.attachmentEpoch, data });
         return;
       }
-      data = modifiedInput(data, useCtrl, useAlt);
-      clearModifiers();
       this.send(data);
     });
     this.terminal.onBinary(data => {
