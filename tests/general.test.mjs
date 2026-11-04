@@ -132,7 +132,65 @@ test('General shares control with a same-named project while another numbered se
   assert.equal((await sessions(f)).filter(s => s.name === 'general').length, 1);
 });
 
-test('General rejects noncanonical names and keeps the exact Origin and owner boundaries', { timeout: 45000 }, async t => {
+test('General attaches exact custom names and creates missing sessions without ending either shell', { timeout: 60000 }, async t => {
+  const f = await fixture({ zmxDir: true });
+  const clients = [];
+  t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+  const manualName = 'review \u6771\u4eac +50%?#';
+  const createdName = 'scratch %2F+?#';
+  await mkdir(join(f.home, 'manual-cwd'));
+  const manual = manualTerminal(f, manualName); clients.push(manual);
+  manual.command("cd manual-cwd; EMACHINE_NAMED=manual; printf '__NAMED_MANU''AL__%s\\n' \"$$\"");
+  const manualShell = await until(() => manual.text.match(/__NAMED_MANUAL__(\d+)/));
+  const connect = async name => {
+    const client = await socket(f, 'api/v1/terminal/general/' + encodeURIComponent(name));
+    clients.push(client);
+    await until(() => client.packets.some(p => p.mode === 'control' && p.session === name));
+    return client;
+  };
+  const attached = await connect(manualName);
+  attached.command("printf '__NAMED_REU''SE__%s:%s:%s\\n' \"$EMACHINE_NAMED\" \"$$\" \"$PWD\"");
+  await until(() => attached.text.includes('__NAMED_REUSE__manual:' + manualShell[1] + ':' + join(f.home, 'manual-cwd')));
+  const created = await connect(createdName);
+  created.command("EMACHINE_NAMED=created; printf '__NAMED_CRE''ATE__%s:%s\\n' \"$$\" \"$PWD\"");
+  const createdShell = await until(() => created.text.match(/__NAMED_CREATE__(\d+):([^\r\n]+)/));
+  assert.equal(createdShell[2], f.home);
+  const original = (await sessions(f)).sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(original.map(s => s.name), [manualName, createdName].sort((a, b) => a.localeCompare(b)));
+  for (const client of clients) await client.close();
+  await until(async () => (await sessions(f)).every(s => s.clients === 0));
+  await f.stop(); await f.start();
+  assert.deepEqual((await sessions(f)).sort((a, b) => a.name.localeCompare(b.name)).map(s => [s.name, s.pid]), original.map(s => [s.name, s.pid]));
+  for (const [name, value, shellPid, cwd] of [
+    [manualName, 'manual', manualShell[1], join(f.home, 'manual-cwd')],
+    [createdName, 'created', createdShell[1], f.home],
+  ]) {
+    const resumed = await connect(name);
+    resumed.command("printf '__NAMED_PRESER''VED__%s:%s:%s\\n' \"$EMACHINE_NAMED\" \"$$\" \"$PWD\"");
+    await until(() => resumed.text.includes('__NAMED_PRESERVED__' + value + ':' + shellPid + ':' + cwd));
+  }
+});
+
+test('General shares an exact custom project session and its controller room', { timeout: 30000 }, async t => {
+  const f = await fixture();
+  const clients = [];
+  t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
+  const project = (await f.state()).projects.find(p => p.name === 'alpha');
+  const a = await socket(f, 'api/v1/terminal/' + project.id); clients.push(a);
+  await until(() => a.packets.some(p => p.mode === 'control'));
+  a.command("EMACHINE_PROJECT=retained; printf '__PROJECT_NAM''ED__%s\\n' \"$$\"");
+  const shell = await until(() => a.text.match(/__PROJECT_NAMED__(\d+)/));
+  const original = (await sessions(f)).find(s => s.name === 'alpha');
+  const b = await socket(f, 'api/v1/terminal/general/alpha'); clients.push(b);
+  await until(() => b.packets.some(p => p.session === 'alpha' && p.mode === 'observe'));
+  await a.close();
+  await until(() => b.packets.at(-1)?.mode === 'control');
+  b.command("printf '__PROJECT_REU''SED__%s:%s:%s\\n' \"$EMACHINE_PROJECT\" \"$$\" \"$PWD\"");
+  await until(() => b.text.includes('__PROJECT_REUSED__retained:' + shell[1] + ':' + project.path));
+  assert.deepEqual((await sessions(f)).map(s => [s.name, s.pid]), [['alpha', original.pid]]);
+});
+
+test('General rejects unsafe names and keeps the exact Origin and owner boundaries', { timeout: 45000 }, async t => {
   const f = await fixture();
   const clients = [];
   t.after(async () => { for (const client of clients) await client.close(); await f.close(); });
@@ -145,11 +203,19 @@ test('General rejects noncanonical names and keeps the exact Origin and owner bo
     { Origin: f.origin, 'Tailscale-User-Login': 'another-user' },
     { Origin: f.origin, 'X-Emachine-Gateway': 'incorrect' },
   ]) assert.equal(await rejectedUpgrade(f, path, headers), 403);
-  for (const name of ['', 'general0', 'general1', 'general01', 'general-2', 'general2extra', 'General', 'other', 'general%202', 'general%00', 'general' + '2'.repeat(42)]) {
-    assert.equal(await rejectedUpgrade(f, 'api/v1/terminal/general/' + name, { Origin: f.origin }), 400, name);
+  for (const name of ['', '-h', '--help', '--labels=a=b', ' leading', 'trailing ', '\u00a0name', 'name\u3000', '\ufeffname',
+    'line\nbreak', 'carriage\rreturn', 'tab\tname', 'null\0name', 'delete\x7fname', 'back\\slash', 'x'.repeat(49), '\u6771'.repeat(17)]) {
+    assert.equal(await rejectedUpgrade(f, 'api/v1/terminal/general/' + encodeURIComponent(name), { Origin: f.origin }), 400, name);
   }
+  assert.equal(await rejectedUpgrade(f, 'api/v1/terminal/general/path%2Fsession', { Origin: f.origin }), 404);
   assert.deepEqual(await sessions(f), []);
   const client = await socket(f, 'api/v1/terminal/general/general10', { 'X-Emachine-Gateway': f.config.gatewaySecret, 'X-Forwarded-For': '198.51.100.23' });
   clients.push(client);
   await until(() => client.packets.some(p => p.session === 'general10' && p.mode === 'control'));
+  for (const name of ['general01', 'x'.repeat(48), '\u6771'.repeat(16)]) {
+    const named = await socket(f, 'api/v1/terminal/general/' + encodeURIComponent(name)); clients.push(named);
+    await until(() => named.packets.some(p => p.session === name && p.mode === 'control'));
+    named.command("printf '__VALID_NAM''E__\\n'");
+    await until(() => named.text.includes('__VALID_NAME__'));
+  }
 });

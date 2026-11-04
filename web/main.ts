@@ -4,7 +4,8 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
-import { restoreGeneralTabs, type GeneralTabs } from './general';
+import { nextGeneralSession, restoreGeneralTabs, sessionNameError, type GeneralTabs } from './general';
+import { attachSessionTabEditor } from './session-tab';
 import { attachInterfaceUpdates } from './interface';
 
 const $ = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -26,6 +27,8 @@ let filter = '';
 let orderedProjects = read<string[]>('project-order', []);
 const orderTabs = read<Record<string, string[]>>('tab-order', {});
 const generalTabs = restoreGeneralTabs(read<unknown>('general-tabs', {}));
+const generalTabElements = new Map<string, { group: HTMLDivElement; tab: HTMLButtonElement; close: HTMLButtonElement; dispose: () => void }>();
+let generalTabMachine = '';
 const terminals = new Map<string, TerminalPane>();
 const frames = new Map<string, FeatureFrame>();
 const jobs = new Map<string, { link: Link; job: Job }>();
@@ -92,7 +95,7 @@ function projectKey(link: Link, project: Project): string { return `${link.state
 function generalEntries(): { key: string; link: Link }[] {
   return fleet.unique().filter(link => link.state).map(link => ({ key: `${link.state!.machine.id}:@general`, link }));
 }
-function generalState(key: string): GeneralTabs { return generalTabs[key] ??= { sessions: ['general'], next: 2 }; }
+function generalState(key: string): GeneralTabs { return generalTabs[key] ??= { sessions: ['general'] }; }
 function chooseGeneral(key: string, session?: string): void {
   const state = generalState(key);
   if (!state.sessions.length) { state.sessions.push('general'); save('general-tabs', generalTabs); }
@@ -106,8 +109,7 @@ function focusGeneralTab(): void {
 function addGeneralTerminal(): void {
   if (!generalEntries().some(item => item.key === selected)) return;
   const state = generalState(selected);
-  if (state.next >= Number.MAX_SAFE_INTEGER) return;
-  const session = `general${state.next++}`;
+  const session = nextGeneralSession(state.sessions);
   state.sessions.push(session); save('general-tabs', generalTabs);
   choose(selected, session); focusGeneralTab();
 }
@@ -120,6 +122,44 @@ function closeGeneralTerminal(key: string, session: string): void {
     save('tabs', selectedTabs);
   }
   render(); focusGeneralTab();
+}
+function editGeneralSession(key: string, session: string): void {
+  if (!generalState(key).sessions.includes(session) || document.querySelector('.session-dialog[open]')) return;
+  const d = dialog('Choose zmx session'); d.classList.add('session-dialog'); d.setAttribute('aria-label', 'Choose zmx session');
+  const description = $('p', 'dialog-copy', 'Attach to an existing session or create it in your home directory. Switching this tab leaves its previous session running.');
+  description.id = 'session-dialog-description'; d.setAttribute('aria-describedby', description.id);
+  const form = $('form', 'connection-form'); form.noValidate = true;
+  const label = $('label', '', 'Session name');
+  const input = $('input'); input.name = 'session'; input.value = session; input.autocomplete = 'off'; input.autocapitalize = 'none'; input.spellcheck = false; input.required = true;
+  input.setAttribute('autocorrect', 'off'); input.enterKeyHint = 'go';
+  let composing = false;
+  input.addEventListener('compositionstart', () => { composing = true; });
+  input.addEventListener('compositionend', () => { composing = false; });
+  input.addEventListener('keydown', event => { if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229)) event.preventDefault(); });
+  label.append(input);
+  const error = $('p', 'form-error'); error.id = 'session-dialog-error'; error.setAttribute('role', 'alert'); input.setAttribute('aria-describedby', error.id);
+  const actions = $('div', 'session-dialog-actions');
+  const submit = $('button', 'primary-button', 'Open session'); submit.type = 'submit';
+  actions.append(button('Cancel', () => d.close(), 'text-button'), submit); form.append(label, error, actions);
+  input.oninput = () => { error.textContent = ''; input.removeAttribute('aria-invalid'); };
+  form.onsubmit = event => {
+    event.preventDefault();
+    if (composing) return;
+    const name = input.value, problem = sessionNameError(name);
+    if (problem) { error.textContent = problem; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+    const state = generalState(key), index = state.sessions.indexOf(session);
+    if (index < 0 || !generalEntries().some(item => item.key === key)) { d.close(); return; }
+    if (name !== session) {
+      if (state.sessions.includes(name)) state.sessions.splice(index, 1);
+      else state.sessions.splice(index, 1, name);
+      save('general-tabs', generalTabs);
+    }
+    d.close(); choose(key, name); focusGeneralTab();
+  };
+  d.addEventListener('close', () => {
+    if (selected === key) (generalTabElements.get(session)?.tab ?? tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? newGeneral).focus();
+  }, { once: true });
+  d.append(description, form); d.showModal(); input.focus(); input.select();
 }
 function entries(): { key: string; link: Link; project: Project }[] {
   const result = fleet.unique().flatMap(link => (link.state?.projects ?? []).map(project => ({ key: projectKey(link, project), link, project })));
@@ -250,31 +290,45 @@ function renderGeneral({ key, link }: { key: string; link: Link }): void {
   const session = state.sessions.includes(selectedTabs[key]) ? selectedTabs[key] : state.sessions[0] ?? '';
   if (selectedTabs[key] !== session) { selectedTabs[key] = session; save('tabs', selectedTabs); }
   tabs.setAttribute('aria-label', 'General terminal tabs');
-  newGeneral.hidden = false; newGeneral.disabled = state.next >= Number.MAX_SAFE_INTEGER;
+  newGeneral.hidden = false;
   diagnostics.hidden = true; generalEmpty.hidden = state.sessions.length > 0;
+  for (const [name, nodes] of generalTabElements) if (!state.sessions.includes(name)) {
+    nodes.dispose(); nodes.group.remove(); generalTabElements.delete(name);
+  }
+  let position = 0;
   for (const name of state.sessions) {
-    const group = $('div', `general-tab${name === session ? ' active' : ''}`); group.setAttribute('role', 'presentation');
-    const b = button(name, () => { choose(key, name); focusGeneralTab(); }, `tab${name === session ? ' active' : ''}`);
-    b.dataset.tabId = name; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(name === session)); b.tabIndex = name === session ? 0 : -1;
-    b.id = `general-tab-${link.state!.machine.id}-${name}`; b.setAttribute('aria-controls', `general-pane-${link.state!.machine.id}-${name}`);
-    b.onkeydown = event => {
-      const index = state.sessions.indexOf(name);
-      const next = event.key === 'ArrowRight' ? (index + 1) % state.sessions.length : event.key === 'ArrowLeft' ? (index - 1 + state.sessions.length) % state.sessions.length : event.key === 'Home' ? 0 : event.key === 'End' ? state.sessions.length - 1 : -1;
-      if (next >= 0) { event.preventDefault(); choose(key, state.sessions[next]); focusGeneralTab(); }
-      else if (event.key === 'Delete') { event.preventDefault(); closeGeneralTerminal(key, name); }
-    };
-    const close = button('×', () => closeGeneralTerminal(key, name), 'close-terminal', `Close ${name}`);
-    close.tabIndex = name === session ? 0 : -1;
-    close.title = `Close ${name} tab. The session stays on the machine.`;
-    group.append(b, close); tabs.append(group);
+    let nodes = generalTabElements.get(name);
+    if (!nodes) {
+      const group = $('div', 'general-tab'); group.setAttribute('role', 'presentation');
+      const b = button(name, () => { choose(key, name); focusGeneralTab(); }, 'tab');
+      b.dataset.tabId = name; b.setAttribute('role', 'tab');
+      b.title = `${name}. Double-click, long-press or press F2 to choose a zmx session.`;
+      b.setAttribute('aria-keyshortcuts', 'F2'); b.setAttribute('aria-haspopup', 'dialog');
+      b.id = `general-tab-${link.state!.machine.id}-${encodeURIComponent(name)}`; b.setAttribute('aria-controls', `general-pane-${link.state!.machine.id}-${encodeURIComponent(name)}`);
+      b.onkeydown = event => {
+        const sessions = generalState(key).sessions, index = sessions.indexOf(name);
+        const next = event.key === 'ArrowRight' ? (index + 1) % sessions.length : event.key === 'ArrowLeft' ? (index - 1 + sessions.length) % sessions.length : event.key === 'Home' ? 0 : event.key === 'End' ? sessions.length - 1 : -1;
+        if (next >= 0) { event.preventDefault(); choose(key, sessions[next]); focusGeneralTab(); }
+        else if (event.key === 'Delete') { event.preventDefault(); closeGeneralTerminal(key, name); }
+      };
+      const close = button('×', () => closeGeneralTerminal(key, name), 'close-terminal', `Close ${name}`);
+      close.title = `Close ${name} tab. The session stays on the machine.`;
+      group.append(b, close);
+      nodes = { group, tab: b, close, dispose: attachSessionTabEditor(b, () => editGeneralSession(key, name)) };
+      generalTabElements.set(name, nodes);
+    }
+    nodes.group.classList.toggle('active', name === session); nodes.tab.classList.toggle('active', name === session);
+    nodes.tab.setAttribute('aria-selected', String(name === session)); nodes.tab.tabIndex = nodes.close.tabIndex = name === session ? 0 : -1;
+    if (tabs.children[position] !== nodes.group) tabs.insertBefore(nodes.group, tabs.children[position] ?? null);
+    position++;
   }
   if (!session) return;
   const terminalKey = `${key}:${session}`;
   let terminal = terminals.get(terminalKey);
   if (!terminal && link.online) {
     terminal = new TerminalPane(link, { kind: 'general', session }, theme, notice);
-    terminal.element.id = `general-pane-${link.state!.machine.id}-${session}`;
-    terminal.element.setAttribute('role', 'tabpanel'); terminal.element.setAttribute('aria-labelledby', `general-tab-${link.state!.machine.id}-${session}`);
+    terminal.element.id = `general-pane-${link.state!.machine.id}-${encodeURIComponent(session)}`;
+    terminal.element.setAttribute('role', 'tabpanel'); terminal.element.setAttribute('aria-labelledby', `general-tab-${link.state!.machine.id}-${encodeURIComponent(session)}`);
     terminals.set(terminalKey, terminal); views.append(terminal.element);
   }
   terminal?.show(true);
@@ -299,7 +353,10 @@ function render(): void {
   empty.hidden = Boolean(active || general); generalEmpty.hidden = true;
   tabHeader.classList.toggle('general-view', Boolean(general)); newGeneral.hidden = true;
   tabs.setAttribute('aria-label', 'Project views');
-  tabs.replaceChildren();
+  if (!general || generalTabMachine !== general.key) {
+    for (const nodes of generalTabElements.values()) nodes.dispose();
+    generalTabElements.clear(); generalTabMachine = general?.key ?? ''; tabs.replaceChildren();
+  }
   for (const terminal of terminals.values()) terminal.show(false);
   for (const frame of frames.values()) frame.element.hidden = true;
   if (!active && !general) { diagnostics.hidden = true; offline.hidden = true; return; }

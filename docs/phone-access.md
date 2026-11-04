@@ -110,6 +110,14 @@ The arrow buttons preserve the keyboard's current state, so you can hide it and 
 They also work when the session is already open in an SSH or desktop terminal. You do not need to type another key first.
 Keyboard animations settle before the terminal sends its new dimensions to the running program.
 
+## Choose a General session
+
+Open **General** in the project drawer for machine-wide terminals. Tap **+** to open the first available tab name: `general`, `general2`, `general3`, and so on. Closing a tab makes its name available again, including gaps between tabs that remain open.
+
+Long-press a General tab to open **Choose zmx session**, enter the exact session name, and select **Open session**. An existing session resumes with its shell state and working directory; a new session starts in the server user's home directory. Desktop users can double-click the tab or press F2 while it is focused. Choosing a session already open in another tab selects that tab.
+
+Closing or switching a tab leaves its zmx session and running programs alive. Swipe the tab strip normally to reach other tabs; moving your finger cancels the long press.
+
 ## Copy terminal output
 
 On iPhone or iPad, tap **Copy** in the text tools row below the terminal keys.

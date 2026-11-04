@@ -87,19 +87,23 @@ async fn terminal_socket(
 
 ///|
 fn valid_general_session(session : String) -> Bool {
-  if session == "general" {
-    return true
-  }
-  if !session.has_prefix("general") || session.length() > 48 {
+  let bytes = @utf8.encode(session)
+  if bytes.is_empty() ||
+    bytes.length() > 48 ||
+    session == "." ||
+    session == ".." ||
+    session.has_prefix("-") {
     return false
   }
-  let number = session[7:].to_owned()
-  if number.is_empty() || number == "1" || number.has_prefix("0") {
+  // Match JavaScript trim exactly while preserving internal spaces and Unicode.
+  let whitespace = "\t\n\u000b\u000c\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\uFEFF"
+  if session.trim(chars=whitespace).length() != session.length() {
     return false
   }
-  for byte in @utf8.encode(number) {
+  // zmx uses socket basenames; controls and path separators cannot be names.
+  for byte in bytes {
     let n = byte.to_int()
-    if n < 48 || n > 57 {
+    if n < 32 || n == 127 || n == 47 || n == 92 {
       return false
     }
   }

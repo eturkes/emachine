@@ -334,7 +334,7 @@ export class TerminalPane {
     window.clearTimeout(this.retry);
     this.route = this.link.route;
     const generation = ++this.generation;
-    const path = this.target.kind === 'project' ? this.target.id : `general/${this.target.session}`;
+    const path = this.target.kind === 'project' ? this.target.id : `general/${encodeURIComponent(this.target.session)}`;
     const url = new URL(socketUrl(this.route, `api/v1/terminal/${path}`));
     url.searchParams.set('cols', String(this.terminal.cols)); url.searchParams.set('rows', String(this.terminal.rows));
     url.searchParams.set('resume', '1');
