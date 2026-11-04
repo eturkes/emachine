@@ -152,12 +152,18 @@ test('controller parses in-flight redraws at the acknowledged terminal size', as
       if (message.type === 'resize') resizes.push({ cols: message.cols, rows: message.rows });
     });
     send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
-    send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(remote.cols, 0)}`));
   });
   await page.goto(server.origin);
   const rows = page.locator('.xterm-rows > div');
+  // Settle the space released by the attaching status before withholding resize replies.
+  await expect.poll(() => resizes.length).toBe(1);
+  remote = resizes[0];
+  send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+  send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(remote.cols, 0)}`));
   await expect(rows.nth(1)).toContainText('> First option');
-  expect(resizes).toEqual([]);
+  expect(await dimensions(page)).toEqual(remote);
+  expect(resizes).toEqual([remote]);
+  resizes.length = 0;
 
   await page.setViewportSize({ width: 290, height: 600 });
   await expect.poll(() => resizes.length).toBe(1);
@@ -207,8 +213,18 @@ test('control takeover preserves the replay grid until its fitted resize is ackn
     'Question', ...selectorFrame(remote.cols, 1).split('\r\n'),
   ]);
   expect(await dimensions(page)).toEqual(remote);
-  send(JSON.stringify({ type: 'state', mode: 'control', ...resizes[0] }));
-  await expect.poll(() => dimensions(page)).toEqual(resizes[0]);
+  const requested = resizes[0];
+  send(JSON.stringify({ type: 'state', mode: 'control', ...requested }));
+  await expect.poll(() => dimensions(page)).toEqual(requested);
+  const unusedRows = () => page.locator('.terminal-host').evaluate(host => {
+    const rendered = host.querySelector('.xterm-rows')!;
+    const rowHeight = rendered.firstElementChild!.getBoundingClientRect().height;
+    return (host.getBoundingClientRect().bottom - rendered.getBoundingClientRect().bottom) / rowHeight;
+  });
+  // The first request must already use the space released by the observer status.
+  await expect.poll(unusedRows).toBeLessThan(1);
+  expect(await unusedRows()).toBeGreaterThanOrEqual(0);
+  expect(resizes).toEqual([requested]);
 });
 
 test('controller coalesces rapid viewport reversals behind the outstanding resize', async ({ page }) => {
@@ -225,10 +241,17 @@ test('controller coalesces rapid viewport reversals behind the outstanding resiz
       if (message.type === 'resize') resizes.push({ cols: message.cols, rows: message.rows });
     });
     send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
-    send(Buffer.from('READY'));
   });
   await page.goto(server.origin);
+  // Acknowledge the initial status-row collapse before the deliberate viewport race.
+  await expect.poll(() => resizes.length).toBe(1);
+  remote = resizes[0];
+  send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
+  send(Buffer.from('READY'));
   await expect(page.locator('.xterm-rows')).toContainText('READY');
+  expect(await dimensions(page)).toEqual(remote);
+  expect(resizes).toEqual([remote]);
+  resizes.length = 0;
   await page.setViewportSize({ width: 290, height: 600 });
   await expect.poll(() => resizes.length).toBe(1);
   await page.setViewportSize({ width: 340, height: 700 });
@@ -264,14 +287,17 @@ test('shared screen geometry is independent from the controller viewport request
       }
     });
     send(JSON.stringify({ type: 'state', mode: 'control', ...desired, ...screen }));
-    send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(screen.screenCols, 0)}`));
   });
   await page.goto(server.origin);
   const rows = page.locator('.xterm-rows > div');
+  // This frame follows the initial resize ACK, while the shared screen stays 100 x 30.
+  await expect.poll(() => resizes.length).toBe(1);
+  send(Buffer.from(`\u001b[?1049h\u001b[2J\u001b[HQuestion\r\n${selectorFrame(screen.screenCols, 0)}`));
   await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
     'Question', ...selectorFrame(screen.screenCols, 0).split('\r\n'),
   ]);
-  expect(resizes).toEqual([]);
+  expect(resizes).toEqual([desired]);
+  resizes.length = 0;
   await page.setViewportSize({ width: 290, height: 600 });
   await expect.poll(() => resizes.length).toBe(1);
   expect(desired.cols).toBeLessThan(screen.screenCols);

@@ -487,14 +487,15 @@ export class TerminalPane {
     if (!this.ready || this.ws?.readyState !== WebSocket.OPEN) return;
     this.element.dataset.mode = this.mode;
     this.control.hidden = this.mode === 'control';
+    // Resolve the status row before fitting the space freed by taking control.
+    this.status.hidden = this.mode === 'control' && !this.terminalRestore.active;
+    this.status.textContent = this.terminalRestore.active ? 'Restoring terminal history…'
+      : this.mode === 'control' ? '' : `Observing · ${this.terminal.cols} × ${this.terminal.rows} · another device controls this shell`;
     if (this.mode === 'control') {
       if (fit) this.fitTerminal();
       // Coalesce viewport changes while a previous resize is awaiting acknowledgement.
       this.syncSize();
     }
-    this.status.hidden = this.mode === 'control' && !this.terminalRestore.active;
-    this.status.textContent = this.terminalRestore.active ? 'Restoring terminal history…'
-      : this.mode === 'control' ? '' : `Observing · ${this.terminal.cols} × ${this.terminal.rows} · another device controls this shell`;
   }
   private disconnect(ws: WebSocket | undefined): void {
     if (!ws || this.closed || this.ws !== ws) return;
