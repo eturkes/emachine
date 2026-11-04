@@ -353,6 +353,38 @@ function dialog(title: string): HTMLDialogElement {
   const d = $('dialog', 'dialog'); const header = $('header', 'dialog-header'); header.append($('h2', '', title), button('×', () => d.close(), 'icon', 'Close dialog')); d.append(header); document.body.append(d);
   d.onclose = () => d.remove(); d.addEventListener('click', event => { if (event.target === d) { const r = d.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) d.close(); } }); return d;
 }
+async function addPhoneSignOut(d: HTMLDialogElement): Promise<void> {
+  if (!['https:', 'http:'].includes(location.protocol)) return;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  const timeout = window.setTimeout(cancel, 5000);
+  d.addEventListener('close', cancel, { once: true });
+  try {
+    const response = await fetch('/_emachine/phone/session/status', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
+    if (response.status !== 204 || !d.isConnected || !d.open) return;
+  } catch { return; }
+  finally { window.clearTimeout(timeout); d.removeEventListener('close', cancel); }
+  const section = $('section'); const row = $('div', 'connection-row'); const copy = $('div');
+  copy.append($('strong', '', 'Phone sign-in'), $('small', '', 'Sign out to require your password next time.'));
+  const error = $('p', 'form-error'); error.setAttribute('role', 'alert');
+  const signOut = button('Sign out', () => { void leave(); }, 'text-button');
+  async function leave(): Promise<void> {
+    if (signOut.disabled) return;
+    signOut.disabled = true; error.textContent = '';
+    try {
+      const response = await fetch('/_emachine/phone/session/logout', { method: 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15000) });
+      if (response.status !== 204) throw new Error('Sign-out failed.');
+      location.replace('/');
+    } catch {
+      const message = 'Could not sign out. Check your connection and try again.';
+      if (d.isConnected && d.open) error.textContent = message;
+      else notice(message);
+    } finally {
+      if (d.isConnected && d.open) signOut.disabled = false;
+    }
+  }
+  row.append(copy, signOut); section.append(row, error); d.append(section);
+}
 function openSettings(edit?: Connection): void {
   const d = dialog('Machines');
   d.append($('p', 'dialog-copy', 'Connect directly through Tailscale. An authenticated web gateway is an optional second route. Each machine keeps its own projects.'));
@@ -372,6 +404,7 @@ function openSettings(edit?: Connection): void {
   form.onsubmit = event => { event.preventDefault(); try { fleet.add({ key: edit?.key ?? crypto.randomUUID(), id: edit?.id, name: name.value.trim(), direct: baseUrl(direct.value.trim()), gateway: gateway.value.trim() ? baseUrl(gateway.value.trim()) : undefined }); d.close(); } catch (cause) { error.textContent = cause instanceof Error ? cause.message : String(cause); } };
   d.append(form, $('p', 'origin-note', `Client origin: ${location.origin}. Each machine must allow this origin. The desktop origin is emachine://app.`));
   d.showModal();
+  void addPhoneSignOut(d).catch(() => {});
 }
 function openPalette(): void {
   const d = dialog('Go to a workspace or view'); d.classList.add('palette');

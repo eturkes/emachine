@@ -1,4 +1,4 @@
-import { phoneLoginResponse, phoneSessionPath } from './phone-login.mjs';
+import { phoneLoginResponse, phoneSessionPath, phoneStatusPath, phoneLogoutPath } from './phone-login.mjs';
 
 const port = value => {
   if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error('Use an integer port from 1 to 65535.');
@@ -27,7 +27,10 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
   if (sessionSocket !== undefined && (typeof sessionSocket !== 'string' || !sessionSocket.startsWith('/') || Buffer.byteLength(sessionSocket) > 103 || /[{}\u0000-\u001f]/.test(sessionSocket))) throw new Error('Use a short absolute path for the private session socket.');
   const needsSession = { not: [{ vars: { phone_session: ['yes'] } }] };
   const login = { path: [phoneSessionPath] };
+  const logout = { path: [phoneLogoutPath] };
+  const sessionStatus = { path: [phoneStatusPath] };
   const needsPassword = [needsSession, login];
+  const copyCookie = { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'headers', response: { add: { 'Set-Cookie': ['{http.reverse_proxy.header.Set-Cookie}'] } } }] }] };
   const sessionProxy = (path, handle_response) => ({ handler: 'reverse_proxy',
     upstreams: [{ dial: 'unix/' + sessionSocket }],
     // Keep client queries on the original request, not on the private authentication endpoint.
@@ -55,6 +58,10 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
             { handler: 'headers', response: { delete: ['Www-Authenticate'] } },
             { ...response(401, 'The password is incorrect.'), headers: { 'Content-Type': ['text/plain; charset=utf-8'] } },
           ] },
+          { match: [{ expression: '{http.error.status_code} == 401', path: [phoneStatusPath, phoneLogoutPath] }], handle: [
+            { handler: 'headers', response: { delete: ['Www-Authenticate'] } },
+            { ...response(401, 'Your phone session has ended. Sign in again.'), headers: { 'Content-Type': ['text/plain; charset=utf-8'] } },
+          ] },
         ] : []),
         { handle: [{ ...response('{http.error.status_code}', 'The request failed.'), headers: { 'Content-Type': ['text/plain; charset=utf-8'], 'Cache-Control': ['no-store'] } }] },
       ] },
@@ -79,11 +86,16 @@ export function gatewayConfig({ publicUrl, listenPort, upstreamPort, upstreamOri
           { header: { Upgrade: ['websocket'] }, not: [origin] },
         ], handle: [response(403)] },
         ...(sessionSocket ? [{ match: [{ ...login, not: [{ method: ['POST'] }] }], handle: [{ ...response(405), headers: { Allow: ['POST'] } }] }] : []),
+        ...(sessionSocket ? [
+          { match: [{ ...logout, not: [{ method: ['POST'] }] }], handle: [{ ...response(405), headers: { Allow: ['POST'] } }] },
+          { match: [{ ...sessionStatus, not: [{ method: ['GET'] }] }], handle: [{ ...response(405), headers: { Allow: ['GET'] } }] },
+          { match: [logout], handle: [sessionProxy('/revoke', [copyCookie]), response(204)] },
+          // Renew only after authority, password and Origin guards. Failed renewal never reaches native.
+          { match: [{ vars: { phone_session: ['yes'] }, not: [login] }], handle: [sessionProxy('/renew', [copyCookie])] },
+        ] : []),
         // Mint only after password and Origin checks. WebKit can then authenticate sockets without Basic headers.
-        ...(sessionSocket ? [{ match: needsPassword, handle: [sessionProxy('/issue', [
-          { match: { status_code: [204] }, routes: [{ handle: [{ handler: 'headers', response: { add: { 'Set-Cookie': ['{http.reverse_proxy.header.Set-Cookie}'] } } }] }] },
-        ])] }] : []),
-        ...(sessionSocket ? [{ match: [login], handle: [response(204)] }] : []),
+        ...(sessionSocket ? [{ match: needsPassword, handle: [sessionProxy('/issue', [copyCookie])] }] : []),
+        ...(sessionSocket ? [{ match: [login, sessionStatus], handle: [response(204)] }] : []),
         // A phone opened through this origin must never probe the private Tailscale endpoint.
         { match: [{ path: ['/bootstrap.json'], method: ['GET', 'HEAD'] }], handle: [{
           ...response(200, JSON.stringify(bootstrap)), headers: { 'Content-Type': ['application/json'] },

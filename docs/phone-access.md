@@ -65,14 +65,32 @@ Create the icon from the public address. An existing icon for the private addres
 The Home Screen app can request the password separately from Safari.
 The sign-in page opens inside the app. It does not require a browser authentication dialog.
 
-After a successful password check, the gateway creates a 12-hour browser session.
-Subsequent requests use a protected cookie, including terminal and event connections.
-This avoids repeated password challenges when a browser omits Basic authentication from WebSocket requests.
-The password stays unchanged.
+After a successful password check, the gateway remembers this app with a protected cookie.
+The session is valid for 90 days and renews silently once a day during authenticated use.
+Regular use keeps the app signed in across app closes, gateway restarts, and updates.
+Terminal and event connections use the same cookie. The password stays unchanged.
 
-When the session expires, reopen the app and enter the same password.
+The first update from 12-hour sessions requires one more login because those sessions existed only in memory.
+Sign-in is required again after expiry, explicit revocation, a configured password-hash change, or clearing the app's cookie.
+If the session expires, reopen the app and enter the same password.
 If an older app shows an empty download, close it from the app switcher and reopen it.
 Do not download or open that file.
+
+## Sign out or revoke remembered access
+
+In the phone app, open **Settings**, then select **Sign out**.
+This revokes the current app's credential for future requests, clears its cookie, and reloads the sign-in page.
+Reloading closes this app's terminal and event connections. Other remembered devices remain signed in.
+
+To revoke every remembered device and immediately disconnect all active phone gateway connections, run this on CachyOS:
+
+```sh
+pnpm phone:revoke
+```
+
+The command stops the phone service, clears its saved sessions, and restarts it only if it was running.
+Revocation survives subsequent restarts. Native services and the underlying zmx sessions continue running.
+Use this command if a device or cookie may have been lost: signing out one app cannot close an already-open connection elsewhere.
 
 ## Open the terminal keyboard
 
@@ -160,7 +178,11 @@ The public session cookie uses `Secure`, `HttpOnly`, `SameSite=Strict`, and a `_
 Sessions contain random identifiers, not the password. The helper checks expiry on each new request.
 The helper accepts requests only through an owner-only Unix socket with a separate internal credential check.
 Caddy issues that internal assertion only after authenticating the password and checking the browser origin.
-The helper keeps at most 256 sessions in memory. A gateway restart revokes every session.
+The helper keeps at most 256 sessions and persists only hashes of their random identifiers with expiry metadata.
+Its default store is `~/.config/emachine/phone/sessions.json`, an owner-only file in the private phone directory.
+Updates are atomic, and malformed or unsafe storage fails closed.
+The store is bound to the public origin, password hash, and gateway secret; changing any of these invalidates remembered sessions.
+Ordinary gateway restarts preserve valid sessions. Renewal happens only after the gateway's authority and Origin checks.
 Existing upgraded connections end when the gateway stops, but the underlying terminal sessions remain available.
 The supervisor stops Caddy when the session helper fails. Authentication does not fall back to unprotected access.
 
@@ -171,7 +193,7 @@ Run `pnpm test:gateway` for Caddy, native server, terminal, Chromium, and WebKit
 The browser checks enter the password through the sign-in form, without preconfigured browser credentials.
 Chromium and WebKit checks expire a live session and sign in again through the installed service worker.
 The WebKit check also verifies service-worker readiness and reopening with only the session cookie.
-The gate checks expiry, revocation, hostile cookies, internal assertions, Origin rejection, and supervisor ownership.
+The gate checks persistent restart recovery, renewal, expiry, revocation, hostile cookies, internal assertions, Origin rejection, and supervisor ownership.
 It also checks installation recovery, password consistency, process-lifetime locks, and foreground route ownership.
 The gate prepares its pinned WebKit browser and compatibility libraries under `.tools/`. It does not install system packages.
 It runs in `pnpm verify`.
@@ -181,7 +203,8 @@ Verify both after approving and publishing the route.
 | Review boundary | Required behavior |
 | --- | --- |
 | Authentication | Anonymous and incorrect-password HTTP and WebSocket requests fail before proxying. |
-| Sessions | Unknown or altered identifiers fail. Cookies expire, stay outside JavaScript and upstream requests, and are revoked by gateway restart. |
+| Sessions | Unknown or altered identifiers fail. Protected cookies renew during use; hashed grants survive ordinary restarts and explicit revocation persists. |
+| Revocation | Sign out rejects future use of that credential. `phone:revoke` clears all grants and ends active gateway connections without stopping native jobs. |
 | Host and Origin | The complete authority and browser origin match the configured public address. |
 | Credentials | Browser credentials are stripped; the separate upstream secret stays outside client files. |
 | Network | The gateway and its upstream use loopback; Funnel targets only the authenticated gateway. |

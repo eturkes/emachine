@@ -23,6 +23,7 @@
     "phone:enable": "node scripts/phone-access.mjs enable",
     "phone:disable": "node scripts/phone-access.mjs disable",
     "phone:status": "node scripts/phone-access.mjs status",
+    "phone:revoke": "node scripts/phone-access.mjs revoke",
     "test:web": "node scripts/setup-webkit.mjs && playwright test --config tests/playwright.config.ts",
     "test:desktop": "node tests/desktop.mjs",
     "test:permissions": "node --test tests/desktop-permissions.test.mjs",

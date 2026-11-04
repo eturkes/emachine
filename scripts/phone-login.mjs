@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
 export const phoneSessionPath = '/_emachine/phone/session';
+export const phoneStatusPath = phoneSessionPath + '/status';
+export const phoneLogoutPath = phoneSessionPath + '/logout';
 
 const style = `
 :root{color-scheme:light dark;font-family:"Atkinson Hyperlegible Next",system-ui,sans-serif;background:#f4f4f4;color:#171717}
@@ -60,7 +62,7 @@ export const phoneLoginResponse = {
   body: `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in to emachine</title><style>${style}</style></head>
-<body><main><h1>Sign in to emachine</h1><p>Enter your phone password to open the app or renew your session.</p>
+<body><main><h1>Sign in to emachine</h1><p>Enter your phone password. This app stays signed in while you keep using it.</p>
 <form method="post"><label for="username">Username</label><input id="username" name="username" value="emachine" autocomplete="username" readonly>
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
 <button type="submit">Sign in</button><p role="status" aria-live="polite"></p></form>

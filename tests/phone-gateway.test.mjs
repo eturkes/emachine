@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, mkdir, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -12,7 +12,7 @@ import { chromium, webkit } from '@playwright/test';
 import WebSocket, { WebSocketServer } from 'ws';
 import { ensureCaddy } from '../scripts/caddy.mjs';
 import { webkitOptions } from '../scripts/webkit.mjs';
-import { startSessionServer, sessionLifetime } from '../scripts/phone-session.mjs';
+import { startSessionServer, sessionLifetime, sessionRenewalInterval } from '../scripts/phone-session.mjs';
 import { fixture, freePort, until, root, socket } from './network-helper.mjs';
 import { alignedHeaderLabels } from './header-contract.mjs';
 
@@ -33,7 +33,7 @@ async function stop(child) {
 async function gateway(options, t) {
   const { gatewayConfig } = await implementation();
   const home = await mkdtemp(join(tmpdir(), 'emachine-gateway-test-'));
-  const settings = { passwordHash, ...options, sessionSocket: join(home, 'session.sock') };
+  const settings = { passwordHash, ...options, sessionSocket: join(home, 'session.sock'), sessionFile: join(home, 'sessions.json') };
   const config = gatewayConfig(settings);
   let child, session, closing;
   const close = () => closing ??= (async () => { if (child) await stop(child); await session?.close(); await rm(home, { recursive: true, force: true }); })();
@@ -69,7 +69,7 @@ async function gateway(options, t) {
       if (child.exitCode !== null) throw new Error(logs);
       return (await request()).status === 401;
     });
-  return { origin, request, config, stopSessions: () => session.close(), get logs() { return logs; }, close };
+  return { origin, request, config, sessionFile: settings.sessionFile, stopSessions: () => session.close(), async restartSessions() { await session.close(); session = await startSessionServer(settings); }, get logs() { return logs; }, close };
   } catch (error) { await close(); throw error; }
 }
 async function rejection(url, headers) {
@@ -206,16 +206,24 @@ test('phone-sized browser reaches real inventory, events, terminal, and PWA with
     assert.ok(cached.every(url => !/bootstrap\.json|\/api\/|\/features\//.test(url)));
     await mkdir(join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: join(root, 'test-results/phone-gateway.png') });
+    const privatePage = await context.newPage();
+    await privatePage.goto(f.origin);
+    const privateStatus = privatePage.waitForResponse(response => response.url() === f.origin + '/_emachine/phone/session/status');
+    await privatePage.getByRole('button', { name: 'Machine settings', exact: true }).click();
+    assert.notEqual((await privateStatus).status(), 204);
+    assert.equal(await privatePage.getByRole('button', { name: 'Sign out', exact: true }).count(), 0);
+    await privatePage.close();
   } finally { await close(); }
 });
 
-test('WebKit document login authenticates events, terminal, and cookie-only reload', { timeout: 45000 }, async t => {
+test('WebKit document login authenticates events, terminal, and durable cookie-only reload', { timeout: 45000 }, async t => {
+  let time = Date.now();
   const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
   const f = await fixture({ origins: [new URL(publicUrl).origin] });
   let browser, g;
   t.after(async () => { await browser?.close(); await g?.close(); await f.close(); });
   const state = await f.state();
-  g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, tls: true }, t);
+  g = await gateway({ publicUrl, listenPort, upstreamPort: f.port, gatewaySecret: f.config.gatewaySecret, machine: state.machine, tls: true, now: () => time }, t);
   browser = await webkit.launch(webkitOptions());
   const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -235,6 +243,8 @@ test('WebKit document login authenticates events, terminal, and cookie-only relo
   await page.evaluate(() => navigator.serviceWorker.ready);
   const cookies = await context.cookies();
   assert.ok(cookies.some(cookie => cookie.httpOnly && cookie.sameSite === 'Strict'));
+  time += 13 * 60 * 60 * 1000;
+  await g.restartSessions();
   const resumed = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 } });
   await resumed.addCookies(cookies);
   const reload = await resumed.newPage();
@@ -297,7 +307,7 @@ test('session cookies preserve authentication and Origin boundaries, expire, and
   assert.equal(login.status, 200);
   const issued = login.headers.get('set-cookie');
   assert.ok(issued?.startsWith('__Host-emachine-phone='));
-  for (const flag of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/', 'Max-Age=43200']) assert.ok(issued.includes(flag));
+  for (const flag of ['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/', `Max-Age=${sessionLifetime / 1000}`]) assert.ok(issued.includes(flag));
   const Cookie = issued.split(';')[0];
   const headers = { Cookie, Origin: origin };
   assert.equal((await g.request('api/v1/state', { headers })).status, 200);
@@ -394,13 +404,15 @@ test('phone sign-in responses are renderable and keep the credential exchange pr
   assert.equal(response.status, 204, 'Sign-in must not proxy to the unavailable native upstream.');
   const cookie = response.headers.get('set-cookie');
   assert.ok(cookie?.startsWith('__Host-emachine-phone='));
-  for (const flag of ['Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/', 'Max-Age=43200']) assert.ok(cookie.includes(flag));
+  for (const flag of ['Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/']) assert.ok(cookie.includes(flag));
+  const maxAge = Number(cookie.match(/Max-Age=(\d+)/)?.[1]);
+  assert.ok(maxAge <= sessionLifetime / 1000 && maxAge >= sessionLifetime / 1000 - 2);
   const rejected = await g.request(path, { method: 'POST', headers: { ...headers, Cookie: cookie.split(';')[0], Authorization: 'Basic ' + Buffer.from('emachine:wrong').toString('base64') } });
   assert.equal(rejected.status, 401, 'The sign-in endpoint always verifies the submitted password.');
   assert.equal(rejected.headers.get('set-cookie'), null);
 });
 
-for (const engine of ['chromium', 'webkit']) test(`${engine} sign-in form recovers an expired service-worker navigation without browser credentials`, { timeout: 60000 }, async t => {
+for (const engine of ['chromium', 'webkit']) test(`${engine} sign-in form recovers expiry and explicit sign-out through the service worker`, { timeout: 60000 }, async t => {
   let time = Date.now();
   const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`;
   const f = await fixture({ origins: [new URL(publicUrl).origin] });
@@ -451,4 +463,74 @@ for (const engine of ['chromium', 'webkit']) test(`${engine} sign-in form recove
   assert.ok(cached.length > 0);
   assert.ok(cached.every(url => !/bootstrap\.json|\/api\/|\/features\/|\/_emachine\//.test(url)));
   await page.screenshot({ path: join(root, `test-results/phone-recovered-${engine}.png`) });
+  const remembered = (await context.cookies()).find(cookie => cookie.name === '__Host-emachine-phone');
+  await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
+  const signOut = page.getByRole('button', { name: 'Sign out', exact: true });
+  await signOut.waitFor();
+  await g.stopSessions();
+  await signOut.click();
+  await page.getByRole('alert').filter({ hasText: 'Could not sign out.' }).waitFor();
+  assert.equal(await signOut.isEnabled(), true);
+  await g.restartSessions();
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+  await signOut.click();
+  assert.equal((await navigation).status(), 401);
+  await page.getByRole('heading', { name: 'Sign in to emachine' }).waitFor();
+  assert.equal((await g.request('api/v1/state', { headers: { Cookie: `${remembered.name}=${remembered.value}`, Origin: publicUrl.slice(0, -1) } })).status, 401);
+  assert.equal((await context.cookies()).some(cookie => cookie.name === '__Host-emachine-phone'), false);
+  assert.deepEqual(downloads, []); assert.deepEqual(errors, []);
+});
+
+test('gateway renews only authorized requests and persists device sign-out', { timeout: 30000 }, async t => {
+  const initial = Date.now(); let time = initial;
+  const listenPort = await freePort(), publicUrl = `https://127.0.0.1:${listenPort}/`, origin = new URL(publicUrl).origin;
+  const g = await gateway({ publicUrl, listenPort, upstreamPort: await freePort(), gatewaySecret: randomBytes(32).toString('hex'), machine: { id: 'fixture', name: 'Fixture' }, now: () => time }, t);
+  const login = async () => {
+    const response = await g.request('_emachine/phone/session', { method: 'POST', headers: { Authorization: authorization, Origin: origin } });
+    assert.equal(response.status, 204); return response.headers.get('set-cookie').split(';')[0];
+  };
+  const first = await login(), second = await login();
+  for (const [path, method] of [['_emachine/phone/session/status', 'GET'], ['_emachine/phone/session/logout', 'POST']]) {
+    const anonymous = await g.request(path, { method, headers: { Origin: origin } });
+    assert.equal(anonymous.status, 401); assert.equal(anonymous.headers.get('www-authenticate'), null);
+  }
+  const before = await readFile(g.sessionFile, 'utf8');
+  time += sessionLifetime - sessionRenewalInterval;
+  for (const headers of [{ Cookie: second, Origin: 'https://attacker.example' }, { Cookie: second, Origin: origin, Host: 'attacker.example' }]) {
+    const denied = await g.request('bootstrap.json', { headers });
+    assert.ok([403, 421].includes(denied.status)); assert.equal(denied.headers.get('set-cookie'), null);
+  }
+  assert.equal((await g.request('_emachine/phone/session/logout', { method: 'POST', headers: { Cookie: second } })).status, 403);
+  assert.equal(await readFile(g.sessionFile, 'utf8'), before, 'Rejected requests must not extend or revoke grants.');
+  const headers = { Cookie: first, Origin: origin };
+  const renewed = await g.request('bootstrap.json', { headers });
+  assert.equal(renewed.status, 200);
+  assert.equal(renewed.headers.get('set-cookie').split(';')[0], first);
+  const stored = await readFile(g.sessionFile, 'utf8');
+  time += 1000;
+  const recovered = await g.request('_emachine/phone/session/status', { headers });
+  assert.equal(recovered.status, 204);
+  assert.equal(recovered.headers.get('set-cookie').split(';')[0], first);
+  assert.equal(await readFile(g.sessionFile, 'utf8'), stored, 'Recover a lost renewal cookie without another disk write.');
+  time = initial + sessionLifetime;
+  await g.restartSessions();
+  assert.equal((await g.request('bootstrap.json', { headers })).status, 200);
+  assert.equal((await g.request('bootstrap.json', { headers: { Cookie: second, Origin: origin } })).status, 401);
+  const logoutPath = '_emachine/phone/session/logout';
+  assert.equal((await g.request(logoutPath, { headers })).status, 405);
+  assert.equal((await g.request('_emachine/phone/session/status', { method: 'POST', headers })).status, 405);
+  const signedOut = await g.request(logoutPath, { method: 'POST', headers });
+  assert.equal(signedOut.status, 204); assert.match(signedOut.headers.get('set-cookie'), /Max-Age=0/);
+  await g.restartSessions();
+  assert.equal((await g.request('bootstrap.json', { headers })).status, 401);
+  assert.equal(await rejection(g.origin + '/api/v1/events', headers), 401);
+  const third = await login();
+  time += sessionRenewalInterval;
+  await chmod(g.sessionFile, 0o644);
+  try {
+    const unavailable = await g.request('bootstrap.json', { headers: { Cookie: third, Origin: origin } });
+    assert.equal(unavailable.status, 503, 'A failed durable renewal must not fall through to the protected bootstrap.');
+    assert.equal(unavailable.headers.get('set-cookie'), null);
+  } finally { await chmod(g.sessionFile, 0o600); }
+  assert.ok(!g.logs.includes(first.split('=')[1]) && !g.logs.includes(second.split('=')[1]));
 });

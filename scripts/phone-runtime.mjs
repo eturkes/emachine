@@ -27,7 +27,7 @@ export async function runPhone(settingsPath, configPath) {
   const caddy = await ensureCaddy();
   await withFileLock(join(directory, 'runtime.lock'), async () => {
     await removeStaleSocket(settings.sessionSocket);
-    const session = await startSessionServer(settings);
+    const session = await startSessionServer({ ...settings, sessionFile: join(directory, 'sessions.json') });
     let child, timer, requested = false;
     const stop = () => {
       requested = true;

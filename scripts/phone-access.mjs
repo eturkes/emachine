@@ -9,6 +9,8 @@ import { request } from 'node:http';
 import { ensureCaddy } from './caddy.mjs';
 import { gatewayConfig, publicAddress } from './phone-gateway.mjs';
 import { withFileLock } from './phone-lock.mjs';
+import { clearStoredSessions, sessionCredentialScope } from './phone-session.mjs';
+import { phoneLogoutPath } from './phone-login.mjs';
 
 const exec = promisify(execFile);
 const marker = '# emachine phone gateway managed';
@@ -43,13 +45,13 @@ export function unrelated(config, authority) {
   }
   return copy;
 }
-function localRequest(installed, path, password, cookie) {
+function localRequest(installed, path, password, cookie, method = 'GET') {
   const address = new URL(installed.publicUrl);
   return new Promise((resolve, reject) => {
     const headers = { Host: address.host, Origin: address.origin };
     if (password) headers.Authorization = 'Basic ' + Buffer.from(`emachine:${password}`).toString('base64');
     if (cookie) headers.Cookie = cookie;
-    const req = request(`http://127.0.0.1:${installed.listenPort}/${path}`, { headers, timeout: 10000 }, res => {
+    const req = request(`http://127.0.0.1:${installed.listenPort}/${path}`, { method, headers, timeout: 10000 }, res => {
       const chunks = []; let size = 0;
       res.on('data', chunk => { size += chunk.length; if (size > 2 * 1024 * 1024) res.destroy(new Error('Gateway response exceeds its limit.')); else chunks.push(chunk); });
       res.on('error', reject); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString(), cookies: res.headers['set-cookie'] ?? [] }));
@@ -62,15 +64,21 @@ async function probe(installed, password) {
     if ((await localRequest(installed, path)).status !== 401) throw new Error('The gateway did not reject anonymous access. Publication is blocked.');
   }
   const response = await localRequest(installed, 'api/v1/state', password);
-  if (response.status !== 200 || JSON.parse(response.body).machine?.id !== installed.machine.id) throw new Error('Authenticated machine access failed. Publication is blocked.');
-  if (installed.sessionSocket) {
-    const cookie = response.cookies.find(value => value.startsWith('__Host-emachine-phone='));
-    if (!cookie || !cookie.includes('; Secure') || !cookie.includes('; HttpOnly') || !cookie.includes('; SameSite=Strict')) throw new Error('The protected browser session was not established.');
-    const resumed = await localRequest(installed, 'api/v1/state', undefined, cookie.split(';')[0]);
-    if (resumed.status !== 200 || JSON.parse(resumed.body).machine?.id !== installed.machine.id) throw new Error('Cookie-only machine access failed.');
+  const cookie = response.cookies.find(value => value.startsWith('__Host-emachine-phone='));
+  const pair = cookie?.split(';')[0];
+  try {
+    if (response.status !== 200 || JSON.parse(response.body).machine?.id !== installed.machine.id) throw new Error('Authenticated machine access failed. Publication is blocked.');
+    if (installed.sessionSocket) {
+      if (!cookie || !cookie.includes('; Secure') || !cookie.includes('; HttpOnly') || !cookie.includes('; SameSite=Strict')) throw new Error('The protected browser session was not established.');
+      const resumed = await localRequest(installed, 'api/v1/state', undefined, pair);
+      if (resumed.status !== 200 || JSON.parse(resumed.body).machine?.id !== installed.machine.id) throw new Error('Cookie-only machine access failed.');
+    }
+    const seed = await localRequest(installed, 'bootstrap.json', pair ? undefined : password, pair);
+    if (seed.status !== 200 || JSON.parse(seed.body).servers?.[0]?.direct !== installed.publicUrl) throw new Error('The public client seed is incorrect. Publication is blocked.');
+  } finally {
+    // Installer checks must not consume the bounded remembered-device capacity.
+    if (pair && (await localRequest(installed, phoneLogoutPath.slice(1), undefined, pair, 'POST')).status !== 204) throw new Error('The gateway could not discard its installation-check session.');
   }
-  const seed = await localRequest(installed, 'bootstrap.json', password);
-  if (seed.status !== 200 || JSON.parse(seed.body).servers?.[0]?.direct !== installed.publicUrl) throw new Error('The public client seed is incorrect. Publication is blocked.');
 }
 async function active() { return (await exec('systemctl', ['--user', 'is-active', service]).catch(() => ({ stdout: 'inactive' }))).stdout.trim(); }
 async function funnel(args) {
@@ -80,8 +88,8 @@ async function funnel(args) {
 }
 
 async function main(action) {
-  if (!['install', 'enable', 'disable', 'status'].includes(action)) {
-    console.log('Usage: node scripts/phone-access.mjs install|enable|disable|status\nInstall prepares a password-protected loopback gateway. Enable publishes only port 8443.');
+  if (!['install', 'enable', 'disable', 'status', 'revoke'].includes(action)) {
+    console.log('Usage: node scripts/phone-access.mjs install|enable|disable|status|revoke\nInstall prepares a password-protected loopback gateway. Enable publishes only port 8443. Revoke signs out all remembered phone devices.');
     return;
   }
   const home = await realpath(homedir());
@@ -103,6 +111,17 @@ async function main(action) {
   if (action !== 'install') {
     if (!saved) throw new Error('Run pnpm phone:install first.');
     const installed = JSON.parse(saved);
+    if (action === 'revoke') {
+      const credentialScope = sessionCredentialScope(installed);
+      const wasActive = await active() === 'active';
+      if (wasActive) await exec('systemctl', ['--user', 'stop', service]);
+      // A foreground runtime must release ownership before its grants can be changed.
+      await withFileLock(join(directory, 'runtime.lock'), async () => {
+        clearStoredSessions({ sessionFile: join(directory, 'sessions.json'), credentialScope });
+      });
+      if (wasActive) await exec('systemctl', ['--user', 'start', service]);
+      console.log('All remembered phone devices are signed out. Active gateway connections were closed; native terminals keep running.'); return;
+    }
     const before = await status(), current = route(before, installed);
     if (action === 'status') {
       console.log(JSON.stringify({ gateway: await active(), publicUrl: installed.publicUrl, published: current.published, passwordFile: passwordPath }, null, 2)); return;
