@@ -179,7 +179,7 @@ test('project-named zmx session interoperability', { timeout: 120000 }, async t 
   });
 });
 
-test('ordered arrow input to shared zmx sessions', { timeout: 90000 }, async t => {
+test('ordered arrow and control-key input to shared zmx sessions', { timeout: 90000 }, async t => {
   for (const zmxDir of [false, true]) {
     await t.test(zmxDir ? 'explicit ZMX_DIR' : 'default XDG namespace', async t => {
       const f = await fixture({ zmxDir });
@@ -194,6 +194,13 @@ test('ordered arrow input to shared zmx sessions', { timeout: 90000 }, async t =
       let expected = '\x1b[A\x1b[B\x1b[D\x1b[C';
       client.ws.send(Buffer.from(expected));
       await until(async () => await manual.read() === expected);
+
+      for (const data of ['\x0f', '\x05', '\x0f\x05', '\x1b[D\x05', '\x0f\x1b[C']) {
+        manual.input('m'); expected += 'm';
+        await until(async () => await manual.read() === expected);
+        client.ws.send(Buffer.from(data)); expected += data;
+        await until(async () => await manual.read() === expected);
+      }
 
       // Exercise the actual PTY bridge in a burst, including bytes that a command-style send can alter.
       for (let i = 0; i < 100; i++) {

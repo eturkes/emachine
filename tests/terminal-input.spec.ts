@@ -118,7 +118,7 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
-  test('toolbar arrows reach a manual-led zmx session byte-for-byte with either keyboard state', async ({ page }) => {
+  test('toolbar arrows and Ctrl-O/E reach a manual-led zmx session byte-for-byte', async ({ page }) => {
     const shared = await fixture();
     let manual: any;
     try {
@@ -145,6 +145,15 @@ test.describe('terminal input', () => {
           if (shown) await expect(textarea).toBeFocused();
           else await expect(textarea).not.toBeFocused();
         }
+      }
+      for (const [name, sequence] of [['Ctrl-O', '\u000f'], ['Ctrl-E', '\u0005']] as const) {
+        manual.input('m'); expected += 'm';
+        await expect.poll(() => manual.read()).toBe(expected);
+        const shortcut = pane.getByRole('button', { name, exact: true });
+        await shortcut.scrollIntoViewIfNeeded();
+        await shortcut.tap(); expected += sequence;
+        await expect.poll(() => manual.read()).toBe(expected);
+        await expect(textarea).toBeFocused();
       }
       await textarea.focus();
       await page.keyboard.type('a');
