@@ -285,17 +285,12 @@ test('General reconnects the retained pane and session after the server restarts
   } finally { await f.close(); }
 });
 
-test('General styling stays neutral and distinct, with keyboard tabs and a reachable plus on phones', async ({ page }) => {
+test('General stays compact and neutral, with keyboard tabs and a reachable plus on phones', async ({ page }) => {
   const f = await fixture();
   try {
     await page.goto(f.origin);
     const row = general(page);
     await expect(row).toBeVisible();
-    const styles = await page.locator('.general-item, .project-item').evaluateAll(nodes => nodes.map(node => ({
-      general: node.classList.contains('general-item'),
-      border: getComputedStyle(node).borderLeftWidth,
-    })));
-    expect(styles.find(style => style.general)!.border).not.toBe(styles.find(style => !style.general)!.border);
     await row.click();
     for (const name of ['general2', 'general3', 'general4', 'general5', 'general6']) {
       await add(page).click();
@@ -326,6 +321,22 @@ test('General styling stays neutral and distinct, with keyboard tabs and a reach
         await page.screenshot({ path: 'test-results/general-tabs-' + width + '-' + theme + '.png', animations: 'disabled' });
         if (width <= 700) await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
         await expect(row).toBeInViewport({ ratio: 1 });
+        const styles = await page.locator('.general-item, .project-item').evaluateAll(nodes => nodes.map(node => {
+          const title = node.querySelector('strong')!; const machine = node.querySelector('small')!;
+          const bounds = node.getBoundingClientRect(); const heading = title.getBoundingClientRect(); const metadata = machine.getBoundingClientRect();
+          return { general: node.classList.contains('general-item'), height: bounds.height, left: heading.left,
+            border: getComputedStyle(node).borderLeftWidth, weight: getComputedStyle(title).fontWeight,
+            inline: Math.abs(heading.top + heading.height / 2 - metadata.top - metadata.height / 2) < 1,
+            fits: node.scrollWidth <= node.clientWidth };
+        }));
+        const generalStyle = styles.find(style => style.general)!; const projectStyle = styles.find(style => !style.general)!;
+        expect(generalStyle.height).toBeGreaterThanOrEqual(width <= 700 ? 44 : 40);
+        expect(generalStyle.height).toBeLessThan(projectStyle.height);
+        expect(generalStyle.left).toBeCloseTo(projectStyle.left, 0);
+        expect(generalStyle.border).toBe(projectStyle.border);
+        expect(generalStyle.weight).toBe(projectStyle.weight);
+        expect(generalStyle.inline).toBe(true);
+        expect(generalStyle.fits).toBe(true);
         await neutralTheme(page.locator('body'), { tokens: ['bg', 'surface', 'raised', 'text', 'muted', 'accent'], selectors: ['.general-item', '.general-tab', '.new-terminal'], surfaces: ['bg', 'surface', 'raised'] });
         await page.screenshot({ path: 'test-results/general-' + width + '-' + theme + '.png', animations: 'disabled' });
         if (width <= 700) await row.click();

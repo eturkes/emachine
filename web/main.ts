@@ -204,9 +204,8 @@ function renderRail(): void {
   for (const { key, link } of generalEntries()) {
     const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `General on ${link.state!.machine.name}, ${link.online ? 'online' : 'offline'}`);
     b.dataset.generalKey = key; b.setAttribute('aria-current', key === selected ? 'page' : 'false');
-    const mark = $('span', 'general-mark', '>_'); mark.setAttribute('aria-hidden', 'true');
     const copy = $('span', 'general-copy'); copy.append($('strong', '', 'General'), $('small', '', link.state!.machine.name));
-    b.append(mark, copy); generalList.append(b);
+    b.append(copy); generalList.append(b);
   }
   generalList.hidden = !generalList.childElementCount; generalList.scrollTop = generalScroll;
   const scroll = projectList.scrollTop; projectList.replaceChildren();
