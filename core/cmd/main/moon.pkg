@@ -13,5 +13,5 @@ pkgtype(kind: "executable")
 supported_targets = "-all+native"
 
 options(
-  link: { "native": { "cc-link-flags": "-lcrypto" } },
+  link: { "native": { "cc-link-flags": "-lcrypto -lz" } },
 )

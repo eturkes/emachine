@@ -14,7 +14,7 @@ const patches = ['arrows', 'restore'].map(name => ({
 }));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export const upstreamVersion = '0.8.1';
-export const clientVersion = '0.8.1-emachine-restore.3';
+export const clientVersion = '0.8.1-emachine-restore.4';
 const sourceCommit = '8bab1f0173b07e79835ea372d749af3dbf0d0842';
 const sourceHash = '4929008140cd66ea29d5c7504c59198a82ec793e635b70bd0ece5aac2cad1767';
 const zigVersion = '0.16.0';

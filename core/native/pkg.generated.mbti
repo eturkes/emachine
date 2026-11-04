@@ -28,6 +28,8 @@ pub fn sha256(Bytes) -> String raise
 
 pub fn sync_directory(String) -> Unit raise
 
+pub fn terminal_gzip(Bytes) -> Bytes?
+
 // Errors
 pub suberror NativeError {
   NativeError(String)

@@ -5,6 +5,6 @@ import {
 supported_targets = "-all+native"
 
 options(
-  "native-stub": [ "platform.c", "pty.c" ],
-  link: { "native": { "cc-link-flags": "-lcrypto" } },
+  "native-stub": [ "platform.c", "pty.c", "compression.c" ],
+  link: { "native": { "cc-link-flags": "-lcrypto -lz" } },
 )

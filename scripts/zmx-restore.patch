@@ -1,38 +1,55 @@
 diff --git a/src/loop.zig b/src/loop.zig
 --- a/src/loop.zig
 +++ b/src/loop.zig
-@@ -58,6 +58,10 @@
+@@ -47,5 +47,10 @@
+     const size = ipc.getTerminalSize(lib_posix.STDOUT_FILENO);
+     try ipc.appendSizeMessage(gpa, &sock_write_buf, .Init, size);
+-
++
++    // The ordered Info reply closes the initial-restore window after any pre-Init live output.
++    const sync_restore = std.mem.eql(u8, lib_posix.getenv("ZMX_SYNC_RESTORE") orelse "", "1");
++    if (sync_restore) try ipc.appendMessage(gpa, &sock_write_buf, .Info, "");
++    var restore_pending = sync_restore;
++
+     var poll_fds = try std.ArrayList(lib_posix.pollfd).initCapacity(gpa, 4);
+     defer poll_fds.deinit(gpa);
+@@ -58,6 +63,10 @@
      var stdout_buf = try std.ArrayList(u8).initCapacity(gpa, 4096);
      defer stdout_buf.deinit(gpa);
  
-+    const sync_restore = std.mem.eql(u8, lib_posix.getenv("ZMX_SYNC_RESTORE") orelse "", "1");
 +    const restore_rows = util.restoreRows(lib_posix.getenv("ZMX_RESTORE_ROWS"), ipc.getTerminalSize(lib_posix.STDOUT_FILENO).rows);
-+    var first_output = true;
++    var restore_parser = ghostty_vt.Parser.init();
++    defer restore_parser.deinit();
 +
      const stdin_fd = lib_posix.STDIN_FILENO;
  
      // Make stdin non-blocking. O_NONBLOCK is set on the open file description,
-@@ -154,6 +158,12 @@
+@@ -154,6 +163,17 @@
                      .Output => {
                          if (msg.payload.len > 0) {
 -                            try stdout_buf.appendSlice(gpa, msg.payload);
-+                            const sync_output = first_output and sync_restore and util.shouldSynchronizeRestore(msg.payload);
-+                            first_output = false;
++                            const sync_output = restore_pending and restore_parser.state == .ground and
++                                util.shouldSynchronizeRestore(msg.payload);
 +                            if (sync_output) {
 +                                try util.appendSynchronizedRestore(gpa, &stdout_buf, msg.payload, restore_rows);
++                                restore_pending = false;
 +                            } else {
++                                if (restore_pending and util.hasSynchronizedOutput(&restore_parser, msg.payload)) {
++                                    restore_pending = false;
++                                }
 +                                try stdout_buf.appendSlice(gpa, msg.payload);
 +                            }
                          }
                      },
++                    .Info => restore_pending = false,
                      .Resize => {
 diff --git a/src/util.zig b/src/util.zig
 --- a/src/util.zig
 +++ b/src/util.zig
-@@ -893,3 +893,93 @@
+@@ -893,3 +893,98 @@
 +const restore_boundary = "\x1b[2J\x1b[H\x1b[0m";
 +
-+/// Recognize the complete, history-bearing first restore used by the pinned daemon.
++/// Recognize the complete, history-bearing initial restore used by the pinned daemon.
 +/// Unknown formats, incomplete streams, and application-owned synchronized updates stay untouched.
 +pub fn shouldSynchronizeRestore(payload: []const u8) bool {
 +    const boundary = std.mem.indexOf(u8, payload, restore_boundary) orelse return false;
@@ -40,19 +57,24 @@ diff --git a/src/util.zig b/src/util.zig
 +
 +    var parser = ghostty_vt.Parser.init();
 +    defer parser.deinit();
++    return !hasSynchronizedOutput(&parser, payload) and parser.state == .ground;
++}
++
++/// Track application-owned synchronization across live packets preceding Init's snapshot.
++pub fn hasSynchronizedOutput(parser: *ghostty_vt.Parser, payload: []const u8) bool {
 +    for (payload) |byte| {
 +        for (parser.next(byte)) |action_opt| {
 +            const action = action_opt orelse continue;
 +            switch (action) {
 +                .csi_dispatch => |csi| {
 +                    if ((csi.final == 'h' or csi.final == 'l') and
-+                        std.mem.indexOfScalar(u16, csi.params, 2026) != null) return false;
++                        std.mem.indexOfScalar(u16, csi.params, 2026) != null) return true;
 +                },
 +                else => {},
 +            }
 +        }
 +    }
-+    return parser.state == .ground;
++    return false;
 +}
 +
 +/// The browser may render a manual leader's observed grid rather than this client's requested PTY size.

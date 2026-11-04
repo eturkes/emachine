@@ -37,6 +37,9 @@ async function terminal(page: Page, connected: (ws: WebSocketRoute, count: numbe
     connected(ws, count);
   });
   await page.goto(machine.origin);
+  const encoding = await page.evaluate(() => {
+    try { new DecompressionStream('gzip'); return { encoding: 'gzip-v1' }; } catch { return {}; }
+  });
   const pane = page.locator('.terminal-pane:not([hidden])');
   const snapshot = async () => {
     await pane.getByRole('button', { name: 'Copy', exact: true }).tap();
@@ -53,7 +56,7 @@ async function terminal(page: Page, connected: (ws: WebSocketRoute, count: numbe
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect.poll(() => sockets.length).toBeGreaterThan(count);
   };
-  return { pane, snapshot, reconnect, input, messages, sockets };
+  return { pane, snapshot, reconnect, input, messages, sockets, encoding };
 }
 
 function start(ws: WebSocketRoute, mode = 'observe') {
@@ -90,8 +93,8 @@ test('warm reconnect retains native scrollback and appends missed output exactly
   await expect(t.pane.locator('.xterm-rows')).toContainText('output during disconnect');
   expect(await t.snapshot()).toBe(history.replaceAll('\r\n', '\n') + '\noutput during disconnect');
   expect(t.messages.filter(item => item.message.type === 'resume')).toEqual([
-    { connection: 1, message: { type: 'resume' } },
-    { connection: 2, message: { type: 'resume', attachment, sequence: 2 } },
+    { connection: 1, message: { type: 'resume', ...t.encoding } },
+    { connection: 2, message: { type: 'resume', attachment, sequence: 2, ...t.encoding } },
   ]);
   expect(t.input).toEqual([]);
 });
@@ -181,8 +184,8 @@ test('expired resume replaces stale history and legacy servers still reset on re
   await expect(t.pane.locator('.xterm-rows')).toContainText('legacy reconnect');
   expect(await t.snapshot()).toBe('legacy reconnect');
   expect(t.messages.filter(item => item.message.type === 'resume').map(item => item.message)).toEqual([
-    { type: 'resume' }, { type: 'resume', attachment, sequence: 2 },
-    { type: 'resume', attachment: replacement, sequence: 2 }, { type: 'resume' },
+    { type: 'resume', ...t.encoding }, { type: 'resume', attachment, sequence: 2, ...t.encoding },
+    { type: 'resume', attachment: replacement, sequence: 2, ...t.encoding }, { type: 'resume', ...t.encoding },
   ]);
 });
 
@@ -201,7 +204,7 @@ test('a missing output sequence forces a fresh restore without parsing the gap',
   await t.reconnect();
   await expect(t.pane.locator('.xterm-rows')).toContainText('recovered connection');
   expect(await t.snapshot()).toBe('recovered connection');
-  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume' });
+  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', ...t.encoding });
 });
 
 test('reconnect drains accepted parser bytes and geometry before choosing its checkpoint', async ({ page }) => {
@@ -237,7 +240,7 @@ test('reconnect drains accepted parser bytes and geometry before choosing its ch
   await expect(t.pane.locator('.xterm-rows > div').first()).toHaveText('*BCDEFGHIJKLMNOPQRST');
   await expect(t.pane.locator('.xterm-rows > div').nth(1)).toHaveText('Z');
   await expect(t.pane.locator('.xterm-rows > div')).toHaveCount(10);
-  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: 6 });
+  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: 6, ...t.encoding });
   expect(errors).toEqual([]);
 });
 
@@ -270,7 +273,7 @@ for (const outcome of ['control', 'observe', 'fresh']) {
     await expect(t.pane).toHaveAttribute('data-mode', outcome === 'observe' ? 'observe' : 'control');
     const replies = outcome === 'control' ? ['\u001b[?1;2c', '\u001b[1;1R', '\u001b[2;3R'] : [];
     await expect.poll(() => t.input).toEqual(replies);
-    expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: 3 });
+    expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: 3, ...t.encoding });
   });
 }
 
@@ -312,7 +315,7 @@ test('fragmented replay coalesces parser writes across frames and preserves acti
   // The initial live fragment and the post-resize payload may each need their own write.
   expect(writes.length).toBeLessThanOrEqual(Math.ceil(bytes.length / (16 * 1024)) + 2);
   expect(writes.reduce((total, length) => total + length, 0)).toBe(bytes.length + Buffer.byteLength('after barrier'));
-  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: checkpoint });
+  expect(t.messages.filter(item => item.message.type === 'resume').at(-1)?.message).toEqual({ type: 'resume', attachment, sequence: checkpoint, ...t.encoding });
 });
 
 test('initial restore visibility survives warm reconnect and rearms only for a fresh attachment', async ({ page }) => {

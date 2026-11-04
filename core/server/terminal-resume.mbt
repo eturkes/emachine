@@ -9,6 +9,7 @@ priv struct TerminalBinding {
   id : String
   socket : @websocket.Conn
   wake : @async.Queue[Unit]
+  gzip : Bool
   mut ready : Bool
   mut pong : Bool
 }
@@ -141,12 +142,25 @@ fn terminal_checkpoint_available(
 }
 
 ///|
-fn terminal_sequenced_data(sequence : Int64, bytes : Bytes) -> Bytes {
-  let result : FixedArray[Byte] = FixedArray::make(bytes.length() + 8, 0)
+fn terminal_sequenced_data(
+  sequence : Int64,
+  bytes : Bytes,
+  gzip : Bool,
+) -> Bytes {
+  let compressed = if gzip { @native.terminal_gzip(bytes) } else { None }
+  let payload = compressed.unwrap_or(bytes)
+  let header = if gzip { 13 } else { 8 }
+  let result : FixedArray[Byte] = FixedArray::make(payload.length() + header, 0)
   for index = 0; index < 8; index = index + 1 {
     result[index] = ((sequence >> ((7 - index) * 8)) & 255L).to_int().to_byte()
   }
-  FixedArray::blit_from_bytes(result, 8, bytes, 0, bytes.length())
+  if gzip {
+    result[8] = if compressed is Some(_) { 1 } else { 0 }
+    for index = 0; index < 4; index = index + 1 {
+      result[9 + index] = ((bytes.length() >> ((3 - index) * 8)) & 255).to_byte()
+    }
+  }
+  FixedArray::blit_from_bytes(result, header, payload, 0, payload.length())
   result.unsafe_reinterpret_as_bytes()
 }
 
@@ -278,15 +292,16 @@ async fn send_terminal_resume(
   ready_at : Int64,
   resumed : Bool,
 ) -> Unit {
-  binding.socket.send_text(
-    (
-      {
-        "type": "resume",
-        "attachment": peer.id.to_json(),
-        "sequence": checkpoint.to_double().to_json(),
-        "resumed": resumed.to_json(),
-      } : Json).stringify(),
-  )
+  let hello : Map[String, Json] = {
+    "type": "resume",
+    "attachment": peer.id.to_json(),
+    "sequence": checkpoint.to_double().to_json(),
+    "resumed": resumed.to_json(),
+  }
+  if binding.gzip {
+    hello["encoding"] = "gzip-v1"
+  }
+  binding.socket.send_text(Json(hello).stringify())
   let mut cursor = checkpoint
   while terminal_binding_current(peer, lease, binding) {
     if !binding.ready && cursor == ready_at {
@@ -307,7 +322,9 @@ async fn send_terminal_resume(
       cursor += 1L
       match event.packet {
         Data(bytes) =>
-          binding.socket.send_binary(terminal_sequenced_data(cursor, bytes))
+          binding.socket.send_binary(
+            terminal_sequenced_data(cursor, bytes, binding.gzip),
+          )
         Control(value) =>
           binding.socket.send_text(
             terminal_sequenced_state(cursor, value).stringify(),
@@ -458,6 +475,7 @@ async fn resumable_terminal_session(
       id: @native.random_id(),
       socket,
       wake: @async.Queue(kind=DiscardOldest(1)),
+      gzip: @model.string_field(hello, "encoding") == "gzip-v1",
       ready: false,
       pong: false,
     }

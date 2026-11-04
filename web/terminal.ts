@@ -6,6 +6,7 @@ import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
 import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
+import { decodeTerminalFrame, supportedTerminalEncoding, type TerminalEncoding } from './terminal-encoding';
 import { TerminalOutput } from './terminal-output';
 import { TerminalReplies } from './terminal-resume';
 import { TerminalRestore } from './terminal-restore';
@@ -75,6 +76,7 @@ export class TerminalPane {
   private copyOutput?: TerminalCopyOutput;
   private fit = new FitAddon();
   private ws?: WebSocket;
+  private decoding?: AbortController;
   private observer: ResizeObserver;
   private layoutTimer?: number;
   private retry?: number;
@@ -341,11 +343,14 @@ export class TerminalPane {
     url.searchParams.set('resume', '1');
     const checkpoint = this.attachment && { ...this.attachment };
     let protocol: 'waiting' | 'resume' | 'legacy' = 'waiting';
+    const requestedEncoding = supportedTerminalEncoding();
+    let encoding: TerminalEncoding | undefined;
     let epoch = this.attachmentEpoch, received = checkpoint?.sequence ?? 0;
     this.ready = false; this.pendingSize = '';
     if (!this.attachment) this.replies = [];
     this.control.hidden = true; this.element.dataset.mode = 'attaching';
     const ws = new WebSocket(url); ws.binaryType = 'arraybuffer'; this.ws = ws;
+    const decoding = this.decoding = new AbortController();
     const current = () => !this.closed && generation === this.generation && this.ws === ws;
     const sameAttachment = () => !this.closed && epoch === this.attachmentEpoch;
     const reset = () => {
@@ -380,26 +385,30 @@ export class TerminalPane {
     ws.onopen = () => {
       if (!current()) return;
       this.seen = Date.now();
-      ws.send(JSON.stringify({ type: 'resume', ...checkpoint }));
+      ws.send(JSON.stringify({ type: 'resume', ...checkpoint, encoding: requestedEncoding }));
     };
-    ws.onmessage = event => {
-      if (!current()) return;
-      this.seen = Date.now();
+    const receive = (payload: ArrayBuffer | string): void | Promise<void> => {
       try {
-        if (event.data instanceof ArrayBuffer) {
+        if (payload instanceof ArrayBuffer) {
           if (protocol === 'waiting') legacy();
-          const data = new Uint8Array(event.data);
+          const data = new Uint8Array(payload);
           if (protocol === 'legacy') this.output.write(data);
           else {
             if (data.length < 8) throw new Error('Missing terminal sequence');
-            const sequence = accept(Number(new DataView(event.data).getBigUint64(0)));
-            this.output.write(data.subarray(8), () => applied(sequence));
+            const sequence = accept(Number(new DataView(payload).getBigUint64(0)));
+            const decoded = decodeTerminalFrame(data, encoding, decoding.signal);
+            if (decoded instanceof Uint8Array) this.output.write(decoded, () => applied(sequence));
+            else return decoded.then(bytes => {
+              if (current()) this.output.write(bytes, () => applied(sequence));
+            });
           }
           return;
         }
-        const message = JSON.parse(String(event.data));
+        const message = JSON.parse(String(payload));
         if (message.type === 'resume') {
           if (protocol !== 'waiting' || !/^[a-f0-9]{32}$/.test(message.attachment) || typeof message.resumed !== 'boolean' || !Number.isSafeInteger(message.sequence)) throw new Error('Invalid terminal resume');
+          if (message.encoding !== undefined && (message.encoding !== 'gzip-v1' || requestedEncoding !== 'gzip-v1')) throw new Error('Unrequested terminal encoding');
+          encoding = message.encoding;
           if (message.resumed) {
             if (!checkpoint || message.attachment !== checkpoint.attachment || message.sequence !== checkpoint.sequence) throw new Error('Mismatched terminal resume');
           } else {
@@ -442,6 +451,30 @@ export class TerminalPane {
         } else if (message.type === 'error') { this.status.hidden = false; this.status.textContent = String(message.message); this.notice(String(message.message)); }
       } catch { invalid(); }
     };
+    const queued: Array<ArrayBuffer | string> = [];
+    let inflating = false;
+    decoding.signal.addEventListener('abort', () => { queued.length = 0; }, { once: true });
+    const drain = () => {
+      if (inflating) return;
+      while (current() && queued.length) {
+        const pending = receive(queued.shift()!);
+        if (pending) {
+          inflating = true;
+          void pending.then(() => { inflating = false; drain(); }, () => {
+            inflating = false; queued.length = 0;
+            if (current()) invalid();
+          });
+          return;
+        }
+      }
+      if (!current()) queued.length = 0;
+    };
+    ws.onmessage = event => {
+      if (!current()) return;
+      this.seen = Date.now();
+      // Geometry and ready cannot overtake an asynchronous gzip frame.
+      queued.push(event.data); drain();
+    };
     const disconnect = () => { if (generation === this.generation) this.disconnect(ws); };
     ws.onclose = disconnect;
     ws.onerror = disconnect;
@@ -470,6 +503,7 @@ export class TerminalPane {
     if (!ws || this.closed || this.ws !== ws) return;
     // Drop local input/control immediately, independently of the browser's close handshake.
     this.ws = undefined; this.generation++; this.ready = false;
+    this.decoding?.abort(); this.decoding = undefined;
     this.element.dataset.mode = 'disconnected';
     this.textInput?.refresh();
     this.prompts.refresh();
@@ -490,6 +524,7 @@ export class TerminalPane {
   }
   dispose(): void {
     this.closed = true; this.generation++;
+    this.decoding?.abort(); this.decoding = undefined;
     window.clearTimeout(this.retry); window.clearInterval(this.heartbeat);
     window.clearTimeout(this.layoutTimer);
     this.keyboardEvents.abort();
