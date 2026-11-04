@@ -297,12 +297,19 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
-  test('Keyboard, Esc and Tab spacing matches adjacent shortcuts across phone and tablet widths', async ({ page }, testInfo) => {
+  test('terminal controls stay grouped and pinned across phone and tablet widths', async ({ page }, testInfo) => {
     const t = await terminal(page);
     const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
     const tab = t.pane.getByRole('button', { name: 'Tab', exact: true });
     await expect(escape).toHaveCount(1);
     await expect(tab).toHaveCount(1);
+    const textTools = t.pane.getByRole('group', { name: 'Text tools', exact: true });
+    const promptTools = t.pane.getByRole('group', { name: 'Prompt tools', exact: true });
+    await expect(textTools.getByRole('button')).toHaveText(['Text', 'Copy', 'Paste']);
+    await expect(promptTools.getByRole('button')).toHaveText(['Prompts', 'History']);
+    await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true }).getByRole('button')).toHaveText(['Ctrl', 'Alt']);
+    await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['←', '↓', '↑', '→', 'Shift + ←']);
+    await expect(t.pane.getByRole('group', { name: 'Control shortcuts', exact: true }).getByRole('button')).toHaveText(['Ctrl-C', 'Ctrl-X Ctrl-S']);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
       await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
@@ -313,14 +320,18 @@ test.describe('terminal input', () => {
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
         const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
         const tab = element.querySelector('button[aria-label="Tab"]')!.getBoundingClientRect();
-        const [first, second] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
-        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: second.left - first.right,
+        const [first, ctrl, alt] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        const tools = element.querySelector('.terminal-tools')!.getBoundingClientRect();
+        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: alt.left - ctrl.right, groupGap: ctrl.left - first.right,
           keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: first.top,
+          toolsTop: tools.top, keyboardBottom: keyboard.bottom,
           keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: first.height };
       });
-      expect(geometry.fixedGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.fixedGap).toBeGreaterThan(geometry.shortcutGap);
       expect(geometry.tabGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.scrollGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.groupGap).toBeGreaterThan(geometry.shortcutGap);
+      expect(geometry.toolsTop).toBeGreaterThanOrEqual(geometry.keyboardBottom);
       expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.escapeTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.tabTop).toBeCloseTo(geometry.shortcutTop, 3);
@@ -339,6 +350,7 @@ test.describe('terminal input', () => {
       expect(await tab.boundingBox()).toEqual(tabBefore);
       await expect(escape).toBeInViewport({ ratio: 1 });
       await expect(tab).toBeInViewport({ ratio: 1 });
+      for (const tool of await t.pane.locator('.terminal-tools button').all()) await expect(tool).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = 0; });
       if (viewport.width === 390 || viewport.width === 844) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });

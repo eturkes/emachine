@@ -38,6 +38,9 @@ const contrastRatio = (theme: Theme) => isIOS() && theme === 'dark' ? 4.5 : 1;
 function button(label: string, action: (event: MouseEvent) => void, title = label): HTMLButtonElement {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.onclick = action; return b;
 }
+function controlGroup(label: string, className = 'terminal-key-group'): HTMLDivElement {
+  const group = document.createElement('div'); group.className = className; group.setAttribute('role', 'group'); group.setAttribute('aria-label', label); return group;
+}
 function modifiedInput(data: string, ctrl: boolean, alt: boolean): string {
   const modifiers = (ctrl ? 4 : 0) | (alt ? 2 : 0);
   if (!modifiers) return data;
@@ -102,13 +105,23 @@ export class TerminalPane {
     this.control = button('Take control', () => { if (this.ready && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
     const keys = document.createElement('div'); keys.className = 'terminal-keys';
+    const modifiers = controlGroup('Modifiers');
+    const navigation = controlGroup('Navigation');
+    const shortcuts = controlGroup('Control shortcuts');
+    const session = controlGroup('Terminal session', 'terminal-key-group terminal-session');
+    const textTools = controlGroup('Text tools');
+    const promptTools = controlGroup('Prompt tools');
     let useCtrl = false, useAlt = false;
     const ctrl = button('Ctrl', () => { useCtrl = !useCtrl; ctrl.setAttribute('aria-pressed', String(useCtrl)); this.terminal.focus(); }, 'Use Control with the next character');
     const alt = button('Alt', () => { useAlt = !useAlt; alt.setAttribute('aria-pressed', String(useAlt)); this.terminal.focus(); }, 'Use Alt with the next key');
     const clearModifiers = () => { useCtrl = useAlt = false; ctrl.setAttribute('aria-pressed', 'false'); alt.setAttribute('aria-pressed', 'false'); };
     clearModifiers();
-    keys.append(this.control, ctrl, alt);
-    for (const [label, value] of [['Enter', '\r'], ['↑', '\u001b[A'], ['↓', '\u001b[B'], ['←', '\u001b[D'], ['→', '\u001b[C'], ['Ctrl-C', '\u0003'], ['Shift + ←', '\u001b[1;2D']] as const) {
+    modifiers.append(ctrl, alt);
+    for (const [group, label, value] of [
+      [keys, 'Enter', '\r'],
+      [navigation, '←', '\u001b[D'], [navigation, '↓', '\u001b[B'], [navigation, '↑', '\u001b[A'], [navigation, '→', '\u001b[C'],
+      [navigation, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
+    ] as const) {
       const arrow = /^\u001b\[([ABCD])$/.exec(value);
       let keyboardBeforeTap: boolean | undefined;
       const key = button(label, event => {
@@ -128,13 +141,15 @@ export class TerminalPane {
           if (event.button === 0 && document.activeElement === this.terminal.textarea) event.preventDefault();
         }, { signal });
       }
-      keys.append(key);
+      group.append(key);
     }
-    keys.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
+    shortcuts.append(button('Ctrl-X Ctrl-S', () => { clearModifiers(); this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
+    session.append(this.control, this.status);
+    keys.prepend(session); keys.append(modifiers, navigation, shortcuts);
     const copy = () => { void this.copy(); };
     const paste = () => { clearModifiers(); void this.paste(); };
     const copyButton = button('Copy', copy);
-    keys.append(copyButton, button('Paste', paste), this.status);
+    textTools.append(copyButton, button('Paste', paste));
     this.keyboard = button('Keyboard', event => {
       const hide = (event.detail > 0 ? this.keyboardTap : undefined) ?? this.keyboardShown;
       this.keyboardTap = undefined;
@@ -155,8 +170,11 @@ export class TerminalPane {
     escape.className = 'terminal-fixed-key';
     const tab = button('Tab', () => { this.terminal.input('\t'); this.terminal.focus(); });
     tab.className = 'terminal-fixed-key';
-    const toolbar = document.createElement('div'); toolbar.className = 'terminal-toolbar'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Terminal keyboard controls');
-    toolbar.append(this.keyboard, escape, tab, keys);
+    const keyboardControls = controlGroup('Terminal keyboard controls', 'terminal-keyboard-controls');
+    keyboardControls.append(this.keyboard, escape, tab, keys);
+    const tools = document.createElement('div'); tools.className = 'terminal-tools'; tools.append(textTools, promptTools);
+    const toolbar = controlGroup('Terminal controls', 'terminal-toolbar');
+    toolbar.append(keyboardControls, tools);
     const main = document.createElement('div'); main.className = 'terminal-main';
     main.append(this.host, toolbar); this.element.append(main);
     // Only iOS dark mode corrects contrast; bold keeps the requested palette entry.
@@ -184,7 +202,7 @@ export class TerminalPane {
         },
         focusTerminal: () => this.terminal.focus(),
       });
-      this.host.after(this.textInput.element); keys.prepend(this.textInput.button);
+      this.host.after(this.textInput.element); textTools.prepend(this.textInput.button);
     }
     this.prompts = new TerminalPrompts({
       link: () => this.link,
@@ -195,14 +213,14 @@ export class TerminalPane {
       },
       focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
     });
-    this.element.append(this.prompts.element); keys.prepend(this.prompts.button);
+    this.element.append(this.prompts.element); promptTools.append(this.prompts.button);
     if (target.kind === 'project') {
       this.history = new TerminalHistory({
         link: () => this.link,
         project: () => this.target.kind === 'project' ? this.target.id : '',
         focusTerminal: () => { if (this.visible && !this.closed) this.terminal.focus(); },
       });
-      this.element.append(this.history.element); this.prompts.button.after(this.history.button);
+      this.element.append(this.history.element); promptTools.append(this.history.button);
     }
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {

@@ -333,11 +333,11 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     await expect(page.locator('.project-copy').first()).toBeInViewport();
     if (width <= 700) await page.getByRole('button', { name: 'Close projects', exact: true }).click();
     await expect(page.locator('.terminal-keys')).toBeVisible();
-    for (const key of await page.locator('.terminal-keys button:visible').all()) {
+    for (const key of await page.locator('.terminal-toolbar button:visible').all()) {
       expect(await key.evaluate(node => node.scrollWidth <= node.clientWidth), `${await key.innerText()} must fit its button at ${width}px`).toBe(true);
     }
     for (const name of ['Enter', 'Copy', 'Paste', 'Shift + Arrow Left', 'Ctrl+X then Ctrl+S']) {
-      const key = page.locator('.terminal-keys').getByRole('button', { name, exact: true });
+      const key = page.locator('.terminal-toolbar').getByRole('button', { name, exact: true });
       await key.scrollIntoViewIfNeeded();
       await expect(key).toBeInViewport({ ratio: 1 });
     }
@@ -361,7 +361,7 @@ test('terminal shortcuts encode modifiers and retain observer control without a 
   });
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
-  const keys = page.locator('.terminal-keys');
+  const keys = page.locator('.terminal-toolbar');
   const alt = keys.getByRole('button', { name: 'Use Alt with the next key', exact: true });
   const ctrl = keys.getByRole('button', { name: 'Use Control with the next character', exact: true });
   const enter = keys.getByRole('button', { name: 'Enter', exact: true });
@@ -443,7 +443,7 @@ test('terminal Copy uses the selected text and reports unavailable clipboard acc
     ws.send(Buffer.from('\u001b[2J\u001b[HclipboardFixture\r\n'));
   });
   await page.goto(a.origin);
-  const copy = page.locator('.terminal-keys').getByRole('button', { name: 'Copy', exact: true });
+  const copy = page.getByRole('group', { name: 'Text tools', exact: true }).getByRole('button', { name: 'Copy', exact: true });
   await expect(page.locator('.xterm-rows')).toContainText('clipboardFixture');
   await page.evaluate(() => navigator.clipboard.writeText('preserve this'));
   await copy.click();
@@ -459,7 +459,7 @@ test('terminal Copy uses the selected text and reports unavailable clipboard acc
   await expect(page.locator('.toast-region')).toContainText('Clipboard access was not granted.');
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
   await copy.click();
-  await page.locator('.terminal-keys').getByRole('button', { name: 'Paste', exact: true }).click();
+  await page.getByRole('group', { name: 'Text tools', exact: true }).getByRole('button', { name: 'Paste', exact: true }).click();
   expect(errors).toEqual([]);
 });
 
