@@ -350,7 +350,8 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     const row = general(page);
     await expect(row).toBeVisible();
     const activeTab = page.getByRole('tab', { selected: true });
-    const appearance = () => activeTab.evaluate(tab => {
+    const appearance = () => page.evaluate(() => {
+      const tab = document.querySelector('[role="tab"][aria-selected="true"]')!;
       const css = getComputedStyle(tab), indicator = getComputedStyle(tab, '::after');
       let surface: Element = tab;
       while (surface.parentElement && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
