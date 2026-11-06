@@ -381,8 +381,15 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     for (const width of [1360, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(add(page)).toBeInViewport({ ratio: 1 });
+      const close = page.getByRole('button', { name: 'Close misc3', exact: true });
+      const [closeBox, addBox] = await close.or(add(page)).evaluateAll(buttons => buttons.map(button => {
+        const { top, width, height } = button.getBoundingClientRect();
+        return { top, width, height, fontSize: getComputedStyle(button).fontSize };
+      }));
+      expect(addBox).toEqual(closeBox);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (width <= 700) {
+        expect(addBox.height).toBeGreaterThanOrEqual(44);
         expect(await page.locator('.tabs').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
       }
       for (const theme of ['light', 'dark']) {

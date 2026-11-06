@@ -80,9 +80,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tab.active::after { position: absolute; bottom: 0; left: 15px; right: 15px; height: 2px; content: ''; background: var(--accent); }
 .general-tab { display: flex; flex-shrink: 0; align-items: stretch; }
 .general-tab .tab { max-width: min(320px,60vw); overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
-.close-terminal, .new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; border-radius: 6px; color: var(--muted); line-height: 1; }
-.close-terminal { width: 32px; height: 32px; margin-right: 4px; font-size: 19px; }
-.new-terminal { width: 36px; min-height: 36px; margin: 8px; font-size: 24px; }
+.close-terminal, .new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; width: 32px; height: 32px; margin-right: 4px; padding: 0; border-radius: 6px; color: var(--muted); font-size: 19px; line-height: 1; }
+.new-terminal { margin-left: 4px; }
 .close-terminal:hover, .new-terminal:hover { color: var(--text); background: var(--hover); }
 .stale-indicator { margin-left: 7px; color: var(--warning); font-size: 11px; }
 .header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 5px; padding: 0 11px; border-left: 1px solid var(--border); }
@@ -258,8 +257,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .tab-header .waiting-projects { min-height: 44px; }
   .tabs { padding-left: 0; min-height: 44px; }
   .tab { padding: 0 13px; }
-  .close-terminal { width: 44px; height: 44px; }
-  .new-terminal { width: 44px; min-height: 44px; margin: 0 4px; }
+  .close-terminal, .new-terminal { width: 44px; height: 44px; }
   .terminal-pane { --terminal-font-size: 12; }
   .terminal-main { padding: 9px 9px 0; }
   .terminal-toolbar .terminal-keyboard { display: block; }
