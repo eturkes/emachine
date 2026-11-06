@@ -72,6 +72,24 @@ function selectorFrame(width: number, active: number) {
     .concat('Use up/down').join('\r\n');
 }
 
+test('relative redraw erases the old label after wide glyphs and split emoji', async ({ page }) => {
+  await queuedTerminal(page);
+  const rows = page.locator('.xterm-rows > div');
+  // Stock zmx counts both pictographs of a ZWJ sequence and ignores combining marks.
+  const prefix = 'Ae\u0301\u754c\u{1f680}\u{1f469}';
+  const joined = '\u200d\u{1f4bb}';
+  await page.evaluate(prefix => window.terminalStream.deliver([
+    { cols: 16, rows: 5 }, '\u001b[2J\u001b[H' + prefix,
+  ]), prefix);
+  await expect(rows.first()).toContainText(prefix);
+  await page.evaluate(joined => window.terminalStream.deliver([joined + 'OLD\r\nNext row']), joined);
+  await expect(rows.nth(1)).toContainText('Next row');
+  // A TUI moves back a row, erases after the ten occupied cells, and writes a shorter label.
+  await page.evaluate(() => window.terminalStream.deliver(['\u001b[1F\u001b[11G\u001b[KOK']));
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean))
+    .toEqual([prefix + joined + 'OK', 'Next row']);
+});
+
 test('terminal waits for font metrics before attaching a live session', async ({ page }) => {
   let release!: () => void;
   const fonts = new Promise<void>(resolve => { release = resolve; });
@@ -180,7 +198,7 @@ test('controller parses in-flight redraws at the acknowledged terminal size', as
   send(JSON.stringify({ type: 'state', mode: 'control', ...remote }));
   send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(remote.cols, 2)}`));
   await expect.poll(() => dimensions(page)).toEqual(remote);
-  await expect.poll(async () => (await rows.allTextContents()).map(row => row.slice(0, remote.cols).trimEnd()).filter(Boolean)).toEqual([
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
     'Question', ...selectorFrame(remote.cols, 2).split('\r\n'),
   ]);
   expect(resizes).toEqual([remote]);
@@ -311,7 +329,7 @@ test('shared screen geometry is independent from the controller viewport request
   screen = { screenCols: desired.cols, screenRows: desired.rows };
   send(JSON.stringify({ type: 'state', mode: 'control', ...desired, ...screen }));
   send(Buffer.from(`\u001b[3F\u001b[J${selectorFrame(screen.screenCols, 2)}`));
-  await expect.poll(async () => (await rows.allTextContents()).map(row => row.slice(0, screen.screenCols).trimEnd()).filter(Boolean)).toEqual([
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
     'Question', ...selectorFrame(screen.screenCols, 2).split('\r\n'),
   ]);
   expect(await dimensions(page)).toEqual(desired);
@@ -328,8 +346,8 @@ test('a manual zmx leader stays readable before and after phone input takes lead
     await page.goto(shared.origin);
     const rows = page.locator('.xterm-rows > div');
     const expected = (width: number, active: number) => ['Shared question', ...selectorFrame(width, active).split('\r\n')];
-    const screen = (width: number) => rows.allTextContents().then(lines => lines.map(row => row.slice(0, width).trimEnd()).filter(Boolean));
-    await expect.poll(() => screen(100)).toEqual(expected(100, 0));
+    const screen = () => rows.allTextContents().then(lines => lines.map(row => row.trimEnd()).filter(Boolean));
+    await expect.poll(screen).toEqual(expected(100, 0));
     expect(await dimensions(page)).toEqual({ cols: 100, rows: 30 });
     await page.screenshot({ path: testInfo.outputPath('shared-session.png') });
 
@@ -337,7 +355,7 @@ test('a manual zmx leader stays readable before and after phone input takes lead
       await page.setViewportSize({ width, height });
       await page.waitForTimeout(200);
       await manual.render(active);
-      await expect.poll(() => screen(100)).toEqual(expected(100, active));
+      await expect.poll(screen).toEqual(expected(100, active));
       expect(await dimensions(page)).toEqual({ cols: 100, rows: 30 });
     }
 
@@ -348,7 +366,7 @@ test('a manual zmx leader stays readable before and after phone input takes lead
     const fitted = await dimensions(page);
     for (const active of [1, 2, 0]) {
       await manual.render(active);
-      await expect.poll(() => screen(fitted.cols)).toEqual(expected(fitted.cols, active));
+      await expect.poll(screen).toEqual(expected(fitted.cols, active));
     }
     await page.screenshot({ path: testInfo.outputPath('phone-session.png') });
   } finally {
@@ -379,12 +397,44 @@ test('queued selector redraws stay in order across terminal geometry changes', a
     await page.evaluate(frame => window.terminalStream.deliver([
       `\u001b[3F\u001b[J${frame}`,
     ]), selectorFrame(24, active));
-    // xterm retains clipped alternate-buffer cells after shrinking; this fixture uses one-column ASCII.
-    await expect.poll(async () => (await rows.allTextContents()).map(row => row.slice(0, 24).trimEnd()).filter(Boolean)).toEqual([
+    await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean)).toEqual([
       'Question', ...selectorFrame(24, active).split('\r\n'),
     ]);
     expect((await screen.innerText()).match(/> /g)).toHaveLength(1);
   }
+});
+
+test('growing the phone viewport does not expose erased alternate screen rows', async ({ page }) => {
+  await queuedTerminal(page);
+  const rows = page.locator('.xterm-rows > div');
+  await page.evaluate(() => window.terminalStream.deliver([
+    { cols: 40, rows: 6 },
+    '\x1b[?1049h\x1b[6;1H' + 'old row\r\n'.repeat(6) + '\x1b[2J\x1b[6;1Hcurrent row',
+  ]));
+  await expect(rows.nth(5)).toContainText('current row');
+  await page.evaluate(() => window.terminalStream.deliver([{ cols: 40, rows: 12 }]));
+  await expect(rows).toHaveCount(12);
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()))
+    .toEqual([...Array(5).fill(''), 'current row', ...Array(6).fill('')]);
+});
+
+test('widening a redrawn alternate screen does not restore discarded columns', async ({ page }) => {
+  await queuedTerminal(page);
+  const rows = page.locator('.xterm-rows > div');
+  await page.evaluate(() => window.terminalStream.deliver([
+    '\x1b[?1049h\x1b[2J\x1b[Hkeep\x1b[1;24H\u754c\x1b[2;26Hold menu',
+  ]));
+  await expect(rows.nth(1)).toContainText('old menu');
+  await page.evaluate(() => window.terminalStream.deliver([
+    { cols: 24, rows: 20 }, '\x1b[2;1H\x1b[2Kcurrent menu',
+  ]));
+  await expect(rows.nth(1)).toContainText('current menu');
+  await page.evaluate(() => window.terminalStream.deliver([{ cols: 40, rows: 20 }]));
+  await expect.poll(() => dimensions(page)).toEqual({ cols: 40, rows: 20 });
+  await expect.poll(async () => (await rows.allTextContents()).map(row => row.trimEnd()).filter(Boolean))
+    .toEqual(['keep', 'current menu']);
+  await page.evaluate(() => window.terminalStream.deliver(['\x1b[?1049l']));
+  await expect(rows.first()).toContainText('READY');
 });
 
 test('queued output from an old attachment is cleared before restored selector output', async ({ page }) => {

@@ -2,12 +2,14 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachTerminalClipboard } from './terminal-clipboard';
 import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
 import { decodeTerminalFrame, supportedTerminalEncoding, type TerminalEncoding } from './terminal-encoding';
 import { TerminalOutput } from './terminal-output';
+import { syncAlternateScreen } from './terminal-grid';
 import { TerminalReplies } from './terminal-resume';
 import { TerminalRestore } from './terminal-restore';
 import { TerminalTextInput } from './terminal-text';
@@ -163,9 +165,13 @@ export class TerminalPane {
     this.terminal = new Terminal({
       theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
-      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 10000, allowProposedApi: false, convertEol: false,
+      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 10000, allowProposedApi: true, convertEol: false,
     });
+    // Stock zmx counts wide emoji by code point in its default terminal mode.
+    this.terminal.loadAddon(new Unicode11Addon());
+    this.terminal.unicode.activeVersion = '11';
     this.output = new TerminalOutput(this.terminal);
+    this.terminal.onResize(() => syncAlternateScreen(this.terminal));
     this.terminalReplies = new TerminalReplies(this.terminal);
     this.terminalRestore = new TerminalRestore(this.terminal, () => {
       queueMicrotask(() => { if (!this.closed) this.refreshControl(); });
