@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -8,6 +9,86 @@ import { fixture, socket, until } from './network-helper.mjs';
 import { claudeSession } from './claude-helper.mjs';
 
 const exec = promisify(execFile);
+
+test('Claude keeper activity refines idle registry sessions without inventing activity', async t => {
+  let body;
+  const requests = [];
+  const keeper = createServer((req, res) => {
+    requests.push([req.method, req.url]);
+    if (body === undefined) return; // Exercise a keeper that accepts but never replies.
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(body);
+  });
+  await new Promise((resolve, reject) => {
+    keeper.once('error', reject);
+    keeper.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise(resolve => keeper.close(resolve)));
+  const f = await fixture({ keeperUrl: `http://127.0.0.1:${keeper.address().port}` });
+  t.after(() => f.close());
+  await f.stop(); // Each CLI inventory below should make at most one request.
+  const project = join(f.config.projectRoot, 'alpha');
+  const alias = join(f.home, 'alias');
+  await symlink(project, alias);
+  const sessionId = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const register = (status, options = {}) => claudeSession(f, status, { sessionId, cwd: alias, ...options });
+  const state = async () => JSON.parse(await f.cli('projects'));
+  const badge = async () => (await state()).projects.find(p => p.name === 'alpha').claudeStatus;
+  const entry = { session: sessionId.slice(0, 8), dir: project, state: 'armed', working: true };
+  const report = (...entries) => { body = JSON.stringify({ interval: 3300, touches: 19, entries }); };
+
+  await register('idle');
+  report(entry);
+  assert.equal(await badge(), 'working', 'a running turn can outlive the registry busy signal');
+  assert.deepEqual(requests, [['GET', '/_keepalive']]);
+  for (const [change, expected] of [
+    [{ state: 'ready' }, 'working'], [{ state: 'compacting', working: false }, 'working'],
+    [{ working: false, mark: 'touch' }, 'completed'], [{ working: 'true' }, 'completed'],
+    [{ state: 'done', working: false }, 'completed'], [{ state: 'lapsed', working: false }, 'completed'],
+    [{ state: 'compacted', working: false }, 'completed'], [{ state: 'unexpected' }, 'completed'],
+    [{ state: 'done' }, 'working'], [{ state: 'lapsed' }, 'working'], [{ state: 'compacted' }, 'working'],
+    [{ session: 'bbbbbbbb' }, 'completed'], [{ dir: f.home }, 'completed'],
+  ]) {
+    report({ ...entry, ...change });
+    assert.equal(await badge(), expected, JSON.stringify(change));
+  }
+  report(entry, { ...entry, working: false });
+  assert.equal(await badge(), 'completed', 'ambiguous keeper rows');
+  for (const invalid of [undefined, '{', JSON.stringify({ entries: {} }),
+    JSON.stringify({ entries: [entry], padding: 'x'.repeat(262144) })]) {
+    body = invalid;
+    assert.equal(await badge(), 'completed');
+  }
+  report(entry);
+  await register('waiting');
+  assert.equal(await badge(), 'waiting');
+  report({ ...entry, working: false, mark: 'compact' });
+  await register('shell');
+  assert.equal(await badge(), 'working');
+
+  const child = spawn('sleep', ['120']);
+  t.after(() => child.kill());
+  await register('idle');
+  await register('idle', { pid: child.pid, sessionId: 'aaaaaaaa-2222-4222-8222-222222222222' });
+  report(entry);
+  requests.length = 0;
+  assert.equal(await badge(), 'completed', 'ambiguous live session prefixes');
+  assert.deepEqual(requests, [['GET', '/_keepalive']], 'one request covers both live sessions');
+  await rm(join(f.home, `.claude/sessions/${child.pid}.json`));
+  await register('idle', { cwd: f.home });
+  report({ ...entry, dir: f.home });
+  assert.equal((await state()).machine.claudeStatus, 'working');
+  await rm(join(f.home, `.claude/sessions/${process.pid}.json`));
+  assert.equal((await state()).machine.claudeStatus ?? null, null, 'a keeper entry alone cannot create a session');
+  await register('idle');
+  report({ ...entry, dir: alias });
+  await f.start();
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const latest = () => events.packets.filter(p => p.type === 'inventory').at(-1)?.state.projects.find(p => p.name === 'alpha');
+  await until(() => latest()?.claudeStatus === 'working');
+  await new Promise(resolve => keeper.close(resolve));
+  await until(() => latest()?.claudeStatus === 'completed');
+});
 
 test('machine Claude status follows only live sessions outside discovered projects', async t => {
   const f = await fixture(); t.after(() => f.close());

@@ -53,6 +53,7 @@ export async function fixture(options = {}) {
     PATH: zmxDirectory + ':' + process.env.PATH,
     XDG_RUNTIME_DIR: join(home, 'xdg-runtime'), XDG_STATE_HOME: join(home, 'xdg-state'),
     CLAUDE_CONFIG_DIR: join(home, '.claude'),
+    CACHE_KEEPALIVE_URL: options.keeperUrl ?? '',
   };
   delete env.ZMX_DIR; delete env.ZMX_SESSION; delete env.ZMX_SESSION_PREFIX;
   if (options.zmxDir) env.ZMX_DIR = join(home, 'custom-zmx');

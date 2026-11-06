@@ -1,5 +1,7 @@
 ///|
 priv struct ClaudeSession {
+  prefix : String
+  cwd : String
   path : String
   status : String
 }
@@ -27,11 +29,12 @@ async fn read_claude_session(root : String, name : String) -> ClaudeSession? {
   }
   let value = file.read_all().json()
   let pid = int_field(value, "pid")
+  let id = string_field(value, "sessionId")
   if pid <= 1 ||
     name != "\{pid}.json" ||
     field(value, "pid") != pid.to_json() ||
     string_field(value, "kind") != "interactive" ||
-    string_field(value, "sessionId").is_empty() {
+    id.is_empty() {
     return None
   }
   guard claude_status(string_field(value, "status")) is Some(status) else {
@@ -48,7 +51,69 @@ async fn read_claude_session(root : String, name : String) -> ClaudeSession? {
   if !cwd.has_prefix("/") || @fs.kind(cwd) != Directory {
     return None
   }
-  Some({ path: @fs.realpath(cwd), status, })
+  let prefix = id[:id.length().min(8)].to_owned()
+  Some({ prefix, cwd, path: @fs.realpath(cwd), status, })
+}
+
+///|
+async fn keeper_entries() -> Array[Json] {
+  let base = @env.get_env_var("CACHE_KEEPALIVE_URL").unwrap_or(
+    "http://127.0.0.1:8318",
+  )
+  guard base =~ re"^http://(127[.]0[.]0[.]1|localhost)(:[0-9]+)?/?$" else {
+    return []
+  }
+  @async.with_timeout(250, () => {
+    let client = @http.Client(base)
+    defer client.close()
+    guard client.get("/_keepalive").code == 200 else { return [] }
+    let body = @buffer.Buffer()
+    while client.read_some(max_len=8192) is Some(chunk) {
+      if body.length() + chunk.length() > 262144 {
+        return []
+      }
+      body.write_bytes(chunk)
+    }
+    match field(@json.parse(@utf8.decode(body.to_bytes())), "entries") {
+      Array(entries) if entries.length() <= 512 => entries
+      _ => []
+    }
+  })
+}
+
+///|
+fn apply_keeper_activity(
+  sessions : Array[ClaudeSession],
+  entries : Array[Json],
+) -> Unit {
+  // The keeper publishes only the first eight characters of each session ID.
+  // Require a unique match on both sides and the registry's launch directory.
+  let unique : Map[String, Bool] = Map([])
+  for session in sessions {
+    unique[session.prefix] = !unique.contains(session.prefix)
+  }
+  let reports : Map[String, Json] = Map([])
+  for entry in entries {
+    let key = string_field(entry, "session")
+    reports[key] = if reports.contains(key) { Json::null() } else { entry }
+  }
+  for i, session in sessions {
+    guard session.status == "completed" && unique[session.prefix] else {
+      continue
+    }
+    guard reports.get(session.prefix) is Some(entry) else { continue }
+    let dir = string_field(entry, "dir")
+    guard dir == session.cwd || dir == session.path else { continue }
+    let working = match string_field(entry, "state") {
+      "compacting" => true
+      "ready" | "armed" | "compacted" | "lapsed" | "done" =>
+        field(entry, "working") is True
+      _ => false
+    }
+    if working {
+      sessions[i] = { ..session, status: "working", }
+    }
+  }
 }
 
 ///|
@@ -79,6 +144,9 @@ async fn claude_sessions() -> Array[ClaudeSession] {
       } catch {
         error => if @async.is_being_cancelled() { raise error }
       }
+    }
+    if result.any(session => session.status == "completed") {
+      apply_keeper_activity(result, keeper_entries())
     }
   } catch {
     error => if @async.is_being_cancelled() { raise error }

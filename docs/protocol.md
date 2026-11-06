@@ -47,8 +47,10 @@ Inventory events carry changes to the phase or eligibility without remounting pr
 
 `claudeStatus` is optional live sidebar metadata, independent of `phase` and `CLAUDE.md`.
 The server reads Claude Code's local `sessions/<pid>.json` registry under `CLAUDE_CONFIG_DIR` or `~/.claude`.
-Interactive sessions map `busy` and `shell` to `working`, `idle` to `completed`, and `waiting` to `waiting`.
-Completed means Claude Code is idle and ready for another prompt; it is not a claim that the task succeeded.
+Interactive sessions map `busy` and `shell` to `working` and `waiting` to `waiting`. An `idle` session defaults to `completed`, meaning Claude Code is ready for another prompt.
+When an idle session exists, inventory also checks the local `agents` cache keeper once at `GET /_keepalive` (default `http://127.0.0.1:8318`). To use another port, set the server's `CACHE_KEEPALIVE_URL` to an HTTP origin on `127.0.0.1` or `localhost`. An empty value disables the check.
+A keeper entry can promote an idle session to `working` during compaction or when it reports `working: true`. The keeper expires that running-turn signal after 90 seconds. A new turn can report it even before its first request rearms a lapsed or stopped cache. A planned cache touch or compaction alone does not establish session activity.
+The keeper abbreviates session IDs to eight characters. A match requires a unique prefix in both sources and the same launch directory. An unavailable keeper, a response exceeding 250 ms, 256 KiB or 512 entries, or an ambiguous match leaves the registry status in effect. Only the resulting badge enters inventory.
 Project badges cover sessions whose canonical working directory is the project or one of its descendants.
 The machine's `claudeStatus` covers sessions outside all discovered projects, even when the project list is empty.
 For multiple sessions, waiting takes priority over working, then completed.
