@@ -219,7 +219,7 @@ test('header waiting indicator reveals a filtered hidden project without changin
     await page.locator('.general-item').click();
     await claudeSession(f, 'waiting');
     await expect(waiting).toHaveText('Waiting (1)');
-    await expect(page.getByRole('tab', { name: 'general', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toHaveAttribute('aria-selected', 'true');
     await rm(join(f.config.projectRoot, 'alpha'), { recursive: true });
     await expect(waiting).toBeHidden();
   } finally { await f.close(); }

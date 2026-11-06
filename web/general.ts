@@ -11,10 +11,9 @@ export function sessionNameError(value: string): string | undefined {
 
 export function nextGeneralSession(sessions: readonly string[]): string {
   const open = new Set(sessions);
-  if (!open.has('general')) return 'general';
-  let number = 2;
-  while (open.has(`general${number}`)) number++;
-  return `general${number}`;
+  let number = 1;
+  while (open.has(`misc${number}`)) number++;
+  return `misc${number}`;
 }
 
 export function restoreGeneralTabs(value: unknown): Record<string, GeneralTabs> {

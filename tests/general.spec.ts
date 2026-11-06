@@ -16,10 +16,10 @@ async function allSessions(f: any) {
   return [...stdout.matchAll(/^\s*name=(.*?)\tpid=(\d+)\tclients=(\d+)/gm)]
     .map(([, name, pid, clients]) => ({ name, pid: Number(pid), clients: Number(clients) }));
 }
-const sessions = async (f: any) => (await allSessions(f)).filter(row => /^general(?:[0-9]+)?$/.test(row.name));
+const sessions = async (f: any) => (await allSessions(f)).filter(row => /^misc[1-9][0-9]*$/.test(row.name));
 const general = (page: Page, name = 'Test workstation') => page.getByRole('button', { name: name + ', online', exact: true });
 const pane = (page: Page, name: string) => page.locator('[data-terminal-session="' + name + '"]');
-const add = (page: Page) => page.getByRole('button', { name: 'New General terminal', exact: true });
+const add = (page: Page) => page.getByRole('button', { name: 'New terminal', exact: true });
 const editor = (page: Page) => page.getByRole('dialog', { name: 'Choose zmx session', exact: true });
 
 test('General tabs reuse the lowest free name and retain panes and zmx daemons through close and reload', async ({ page }) => {
@@ -31,60 +31,78 @@ test('General tabs reuse the lowest free name and retain panes and zmx daemons t
     await project.evaluate(node => { (node as HTMLElement).dataset.continuity = 'project-kept'; });
     expect(await sessions(f)).toEqual([]);
     await general(page).click();
-    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
-    await pane(page, 'general').evaluate(node => { (node as HTMLElement).dataset.continuity = 'general-kept'; });
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
+    await pane(page, 'misc1').evaluate(node => { (node as HTMLElement).dataset.continuity = 'general-kept'; });
     await add(page).click();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-    const second = (await sessions(f)).find(row => row.name === 'general2')!;
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+    const second = (await sessions(f)).find(row => row.name === 'misc2')!;
     expect(second).toBeTruthy();
-    await page.getByRole('button', { name: 'Close general2', exact: true }).click();
-    await expect(pane(page, 'general2')).toHaveCount(0);
-    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'general2')).toEqual({ name: 'general2', pid: second.pid, clients: 0 });
+    await page.getByRole('button', { name: 'Close misc2', exact: true }).click();
+    await expect(pane(page, 'misc2')).toHaveCount(0);
+    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc2')).toEqual({ name: 'misc2', pid: second.pid, clients: 0 });
     await add(page).click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2']);
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-    expect((await sessions(f)).find(row => row.name === 'general2')!.pid).toBe(second.pid);
-    for (const name of ['general3', 'general4']) {
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2']);
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+    expect((await sessions(f)).find(row => row.name === 'misc2')!.pid).toBe(second.pid);
+    for (const name of ['misc3', 'misc4']) {
       await add(page).click();
       await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
     }
-    const third = (await sessions(f)).find(row => row.name === 'general3')!;
-    await page.getByRole('button', { name: 'Close general3', exact: true }).click();
-    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'general3')).toEqual({ name: 'general3', pid: third.pid, clients: 0 });
-    await page.getByRole('tab', { name: 'general', exact: true }).click();
-    await expect(pane(page, 'general')).toHaveAttribute('data-continuity', 'general-kept');
+    const third = (await sessions(f)).find(row => row.name === 'misc3')!;
+    await page.getByRole('button', { name: 'Close misc3', exact: true }).click();
+    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc3')).toEqual({ name: 'misc3', pid: third.pid, clients: 0 });
+    await page.getByRole('tab', { name: 'misc1', exact: true }).click();
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-continuity', 'general-kept');
     await page.getByRole('button', { name: 'alpha on Test workstation, online', exact: true }).click();
     await expect(project).toHaveAttribute('data-continuity', 'project-kept');
-    await expect(pane(page, 'general')).toBeHidden();
+    await expect(pane(page, 'misc1')).toBeHidden();
     await general(page).click();
-    await expect(pane(page, 'general')).toBeVisible();
-    await expect(pane(page, 'general')).toHaveAttribute('data-continuity', 'general-kept');
+    await expect(pane(page, 'misc1')).toBeVisible();
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-continuity', 'general-kept');
     await add(page).click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2', 'general4', 'general3']);
-    await expect(pane(page, 'general3')).toHaveAttribute('data-mode', 'control');
-    expect((await sessions(f)).find(row => row.name === 'general3')!.pid).toBe(third.pid);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2', 'misc4', 'misc3']);
+    await expect(pane(page, 'misc3')).toHaveAttribute('data-mode', 'control');
+    expect((await sessions(f)).find(row => row.name === 'misc3')!.pid).toBe(third.pid);
     await page.reload();
     await expect(general(page)).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2', 'general4', 'general3']);
-    await expect(page.getByRole('tab', { name: 'general3', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(pane(page, 'general3')).toHaveAttribute('data-mode', 'control');
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2', 'misc4', 'misc3']);
+    await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(pane(page, 'misc3')).toHaveAttribute('data-mode', 'control');
     await add(page).click();
-    await expect(pane(page, 'general5')).toHaveAttribute('data-mode', 'control');
+    await expect(pane(page, 'misc5')).toHaveAttribute('data-mode', 'control');
     const original = (await sessions(f)).map(({ name, pid }) => ({ name, pid })).sort((a, b) => a.name.localeCompare(b.name));
-    for (const name of ['general', 'general2', 'general3', 'general4', 'general5']) {
+    for (const name of ['misc1', 'misc2', 'misc3', 'misc4', 'misc5']) {
       await page.getByRole('button', { name: 'Close ' + name, exact: true }).click();
     }
     await expect(page.getByRole('tab')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'No open terminals', exact: true })).toBeVisible();
     await expect(add(page)).toBeVisible();
     await add(page).click();
-    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
-    await expect(page.getByRole('tab')).toHaveText(['general']);
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
+    await expect(page.getByRole('tab')).toHaveText(['misc1']);
     expect((await sessions(f)).map(({ name, pid }) => ({ name, pid })).sort((a, b) => a.name.localeCompare(b.name))).toEqual(original);
   } finally { await f.close(); }
 });
 
-test('General ignores legacy counters and finds holes after reloading saved tabs', async ({ page }) => {
+test('Previously selected general session survives reload without an explicit tab list', async ({ page }) => {
+  const f = await fixture();
+  try {
+    await page.goto(f.origin);
+    const key = (await f.state()).machine.id + ':@general';
+    await page.evaluate(key => {
+      localStorage.setItem('emachine:selection', JSON.stringify(key));
+      localStorage.setItem('emachine:tabs', JSON.stringify({ [key]: 'general' }));
+      localStorage.removeItem('emachine:general-tabs');
+    }, key);
+    await page.reload();
+    await expect(page.getByRole('tab')).toHaveText(['general']);
+    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
+    await add(page).click();
+    await expect(page.getByRole('tab')).toHaveText(['general', 'misc1']);
+  } finally { await f.close(); }
+});
+
+test('General retains legacy names and ignores the saved counter when allocating misc tabs', async ({ page }) => {
   const f = await fixture();
   try {
     await page.goto(f.origin);
@@ -99,14 +117,14 @@ test('General ignores legacy counters and finds holes after reloading saved tabs
     await expect(pane(page, 'general3')).toHaveAttribute('data-mode', 'control');
     await expect(add(page)).toBeEnabled();
     await add(page).click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general3', 'general2']);
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
+    await expect(page.getByRole('tab')).toHaveText(['general', 'general3', 'misc1']);
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
     await page.getByRole('button', { name: 'Close general', exact: true }).click();
     await page.reload();
-    await expect(page.getByRole('tab')).toHaveText(['general3', 'general2']);
+    await expect(page.getByRole('tab')).toHaveText(['general3', 'misc1']);
     await add(page).click();
-    await expect(page.getByRole('tab')).toHaveText(['general3', 'general2', 'general']);
-    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
+    await expect(page.getByRole('tab')).toHaveText(['general3', 'misc1', 'misc2']);
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
   } finally { await f.close(); }
 });
 
@@ -117,36 +135,36 @@ test('General session editor creates and reattaches exact named sessions without
     await page.goto(f.origin);
     await general(page).click();
     await add(page).click();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-    const previous = (await allSessions(f)).find(row => row.name === 'general2')!;
-    await page.getByRole('tab', { name: 'general2', exact: true }).dblclick();
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+    const previous = (await allSessions(f)).find(row => row.name === 'misc2')!;
+    await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
     await expect(editor(page)).toBeVisible();
-    await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('general2');
+    await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc2');
     await editor(page).getByLabel('Session name', { exact: true }).fill(name);
     await editor(page).getByRole('button', { name: 'Open session', exact: true }).click();
     await expect(editor(page)).toHaveCount(0);
-    await expect(page.getByRole('tab')).toHaveText(['general', name]);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', name]);
     await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
-    await expect(pane(page, 'general2')).toHaveCount(0);
-    await expect.poll(async () => (await allSessions(f)).find(row => row.name === 'general2')).toEqual({ ...previous, clients: 0 });
+    await expect(pane(page, 'misc2')).toHaveCount(0);
+    await expect.poll(async () => (await allSessions(f)).find(row => row.name === 'misc2')).toEqual({ ...previous, clients: 0 });
     const named = (await allSessions(f)).find(row => row.name === name)!;
     expect(named).toBeTruthy();
     await page.getByRole('button', { name: 'Close ' + name, exact: true }).click();
     await expect.poll(async () => (await allSessions(f)).find(row => row.name === name)).toEqual({ ...named, clients: 0 });
     await add(page).click();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-    expect((await allSessions(f)).find(row => row.name === 'general2')!.pid).toBe(previous.pid);
-    await page.getByRole('tab', { name: 'general2', exact: true }).dblclick();
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+    expect((await allSessions(f)).find(row => row.name === 'misc2')!.pid).toBe(previous.pid);
+    await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
     await editor(page).getByLabel('Session name', { exact: true }).fill(name);
     await editor(page).getByRole('button', { name: 'Open session', exact: true }).click();
     await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
     expect((await allSessions(f)).find(row => row.name === name)!.pid).toBe(named.pid);
     await page.reload();
-    await expect(page.getByRole('tab')).toHaveText(['general', name]);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', name]);
     await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
     expect((await allSessions(f)).find(row => row.name === name)!.pid).toBe(named.pid);
-    expect((await allSessions(f)).find(row => row.name === 'general2')!.pid).toBe(previous.pid);
+    expect((await allSessions(f)).find(row => row.name === 'misc2')!.pid).toBe(previous.pid);
   } finally { await f.close(); }
 });
 
@@ -155,22 +173,22 @@ test('General session editor handles inactive tabs, cancellation, invalid names,
   try {
     await page.goto(f.origin);
     await general(page).click();
-    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
-    await pane(page, 'general').evaluate(node => { (node as HTMLElement).dataset.continuity = 'target-kept'; });
-    for (const name of ['general2', 'general3']) {
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
+    await pane(page, 'misc1').evaluate(node => { (node as HTMLElement).dataset.continuity = 'target-kept'; });
+    for (const name of ['misc2', 'misc3']) {
       await add(page).click();
       await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
       await pane(page, name).evaluate(node => { (node as HTMLElement).dataset.continuity = 'source-kept'; });
     }
     const original = await sessions(f);
-    await page.getByRole('tab', { name: 'general2', exact: true }).dblclick();
+    await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
     await expect(editor(page)).toBeVisible();
-    await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('general2');
+    await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc2');
     await editor(page).getByLabel('Session name', { exact: true }).fill('discarded-draft');
     await editor(page).getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(editor(page)).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'general2', exact: true })).toBeFocused();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-continuity', 'source-kept');
+    await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toBeFocused();
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-continuity', 'source-kept');
     expect((await allSessions(f)).some(row => row.name === 'discarded-draft')).toBe(false);
     await page.keyboard.press('F2');
     await expect(editor(page)).toBeVisible();
@@ -190,23 +208,23 @@ test('General session editor handles inactive tabs, cancellation, invalid names,
       await editor(page).getByLabel('Session name', { exact: true }).fill(invalid);
       await editor(page).getByRole('button', { name: 'Open session', exact: true }).click();
       await expect(editor(page)).toBeVisible();
-      await expect(page.getByRole('tab')).toHaveText(['general', 'general2', 'general3']);
-      await expect(pane(page, 'general2')).toHaveAttribute('data-continuity', 'source-kept');
+      await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2', 'misc3']);
+      await expect(pane(page, 'misc2')).toHaveAttribute('data-continuity', 'source-kept');
     }
-    await editor(page).getByLabel('Session name', { exact: true }).fill('general2');
+    await editor(page).getByLabel('Session name', { exact: true }).fill('misc2');
     await editor(page).getByLabel('Session name', { exact: true }).press('Enter');
     await expect(editor(page)).toHaveCount(0);
-    await expect(pane(page, 'general2')).toHaveAttribute('data-continuity', 'source-kept');
-    await page.getByRole('tab', { name: 'general2', exact: true }).press('F2');
-    await editor(page).getByLabel('Session name', { exact: true }).fill('general');
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-continuity', 'source-kept');
+    await page.getByRole('tab', { name: 'misc2', exact: true }).press('F2');
+    await editor(page).getByLabel('Session name', { exact: true }).fill('misc1');
     await editor(page).getByRole('button', { name: 'Open session', exact: true }).click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general3']);
-    await expect(page.getByRole('tab', { name: 'general', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(pane(page, 'general')).toHaveCount(1);
-    await expect(pane(page, 'general')).toHaveAttribute('data-continuity', 'target-kept');
-    await expect(pane(page, 'general3')).toHaveAttribute('data-continuity', 'source-kept');
-    await expect(pane(page, 'general2')).toHaveCount(0);
-    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'general2')!.clients).toBe(0);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc3']);
+    await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(pane(page, 'misc1')).toHaveCount(1);
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-continuity', 'target-kept');
+    await expect(pane(page, 'misc3')).toHaveAttribute('data-continuity', 'source-kept');
+    await expect(pane(page, 'misc2')).toHaveCount(0);
+    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc2')!.clients).toBe(0);
     expect((await sessions(f)).map(({ name, pid }) => ({ name, pid }))).toEqual(original.map(({ name, pid }) => ({ name, pid })));
   } finally { await f.close(); }
 });
@@ -220,9 +238,9 @@ test('General remains available without any projects', async ({ page }) => {
     await expect(general(page)).toBeVisible();
     await expect(page.locator('.project-item')).toHaveCount(0);
     await expect(general(page)).toHaveAttribute('aria-current', 'page');
-    await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
+    await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
     await add(page).click();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
   } finally { await f.close(); }
 });
 
@@ -272,34 +290,34 @@ test('General tab lists, selections and available names belong to each machine',
     await general(page, 'Machine A').click();
     await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
     await add(page).click();
-    await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-    await page.getByRole('tab', { name: 'general', exact: true }).click();
+    await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+    await page.getByRole('tab', { name: 'misc1', exact: true }).click();
     await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
     await page.getByLabel('Name', { exact: true }).fill('Remote B');
     await page.getByLabel('Direct address', { exact: true }).fill(b.origin + '/');
     await page.getByRole('button', { name: 'Connect machine', exact: true }).click();
     await general(page, 'Machine B').click();
-    await expect(page.getByRole('tab')).toHaveText(['general']);
+    await expect(page.getByRole('tab')).toHaveText(['misc1']);
     await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
-    for (const name of ['general2', 'general3']) {
+    for (const name of ['misc2', 'misc3']) {
       await add(page).click();
       await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-terminal-session', name);
       await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
     }
     await general(page, 'Machine A').click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2']);
-    await expect(page.getByRole('tab', { name: 'general', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2']);
+    await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toHaveAttribute('aria-selected', 'true');
     await add(page).click();
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2', 'general3']);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2', 'misc3']);
     await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
     await general(page, 'Machine B').click();
-    await expect(page.getByRole('tab', { name: 'general3', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toHaveAttribute('aria-selected', 'true');
     await page.reload();
     await expect(general(page, 'Machine B')).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByRole('tab')).toHaveText(['general', 'general2', 'general3']);
-    await expect(page.getByRole('tab', { name: 'general3', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(async () => (await sessions(a)).map(row => row.name).sort()).toEqual(['general', 'general2', 'general3']);
-    await expect.poll(async () => (await sessions(b)).map(row => row.name).sort()).toEqual(['general', 'general2', 'general3']);
+    await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2', 'misc3']);
+    await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(async () => (await sessions(a)).map(row => row.name).sort()).toEqual(['misc1', 'misc2', 'misc3']);
+    await expect.poll(async () => (await sessions(b)).map(row => row.name).sort()).toEqual(['misc1', 'misc2', 'misc3']);
   } finally { await b.close(); await a.close(); }
 });
 
@@ -309,10 +327,10 @@ test('General reconnects the retained pane and session after the server restarts
     await page.goto(f.origin);
     await general(page).click();
     await add(page).click();
-    const terminal = pane(page, 'general2');
+    const terminal = pane(page, 'misc2');
     await expect(terminal).toHaveAttribute('data-mode', 'control');
     await terminal.evaluate(node => { (node as HTMLElement).dataset.continuity = 'reconnected'; });
-    const initial = (await sessions(f)).find(row => row.name === 'general2')!;
+    const initial = (await sessions(f)).find(row => row.name === 'misc2')!;
     await f.stop();
     await expect(page.getByRole('button', { name: 'Test workstation, offline', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.offline-banner')).toBeVisible();
@@ -321,7 +339,7 @@ test('General reconnects the retained pane and session after the server restarts
     await expect(general(page)).toHaveAttribute('aria-current', 'page');
     await expect(terminal).toHaveAttribute('data-mode', 'control');
     await expect(terminal).toHaveAttribute('data-continuity', 'reconnected');
-    expect((await sessions(f)).find(row => row.name === 'general2')!.pid).toBe(initial.pid);
+    expect((await sessions(f)).find(row => row.name === 'misc2')!.pid).toBe(initial.pid);
   } finally { await f.close(); }
 });
 
@@ -331,24 +349,35 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     await page.goto(f.origin);
     const row = general(page);
     await expect(row).toBeVisible();
+    const activeTab = page.getByRole('tab', { selected: true });
+    const appearance = () => activeTab.evaluate(tab => {
+      const css = getComputedStyle(tab), indicator = getComputedStyle(tab, '::after');
+      let surface: Element = tab;
+      while (surface.parentElement && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
+      return { color: css.color, padding: css.paddingInline, surface: getComputedStyle(surface).backgroundColor,
+        underline: [indicator.height, indicator.backgroundColor] };
+    });
+    const projectAppearance = await appearance();
     await row.click();
-    for (const name of ['general2', 'general3', 'general4', 'general5', 'general6']) {
+    await expect(activeTab).toBeVisible();
+    expect(await appearance()).toEqual(projectAppearance);
+    for (const name of ['misc2', 'misc3', 'misc4', 'misc5', 'misc6']) {
       await add(page).click();
       await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
     }
-    await page.getByRole('tab', { name: 'general6', exact: true }).focus();
+    await page.getByRole('tab', { name: 'misc6', exact: true }).focus();
     await page.keyboard.press('Home');
-    await expect(page.getByRole('tab', { name: 'general', exact: true })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: 'Close general', exact: true })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Close misc1', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(add(page)).toBeFocused();
-    await page.getByRole('tab', { name: 'general', exact: true }).focus();
+    await page.getByRole('tab', { name: 'misc1', exact: true }).focus();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'general2', exact: true })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toBeFocused();
     await page.keyboard.press('Delete');
-    await expect(page.getByRole('tab', { name: 'general2', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'general3', exact: true })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toBeFocused();
     for (const width of [1360, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(add(page)).toBeInViewport({ ratio: 1 });
@@ -393,8 +422,8 @@ test.describe('General mobile session tabs', () => {
       await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
       await general(page).click();
       await add(page).click();
-      await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-      const tab = page.locator('.general-tab [data-tab-id="general"]');
+      await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
       for (const target of ['tab', 'backdrop']) {
@@ -403,7 +432,7 @@ test.describe('General mobile session tabs', () => {
         await tab.dispatchEvent('contextmenu', { button: 2, clientX: 110, clientY: 25 });
         await expect(editor(page)).toBeVisible();
         const input = editor(page).getByLabel('Session name', { exact: true });
-        await expect(input).toHaveValue('general');
+        await expect(input).toHaveValue('misc1');
         await expect(input).toBeFocused();
         await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
         await (target === 'tab' ? tab : editor(page)).dispatchEvent('click', { detail: 1, clientX: 0, clientY: 0 });
@@ -411,7 +440,7 @@ test.describe('General mobile session tabs', () => {
         await expect(editor(page)).toHaveCount(1);
         await expect(editor(page)).toBeVisible();
         await expect(input).toBeFocused();
-        await expect(page.getByRole('tab', { name: 'general2', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveAttribute('aria-selected', 'true');
         await editor(page).getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(editor(page)).toHaveCount(0);
       }
@@ -426,8 +455,8 @@ test.describe('General mobile session tabs', () => {
       await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
       await general(page).click();
       await add(page).click();
-      await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
-      const tab = page.locator('.general-tab [data-tab-id="general"]');
+      await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
       await tab.dispatchEvent('pointerdown', pointer);
@@ -437,10 +466,10 @@ test.describe('General mobile session tabs', () => {
       await page.keyboard.press('Escape');
       await expect(editor(page)).toHaveCount(0);
       await expect(tab).toBeFocused();
-      await expect(page.getByRole('tab', { name: 'general2', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveAttribute('aria-selected', 'true');
       await tab.press('Enter');
       await expect(tab).toHaveAttribute('aria-selected', 'true');
-      await expect(pane(page, 'general')).toBeVisible();
+      await expect(pane(page, 'misc1')).toBeVisible();
       await expect(editor(page)).toHaveCount(0);
       await page.clock.resume();
     } finally { await f.close(); }
@@ -452,12 +481,12 @@ test.describe('General mobile session tabs', () => {
       await page.goto(f.origin);
       await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
       await general(page).click();
-      await expect(pane(page, 'general')).toHaveAttribute('data-mode', 'control');
+      await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
       await add(page).click();
-      await expect(pane(page, 'general2')).toHaveAttribute('data-mode', 'control');
+      await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
       const original = await sessions(f);
-      const tab = page.locator('.general-tab [data-tab-id="general"]');
-      const close = page.getByRole('button', { name: 'Close general2', exact: true });
+      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
+      const close = page.getByRole('button', { name: 'Close misc2', exact: true });
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
 
@@ -488,12 +517,12 @@ test.describe('General mobile session tabs', () => {
       await page.clock.runFor(650);
       await expect(editor(page)).toHaveCount(0);
       await close.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
-      await expect(page.getByRole('tab')).toHaveText(['general', 'general2']);
+      await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2']);
 
       await tab.dispatchEvent('pointerdown', pointer);
       await page.clock.runFor(650);
       await expect(editor(page)).toBeVisible();
-      await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('general');
+      await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc1');
       await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
       await tab.dispatchEvent('click', { detail: 1 });
       await expect(editor(page)).toHaveCount(1);
@@ -508,14 +537,14 @@ test.describe('General mobile session tabs', () => {
       await page.screenshot({ path: 'test-results/general-session-mobile-' + browserName + '.png', animations: 'disabled' });
       await editor(page).getByLabel('Session name', { exact: true }).fill('mobile session');
       await editor(page).getByRole('button', { name: 'Open session', exact: true }).tap();
-      await expect(page.getByRole('tab')).toHaveText(['mobile session', 'general2']);
+      await expect(page.getByRole('tab')).toHaveText(['mobile session', 'misc2']);
       await expect(pane(page, 'mobile session')).toHaveAttribute('data-mode', 'control');
-      await expect.poll(async () => (await sessions(f)).find(row => row.name === 'general')!.clients).toBe(0);
+      await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc1')!.clients).toBe(0);
       expect((await sessions(f)).map(({ name, pid }) => ({ name, pid }))).toEqual(original.map(({ name, pid }) => ({ name, pid })));
-      await page.getByRole('button', { name: 'Close general2', exact: true }).tap();
-      await expect(page.getByRole('tab', { name: 'general2', exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Close misc2', exact: true }).tap();
+      await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveCount(0);
       await expect(editor(page)).toHaveCount(0);
-      expect((await sessions(f)).find(row => row.name === 'general2')!.pid).toBe(original.find(row => row.name === 'general2')!.pid);
+      expect((await sessions(f)).find(row => row.name === 'misc2')!.pid).toBe(original.find(row => row.name === 'misc2')!.pid);
     } finally { await f.close(); }
   });
 });

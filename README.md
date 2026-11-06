@@ -79,7 +79,7 @@ Steering drafts stay with each prompt section and project while the page is open
 
 Select **History** in a project's terminal to browse its Claude Code prompts, newest first, with dates and full selectable text.
 Scroll the list and select **Load older** to continue through earlier entries. **Reload history** reads newly recorded prompts; **Copy prompt** copies exactly the displayed text.
-The history includes the project directory and its subdirectories on that machine. General terminals have no project history.
+The history includes the project directory and its subdirectories on that machine. History is available only in project terminals.
 History comes from Claude Code's `history.jsonl` in `CLAUDE_CONFIG_DIR`, or `~/.claude` by default. Available pasted text is restored; expired or unavailable pasted text is marked.
 Only prompts still recorded by Claude Code are available. Browsing and copying do not send terminal input or change the saved history.
 
@@ -95,11 +95,11 @@ The zmx session name is the project name, such as `figure-verification`. Open a 
 
 From SSH, run `zmx attach figure-verification` to use the same session. Emachine inherits `ZMX_DIR` when set; otherwise, zmx uses its normal socket directory. The service and SSH shell must use the same socket directory.
 
-Select the machine name above the project list to open its General terminals. The badge on the right shows Claude Code activity outside discovered projects, including in the home directory. **Waiting** takes priority over **Working**, then **Completed**. The badge clears when those sessions close or the machine goes offline.
+Select the machine name above the project list to open its terminals. The badge on the right shows Claude Code activity outside discovered projects, including in the home directory. **Waiting** takes priority over **Working**, then **Completed**. The badge clears when those sessions close or the machine goes offline.
 
-The first tab attaches to `general`. Select **+** in the top bar to open `general2`, `general3`, and subsequent sessions. New sessions start in the server user's home directory. Existing sessions keep their working directory and shell state, including sessions opened through SSH.
+On first use, the terminal tab opens `misc1`. Select **+** to open the lowest available name in the sequence `misc1`, `misc2`, `misc3`, and so on. For example, if only `misc1` and `misc3` are open, **+** opens `misc2`. A new session starts in the server user's home directory. An existing session resumes in its working directory with its shell state, including sessions opened through SSH.
 
-Use **×** to close a General tab. This detaches the client and keeps the session running. Open tabs, the selected tab, and the next number are saved separately for each machine in this browser. Closing all tabs leaves **+** available; select **Open general** to return to the original session. General remains available when a machine has no projects.
+Use **×** to close a tab and leave its session running. The browser remembers the open tabs and selection for each machine, including existing session names. If you close all tabs, select **Open misc1** to return to that session. Machine terminals are available even when a machine has no projects.
 
 Switching projects or tabs does not close the shell. Closing the application disconnects its attachment, not the session. After a project rename, new attachments use the new name. Existing attachments and older sessions remain intact.
 
