@@ -65,6 +65,17 @@ test('repeated finger taps leave terminal output unselected and Copy opens the s
   expect(t.input).toEqual([]);
 });
 
+test('a single finger tap clears a mouse selection on the same terminal', async ({ page }) => {
+  const t = await terminal(page);
+  const word = t.pane.locator('.xterm-rows span').filter({ hasText: /^output ready$/ }).first();
+  const bounds = (await word.boundingBox())!;
+  await page.mouse.dblclick(bounds.x + 5, bounds.y + bounds.height / 2);
+  const selection = t.pane.locator('.xterm-selection > div');
+  await expect(selection.first()).toBeVisible();
+  await page.touchscreen.tap(bounds.x + bounds.width - 5, bounds.y + bounds.height / 2);
+  await expect(selection).toHaveCount(0, { timeout: 3000 });
+});
+
 test('iOS Copy exposes stable native selection and preserves wrapped Unicode and spaces', async ({ page }) => {
   const t = await terminal(page);
   t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 24 }));

@@ -6,9 +6,14 @@ export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal)
   const { signal } = listeners;
   let gesture: { id: number; x: number; y: number; lastY: number; remainder: number; vertical: boolean; started: number } | undefined;
   const reset = () => { gesture = undefined; };
-  screen.addEventListener('pointerdown', event => {
-    // Repeated taps otherwise synthesize mouse clicks that make xterm select a word or line.
-    if (event.pointerType === 'touch' && terminal.modes.mouseTrackingMode === 'none') event.preventDefault();
+  let finger = false;
+  screen.addEventListener('pointerdown', event => { finger = event.pointerType === 'touch'; }, { signal });
+  screen.addEventListener('mousedown', event => {
+    // Single taps activate links and clear selections. xterm selects words or lines on repeated clicks.
+    if (finger && event.button === 0 && event.detail > 1 && terminal.modes.mouseTrackingMode === 'none') {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }, { signal });
   host.addEventListener('touchstart', event => {
     reset();
