@@ -111,6 +111,15 @@ test('terminal touch supports small moves and cancels gestures without stealing 
   expect(input).toEqual([]);
 });
 
+test('touchscreen Copy exposes scrollback without a mouse selection', async ({ page }) => {
+  // ChromiumFish masks touch capability even when Playwright sends real touch events.
+  await page.addInitScript(() => Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 }));
+  const { input } = await terminal(page);
+  await page.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect(page.getByRole('textbox', { name: 'Terminal output' })).toHaveValue(/ROW0399/);
+  expect(input).toEqual([]);
+});
+
 test('terminal touch keeps alternate-screen cursor and mouse wheel protocols', async ({ page }) => {
   const { input, send, host } = await terminal(page);
   const fixed = await viewport(page);
@@ -129,5 +138,8 @@ test('terminal touch keeps alternate-screen cursor and mouse wheel protocols', a
   input.length = 0;
   await swipe(page, host, 0, -96);
   await expect.poll(() => input.join('')).toMatch(/^(\u001b\[<65;\d+;\d+M)+$/);
+  input.length = 0;
+  await host.tap({ position: { x: 24, y: 24 } });
+  await expect.poll(() => input.join('')).toMatch(/^\u001b\[<0;\d+;\d+M\u001b\[<0;\d+;\d+m$/);
   expect(await viewport(page)).toEqual(fixed);
 });

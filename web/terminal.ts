@@ -173,9 +173,11 @@ export class TerminalPane {
     this.terminal.loadAddon(this.fit);
     const canInput = () => this.canInput();
     this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
-    if (isIOS()) {
+    if (isIOS() || navigator.maxTouchPoints > 0) {
       this.copyOutput = new TerminalCopyOutput(this.terminal, copyButton);
       this.element.append(this.copyOutput.element);
+    }
+    if (isIOS()) {
       this.textInput = new TerminalTextInput({
         canSend: canInput,
         send: text => {

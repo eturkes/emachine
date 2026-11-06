@@ -6,6 +6,10 @@ export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal)
   const { signal } = listeners;
   let gesture: { id: number; x: number; y: number; lastY: number; remainder: number; vertical: boolean; started: number } | undefined;
   const reset = () => { gesture = undefined; };
+  screen.addEventListener('pointerdown', event => {
+    // Repeated taps otherwise synthesize mouse clicks that make xterm select a word or line.
+    if (event.pointerType === 'touch' && terminal.modes.mouseTrackingMode === 'none') event.preventDefault();
+  }, { signal });
   host.addEventListener('touchstart', event => {
     reset();
     if (event.touches.length !== 1 || event.target instanceof Element && event.target.closest('.scrollbar')) return;

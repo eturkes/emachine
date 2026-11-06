@@ -51,6 +51,20 @@ async function select(text: Locator, start: number, end: number) {
   }, { start, end });
 }
 
+test('repeated finger taps leave terminal output unselected and Copy opens the snapshot', async ({ page }) => {
+  const t = await terminal(page);
+  const word = t.pane.locator('.xterm-rows span').filter({ hasText: /^output ready$/ }).first();
+  const bounds = (await word.boundingBox())!;
+  const x = bounds.x + 5, y = bounds.y + bounds.height / 2;
+  await page.touchscreen.tap(x, y);
+  await page.touchscreen.tap(x, y);
+  await expect(t.pane.locator('.xterm-helper-textarea')).toBeFocused();
+  const { output } = await t.open();
+  await expect(output).toHaveValue('output ready');
+  expect(await writes(page)).toEqual([]);
+  expect(t.input).toEqual([]);
+});
+
 test('iOS Copy exposes stable native selection and preserves wrapped Unicode and spaces', async ({ page }) => {
   const t = await terminal(page);
   t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 24 }));

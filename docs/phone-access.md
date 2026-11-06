@@ -101,7 +101,7 @@ All three buttons stay visible when you scroll the shortcut bar. Keyboard's pres
 The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, **Ctrl-O**, **Ctrl-E**, and **Ctrl-X Ctrl-S**.
 Connection messages and **Take control** appear above the controls when needed.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.
-Short taps open the keyboard; swipes and long presses keep their existing behavior.
+Short taps open the keyboard. To select text, use **Copy** in the toolbar.
 
 On iPhone and iPad, the terminal uses smaller text to show more content.
 The terminal disables double-tap zoom. You can still pinch to zoom.
@@ -120,7 +120,7 @@ Closing or switching a tab leaves its zmx session and running programs alive. Sw
 
 ## Copy terminal output
 
-On iPhone or iPad, tap **Copy** in the text tools row below the terminal keys.
+On a touchscreen, tap **Copy** in the text tools row below the terminal keys.
 When no terminal text is already selected, this opens **Copy terminal output** with a selectable snapshot.
 Press and hold the text to select a passage and adjust the native selection handles, then tap **Copy selection** or the device's **Copy** command.
 Tap **Copy all** to copy the whole snapshot, including the available terminal scrollback.
