@@ -9,6 +9,38 @@ import { claudeSession } from './claude-helper.mjs';
 
 const exec = promisify(execFile);
 
+test('machine Claude status follows only live sessions outside discovered projects', async t => {
+  const f = await fixture(); t.after(() => f.close());
+  const child = spawn('sleep', ['120']); t.after(() => child.kill());
+  const inventory = async () => JSON.parse(await f.cli('projects'));
+  const project = join(f.config.projectRoot, 'alpha');
+  const alias = join(f.home, 'project-alias');
+  await mkdir(join(project, 'nested'));
+  await symlink(join(project, 'nested'), alias);
+  await claudeSession(f, 'waiting', { pid: child.pid, cwd: alias });
+  let state = await inventory();
+  assert.equal(state.projects.find(p => p.name === 'alpha').claudeStatus, 'waiting');
+  assert.equal(state.machine.claudeStatus ?? null, null);
+  const session = await claudeSession(f, 'idle', { cwd: f.home });
+  assert.equal((await inventory()).machine.claudeStatus, 'completed');
+  await claudeSession(f, 'shell', { pid: child.pid, cwd: f.home });
+  assert.equal((await inventory()).machine.claudeStatus, 'working');
+  await claudeSession(f, 'waiting', { cwd: f.home });
+  assert.equal((await inventory()).machine.claudeStatus, 'waiting');
+  await rename(f.config.projectRoot, join(f.home, 'former-projects'));
+  state = await inventory();
+  assert.deepEqual(state.projects, []);
+  assert.equal(state.machine.claudeStatus, 'waiting');
+  const events = await socket(f, 'api/v1/events'); t.after(() => events.close());
+  const latest = () => events.packets.filter(p => p.type === 'inventory').at(-1)?.state;
+  await until(() => latest()?.machine.claudeStatus === 'waiting');
+  await rm(session.path);
+  await until(() => latest()?.machine.claudeStatus === 'working');
+  await new Promise(resolve => { child.once('exit', resolve); child.kill(); });
+  await until(() => latest() && latest().machine.claudeStatus == null);
+  assert.equal((await f.state()).machine.claudeStatus ?? null, null);
+});
+
 test('Claude status follows live sessions without opening terminals or reading transcripts', async t => {
   const f = await fixture(); t.after(() => f.close());
   const events = await socket(f, 'api/v1/events'); t.after(() => events.close());

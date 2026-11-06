@@ -5,6 +5,8 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 // @ts-expect-error This JavaScript fixture drives the real native server.
 import { fixture } from './network-helper.mjs';
+// @ts-expect-error Real session metadata fixture with process-identity validation.
+import { claudeSession } from './claude-helper.mjs';
 // @ts-expect-error Shared neutral-theme gate.
 import { neutralTheme } from './theme-contract.mjs';
 
@@ -15,7 +17,7 @@ async function allSessions(f: any) {
     .map(([, name, pid, clients]) => ({ name, pid: Number(pid), clients: Number(clients) }));
 }
 const sessions = async (f: any) => (await allSessions(f)).filter(row => /^general(?:[0-9]+)?$/.test(row.name));
-const general = (page: Page, name = 'Test workstation') => page.getByRole('button', { name: 'General on ' + name + ', online', exact: true });
+const general = (page: Page, name = 'Test workstation') => page.getByRole('button', { name: name + ', online', exact: true });
 const pane = (page: Page, name: string) => page.locator('[data-terminal-session="' + name + '"]');
 const add = (page: Page) => page.getByRole('button', { name: 'New General terminal', exact: true });
 const editor = (page: Page) => page.getByRole('dialog', { name: 'Choose zmx session', exact: true });
@@ -224,6 +226,44 @@ test('General remains available without any projects', async ({ page }) => {
   } finally { await f.close(); }
 });
 
+test('machine sidebar row names the machine and shows live non-project Claude activity', async ({ page }) => {
+  const name = 'My workstation';
+  const f = await fixture({ name });
+  try {
+    await claudeSession(f, 'waiting');
+    await page.goto(f.origin);
+    const row = page.locator('.general-item');
+    const status = row.locator('.claude-status');
+    await expect(page.locator('.project-item .claude-status')).toHaveText('Waiting');
+    expect.soft(await row.innerText()).toBe(name);
+    await expect(status).toHaveCount(0);
+
+    for (const [source, label] of [['busy', 'Working'], ['idle', 'Completed'], ['waiting', 'Waiting']]) {
+      await claudeSession(f, source, { cwd: f.home });
+      await expect(status).toHaveText(label);
+      await expect(row).toHaveAccessibleName(new RegExp(name + '.*Claude Code: ' + label));
+      await expect(page.locator('.project-item .claude-status')).toHaveCount(0);
+    }
+    for (const width of [1360, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      if (width === 320) await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+      await expect(status).toBeInViewport({ ratio: 1 });
+      const title = (await row.locator('strong').boundingBox())!;
+      const badge = (await status.boundingBox())!;
+      expect(badge.x).toBeGreaterThanOrEqual(title.x + title.width);
+      expect(Math.abs((title.y + title.height / 2) - (badge.y + badge.height / 2))).toBeLessThan(2);
+    }
+    await f.stop();
+    await expect(row).toHaveAccessibleName(name + ', offline');
+    await expect(status).toHaveCount(0);
+    await f.start();
+    await expect(status).toHaveText('Waiting');
+    await rm(join(f.home, `.claude/sessions/${process.pid}.json`));
+    await expect(status).toHaveCount(0);
+    await expect(row).toHaveAccessibleName(name + ', online');
+  } finally { await f.close(); }
+});
+
 test('General tab lists, selections and available names belong to each machine', async ({ page }) => {
   const a = await fixture({ name: 'Machine A' });
   const b = await fixture({ name: 'Machine B', origins: [a.origin] });
@@ -274,7 +314,7 @@ test('General reconnects the retained pane and session after the server restarts
     await terminal.evaluate(node => { (node as HTMLElement).dataset.continuity = 'reconnected'; });
     const initial = (await sessions(f)).find(row => row.name === 'general2')!;
     await f.stop();
-    await expect(page.getByRole('button', { name: 'General on Test workstation, offline', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('button', { name: 'Test workstation, offline', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.offline-banner')).toBeVisible();
     await expect(terminal).toHaveAttribute('data-mode', 'disconnected');
     await f.start();
@@ -322,11 +362,10 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
         if (width <= 700) await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
         await expect(row).toBeInViewport({ ratio: 1 });
         const styles = await page.locator('.general-item, .project-item').evaluateAll(nodes => nodes.map(node => {
-          const title = node.querySelector('strong')!; const machine = node.querySelector('small')!;
-          const bounds = node.getBoundingClientRect(); const heading = title.getBoundingClientRect(); const metadata = machine.getBoundingClientRect();
+          const title = node.querySelector('strong')!;
+          const bounds = node.getBoundingClientRect(); const heading = title.getBoundingClientRect();
           return { general: node.classList.contains('general-item'), height: bounds.height, left: heading.left,
             border: getComputedStyle(node).borderLeftWidth, weight: getComputedStyle(title).fontWeight,
-            inline: Math.abs(heading.top + heading.height / 2 - metadata.top - metadata.height / 2) < 1,
             fits: node.scrollWidth <= node.clientWidth };
         }));
         const generalStyle = styles.find(style => style.general)!; const projectStyle = styles.find(style => !style.general)!;
@@ -335,7 +374,6 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
         expect(generalStyle.left).toBeCloseTo(projectStyle.left, 0);
         expect(generalStyle.border).toBe(projectStyle.border);
         expect(generalStyle.weight).toBe(projectStyle.weight);
-        expect(generalStyle.inline).toBe(true);
         expect(generalStyle.fits).toBe(true);
         await neutralTheme(page.locator('body'), { tokens: ['bg', 'surface', 'raised', 'text', 'muted', 'accent'], selectors: ['.general-item', '.general-tab', '.new-terminal'], surfaces: ['bg', 'surface', 'raised'] });
         await page.screenshot({ path: 'test-results/general-' + width + '-' + theme + '.png', animations: 'disabled' });

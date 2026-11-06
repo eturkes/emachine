@@ -95,7 +95,9 @@ The zmx session name is the project name, such as `figure-verification`. Open a 
 
 From SSH, run `zmx attach figure-verification` to use the same session. Emachine inherits `ZMX_DIR` when set; otherwise, zmx uses its normal socket directory. The service and SSH shell must use the same socket directory.
 
-Each machine has a **General** entry above the project list. Select it to attach to `general`. Select **+** in the top bar to open `general2`, `general3`, and subsequent sessions. New sessions start in the server user's home directory. Existing sessions keep their working directory and shell state, including sessions opened through SSH.
+Select the machine name above the project list to open its General terminals. The badge on the right shows Claude Code activity outside discovered projects, including in the home directory. **Waiting** takes priority over **Working**, then **Completed**. The badge clears when those sessions close or the machine goes offline.
+
+The first tab attaches to `general`. Select **+** in the top bar to open `general2`, `general3`, and subsequent sessions. New sessions start in the server user's home directory. Existing sessions keep their working directory and shell state, including sessions opened through SSH.
 
 Use **×** to close a General tab. This detaches the client and keeps the session running. Open tabs, the selected tab, and the next number are saved separately for each machine in this browser. Closing all tabs leaves **+** available; select **Open general** to return to the original session. General remains available when a machine has no projects.
 

@@ -14,6 +14,8 @@ pub fn content_type(String) -> String
 
 pub async fn discover(Config) -> Array[Project]
 
+pub async fn discover_state(Config) -> State
+
 pub async fn ensure_dir(String) -> Unit
 
 pub fn feature_data(Config, String, String) -> String raise
@@ -99,6 +101,7 @@ pub(all) struct Machine {
   name : String
   version : String
   projectRoot : String
+  claudeStatus : String?
 } derive(ToJson, @json.FromJson)
 
 pub(all) struct Project {

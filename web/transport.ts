@@ -2,7 +2,7 @@ export interface Feature { id: string; title: string; revision: string; entry: s
 export type Phase = 'PROTOTYPE' | 'ITERATE' | 'IMPLEMENT' | 'MAINTAIN' | 'UNKNOWN';
 export type ClaudeStatus = 'working' | 'completed' | 'waiting';
 export interface Project { id: string; name: string; path: string; phase?: Phase | null; claudeStatus?: ClaudeStatus | null; features: Feature[]; diagnostics: { feature: string; message: string; updatedAt: number }[] }
-export interface Machine { id: string; name: string; version: string; projectRoot: string }
+export interface Machine { id: string; name: string; version: string; projectRoot: string; claudeStatus?: ClaudeStatus | null }
 export interface Inventory { protocol: 1; machine: Machine; projects: Project[] }
 export interface Connection { key: string; id?: string; name: string; direct: string; gateway?: string }
 export interface Job { id: string; project: string; feature: string; action: string; status: string; startedAt: number; finishedAt?: number; exitCode?: number; message?: string }
@@ -33,11 +33,17 @@ export function socketUrl(base: string, relative: string): string {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.href;
 }
+function validateClaudeStatus(status: unknown): void {
+  if (status != null && status !== 'working' && status !== 'completed' && status !== 'waiting') {
+    throw new Error('The machine returned an invalid Claude Code status.');
+  }
+}
 export function inventory(value: unknown): Inventory {
   const v = value as Inventory;
   if (v?.protocol !== 1 || !/^[a-z0-9-]{1,48}$/.test(v.machine?.id ?? '') || typeof v.machine.name !== 'string' || !Array.isArray(v.projects)) {
     throw new Error('This address did not return an emachine v1 inventory.');
   }
+  validateClaudeStatus(v.machine.claudeStatus);
   for (const project of v.projects) {
     if (!/^[a-z0-9-]{1,48}$/.test(project.id) || typeof project.name !== 'string' || !Array.isArray(project.features) || !Array.isArray(project.diagnostics)) {
       throw new Error('The machine returned an invalid project.');
@@ -45,9 +51,7 @@ export function inventory(value: unknown): Inventory {
     if (project.phase != null && !['PROTOTYPE', 'ITERATE', 'IMPLEMENT', 'MAINTAIN', 'UNKNOWN'].includes(project.phase)) {
       throw new Error('The machine returned an invalid development phase.');
     }
-    if (project.claudeStatus != null && !['working', 'completed', 'waiting'].includes(project.claudeStatus)) {
-      throw new Error('The machine returned an invalid Claude Code status.');
-    }
+    validateClaudeStatus(project.claudeStatus);
     for (const feature of project.features) {
       if (!/^[a-z0-9-]{1,48}$/.test(feature.id) || typeof feature.title !== 'string' || !/^[a-f0-9]{64}$/.test(feature.revision) || typeof feature.entry !== 'string') {
         throw new Error('The machine returned an invalid feature.');
@@ -95,7 +99,7 @@ export class Link {
     this.config.id = next.machine.id;
     this.state = next;
     // Live activity must never survive as a stale offline indicator.
-    store(CACHE + this.config.key, { ...next, projects: next.projects.map(p => ({ ...p, path: '', claudeStatus: undefined, diagnostics: [] })) });
+    store(CACHE + this.config.key, { ...next, machine: { ...next.machine, claudeStatus: undefined }, projects: next.projects.map(p => ({ ...p, path: '', claudeStatus: undefined, diagnostics: [] })) });
     this.changed();
   }
   async connect(): Promise<void> {

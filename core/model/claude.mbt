@@ -87,13 +87,13 @@ async fn claude_sessions() -> Array[ClaudeSession] {
 }
 
 ///|
-fn project_claude_status(
-  path : String,
+fn session_activity(
   sessions : Array[ClaudeSession],
+  includes_path : (String) -> Bool,
 ) -> String? {
   let mut status : String? = None
   for session in sessions {
-    if !is_within(session.path, path) {
+    if !includes_path(session.path) {
       continue
     }
     if session.status == "waiting" {

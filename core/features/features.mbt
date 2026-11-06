@@ -478,8 +478,8 @@ pub async fn mark_fresh(
 
 ///|
 pub async fn inventory(config : @model.Config) -> @model.State {
-  let projects = @model.discover(config)
-  for project in projects {
+  let state = @model.discover_state(config)
+  for project in state.projects {
     let records = active(config, project.id)
     for record in records {
       let feature = record.feature
@@ -536,7 +536,7 @@ pub async fn inventory(config : @model.Config) -> @model.State {
       }
     }
   }
-  { protocol: 1, machine: @model.machine(config), projects, }
+  state
 }
 
 ///|

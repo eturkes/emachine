@@ -177,7 +177,7 @@ test('project histories stay separate, reload current bytes, and are absent from
   await page.getByRole('button', { name: 'alpha on Test workstation, online', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])').getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-expanded', 'false');
   const again = await openHistory(page); await expect(again.entries).toContainText(alphaBody);
-  await page.getByRole('button', { name: 'General on Test workstation, online', exact: true }).click();
+  await page.getByRole('button', { name: 'Test workstation, online', exact: true }).click();
   await expect(page.getByRole('complementary', { name: 'Prompt history', exact: true })).toHaveCount(0);
   await expect(page.locator('.terminal-pane:not([hidden])').getByRole('button', { name: 'History', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => Object.values(localStorage).some(value => /Alpha request|Beta request|New alpha request/.test(value)))).toBe(false);

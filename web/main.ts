@@ -2,7 +2,7 @@ import '@fontsource-variable/atkinson-hyperlegible-next';
 import '@fontsource/iosevka/400.css';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
-import { Fleet, Link, baseUrl, endpoint, type Connection, type Feature, type Job, type Project } from './transport';
+import { Fleet, Link, baseUrl, endpoint, type ClaudeStatus, type Connection, type Feature, type Job, type Project } from './transport';
 import { TerminalPane, type Theme } from './terminal';
 import { nextGeneralSession, restoreGeneralTabs, sessionNameError, type GeneralTabs } from './general';
 import { attachSessionTabEditor } from './session-tab';
@@ -198,14 +198,31 @@ function choose(key: string, tab?: string): void {
   app.classList.remove('drawer-open'); render();
 }
 let draggedProject = '';
+const claudeActivity = {
+  working: ['Working', 'Claude Code is working.'],
+  completed: ['Completed', 'Claude Code is idle and ready for another prompt.'],
+  waiting: ['Waiting', 'Claude Code is waiting for input.'],
+} as const;
+function claudeIndicator(row: HTMLButtonElement, status: ClaudeStatus): HTMLElement {
+  const [label, description] = claudeActivity[status];
+  row.dataset.claudeStatus = status;
+  row.title += `, Claude Code: ${label}${status === 'waiting' ? ' for input' : ''}`;
+  row.setAttribute('aria-label', row.title);
+  const indicator = $('span', 'claude-status'); indicator.title = description;
+  const icon = $('span', 'claude-status-icon'); icon.setAttribute('aria-hidden', 'true');
+  indicator.append(icon, $('span', '', label));
+  return indicator;
+}
 function renderRail(): void {
   renderWaitingProjects();
   const generalScroll = generalList.scrollTop; generalList.replaceChildren();
   for (const { key, link } of generalEntries()) {
-    const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `General on ${link.state!.machine.name}, ${link.online ? 'online' : 'offline'}`);
+    const machine = link.state!.machine;
+    const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `${machine.name}, ${link.online ? 'online' : 'offline'}`);
     b.dataset.generalKey = key; b.setAttribute('aria-current', key === selected ? 'page' : 'false');
-    const copy = $('span', 'general-copy'); copy.append($('strong', '', 'General'), $('small', '', link.state!.machine.name));
-    b.append(copy); generalList.append(b);
+    b.append($('strong', '', machine.name));
+    if (link.online && machine.claudeStatus) b.append(claudeIndicator(b, machine.claudeStatus));
+    generalList.append(b);
   }
   generalList.hidden = !generalList.childElementCount; generalList.scrollTop = generalScroll;
   const scroll = projectList.scrollTop; projectList.replaceChildren();
@@ -213,9 +230,7 @@ function renderRail(): void {
   for (const item of items) {
     const phase = item.project.phase ? item.project.phase[0] + item.project.phase.slice(1).toLowerCase() : '';
     const status = item.link.online ? item.project.claudeStatus : null;
-    const activity = status ? { working: 'Working', completed: 'Completed', waiting: 'Waiting' }[status] : '';
-    const description = status ? { working: 'Claude Code is working.', completed: 'Claude Code is idle and ready for another prompt.', waiting: 'Claude Code is waiting for input.' }[status] : '';
-    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}${phase ? `, phase: ${phase}` : ''}${status ? `, Claude Code: ${activity}${status === 'waiting' ? ' for input' : ''}` : ''}`);
+    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}${phase ? `, phase: ${phase}` : ''}`);
     b.dataset.projectKey = item.key; b.setAttribute('aria-current', item.key === selected ? 'page' : 'false'); b.draggable = true;
     const copy = $('span', 'project-copy');
     const heading = $('span', 'project-heading'); heading.append($('strong', '', item.project.name));
@@ -227,12 +242,8 @@ function renderRail(): void {
     const machine = $('small', '', item.link.state!.machine.name);
     copy.append(heading);
     if (status) {
-      b.dataset.claudeStatus = status;
       const meta = $('span', 'project-meta');
-      const indicator = $('span', 'claude-status'); indicator.title = description;
-      const icon = $('span', 'claude-status-icon'); icon.setAttribute('aria-hidden', 'true');
-      indicator.append(icon, $('span', '', activity));
-      meta.append(machine, indicator); copy.append(meta);
+      meta.append(machine, claudeIndicator(b, status)); copy.append(meta);
     } else copy.append(machine);
     b.append(copy);
     b.ondragstart = event => { draggedProject = item.key; event.dataTransfer?.setData('text/plain', item.key); };

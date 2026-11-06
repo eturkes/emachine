@@ -23,6 +23,7 @@ pub(all) struct Machine {
   name : String
   version : String
   projectRoot : String
+  claudeStatus : String?
 } derive(ToJson, @json.FromJson)
 
 ///|
@@ -456,11 +457,34 @@ pub fn machine(config : Config) -> Machine {
     name: config.machineName,
     version: "0.1.0",
     projectRoot: config.projectRoot,
+    claudeStatus: None,
   }
 }
 
 ///|
 pub async fn discover(config : Config) -> Array[Project] {
+  discover_projects(config, claude_sessions())
+}
+
+///|
+pub async fn discover_state(config : Config) -> State {
+  let sessions = claude_sessions()
+  let projects = discover_projects(config, sessions)
+  let general = session_activity(sessions, cwd => {
+    !projects.any(project => is_within(cwd, project.path))
+  })
+  {
+    protocol: 1,
+    machine: { ..machine(config), claudeStatus: general, },
+    projects,
+  }
+}
+
+///|
+async fn discover_projects(
+  config : Config,
+  sessions : Array[ClaudeSession],
+) -> Array[Project] {
   let lock = @fs.open(
     config.stateRoot + "/registry.lock",
     mode=ReadWrite,
@@ -480,7 +504,6 @@ pub async fn discover(config : Config) -> Array[Project] {
     return result
   }
   let names = @fs.readdir(config.projectRoot, sort=true)
-  let sessions = claude_sessions()
   let mut changed = false
   for name in names {
     if name == ".snapshots" || name == ".pnpm-store" {
@@ -519,7 +542,7 @@ pub async fn discover(config : Config) -> Array[Project] {
       name,
       path,
       phase: project_phase(path),
-      claudeStatus: project_claude_status(path, sessions),
+      claudeStatus: session_activity(sessions, cwd => is_within(cwd, path)),
       features: [],
       diagnostics: [],
     })

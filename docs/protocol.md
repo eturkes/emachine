@@ -20,7 +20,8 @@ Event and terminal sockets send heartbeats every 10 seconds. After more than 30 
 ```
 {
   protocol: 1,
-  machine: {id: string, name: string, version: string, projectRoot: string},
+  machine: {id: string, name: string, version: string, projectRoot: string,
+    claudeStatus?: "working" | "completed" | "waiting" | null},
   projects: [{id: string, name: string, path: string,
     phase?: "PROTOTYPE" | "ITERATE" | "IMPLEMENT" | "MAINTAIN" | "UNKNOWN" | null,
     claudeStatus?: "working" | "completed" | "waiting" | null,
@@ -48,7 +49,8 @@ Inventory events carry changes to the phase or eligibility without remounting pr
 The server reads Claude Code's local `sessions/<pid>.json` registry under `CLAUDE_CONFIG_DIR` or `~/.claude`.
 Interactive sessions map `busy` and `shell` to `working`, `idle` to `completed`, and `waiting` to `waiting`.
 Completed means Claude Code is idle and ready for another prompt; it is not a claim that the task succeeded.
-Match canonical session working directories to a project or its descendants.
+Project badges cover sessions whose canonical working directory is the project or one of its descendants.
+The machine's `claudeStatus` covers sessions outside all discovered projects, even when the project list is empty.
 For multiple sessions, waiting takes priority over working, then completed.
 Validate the process owner, kernel start stamp, and supplied PID domain before showing a session.
 Dead processes, absent or unsupported metadata, and unreadable records produce no indicator.
