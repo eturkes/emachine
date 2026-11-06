@@ -42,7 +42,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .project-item:hover, .general-item:hover { background: var(--hover); }
 .project-item.active, .general-item.active { border-color: color-mix(in srgb,var(--accent) 23%,transparent); background: var(--accent-soft); }
 .general-list { flex-shrink: 0; overflow: auto; max-height: 30%; padding: 8px 9px 0; }
-.general-list:not([hidden]) + .rail-label { margin-top: 18px; }
+.general-list:not([hidden]) + .rail-label { margin-top: 10px; }
 .general-item { min-height: 40px; padding-block: 8px; justify-content: space-between; }
 .project-copy { min-width: 0; display: grid; gap: 4px; width: 100%; }
 .project-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
