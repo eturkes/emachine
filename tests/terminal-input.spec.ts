@@ -311,7 +311,7 @@ test.describe('terminal input', () => {
     await expect(promptTools.getByRole('button')).toHaveText(['Prompts', 'History']);
     await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true, includeHidden: true })).toHaveCount(0);
     await expect(t.pane.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
-    await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['←', '↓', '↑', '→']);
+    await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['↑', '↓', '←', '→']);
     await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-O', 'Ctrl-E', 'Ctrl-X Ctrl-S']);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
@@ -323,9 +323,9 @@ test.describe('terminal input', () => {
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
         const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
         const tab = element.querySelector('button[aria-label="Tab"]')!.getBoundingClientRect();
-        const [first, left, down] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        const [first, up, down] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
         const tools = element.querySelector('.terminal-tools')!.getBoundingClientRect();
-        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: down.left - left.right, groupGap: left.left - first.right,
+        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: down.left - up.right, groupGap: up.left - first.right,
           keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: first.top,
           toolsTop: tools.top, keyboardBottom: keyboard.bottom,
           keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: first.height };
