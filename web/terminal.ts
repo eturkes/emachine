@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { attachTerminalTouchScroll } from './terminal-touch';
+import { attachNativeSelection } from './terminal-native-selection';
 import { attachTerminalClipboard } from './terminal-clipboard';
 import { TerminalCopyOutput } from './terminal-copy';
 import { attachTerminalInput, isIOS } from './terminal-input';
@@ -67,6 +68,7 @@ export class TerminalPane {
   private history?: TerminalHistory;
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private copyOutput?: TerminalCopyOutput;
+  private nativeSelection?: ReturnType<typeof attachNativeSelection>;
   private fit = new FitAddon();
   private ws?: WebSocket;
   private decoding?: AbortController;
@@ -193,6 +195,7 @@ export class TerminalPane {
         focusTerminal: () => this.terminal.focus(),
       });
       this.host.after(this.textInput.element); textTools.prepend(this.textInput.button);
+      this.nativeSelection = attachNativeSelection(this.element, this.host, this.terminal, copyButton);
     }
     this.prompts = new TerminalPrompts({
       link: () => this.link,
@@ -217,7 +220,7 @@ export class TerminalPane {
       if (this.closed) return;
       this.terminal.open(this.host);
       this.detachInput = attachTerminalInput(this.host, this.terminal);
-      this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal);
+      this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal, this.nativeSelection?.open);
       this.attachKeyboard();
       this.keyboard.disabled = false;
       this.layout();
@@ -282,7 +285,7 @@ export class TerminalPane {
     this.ws!.send(JSON.stringify({ type: 'resize', cols, rows }));
   }
   private async copy(): Promise<void> {
-    const text = this.terminal.getSelection();
+    const text = this.nativeSelection?.copyText() ?? this.terminal.getSelection();
     if (!text && this.copyOutput) { this.copyOutput.open(); return; }
     if (!this.copyOutput) this.terminal.focus();
     if (!text) { this.notice('Select terminal text to copy.'); return; }
@@ -306,7 +309,7 @@ export class TerminalPane {
     this.element.hidden = !show;
     if (!show) this.clipboard.close();
     // A render hides every pane before showing the active one again.
-    if (!show) queueMicrotask(() => { if (!this.visible) { this.prompts.close(false); this.history?.close(false); this.copyOutput?.close(false); } });
+    if (!show) queueMicrotask(() => { if (!this.visible) { this.prompts.close(false); this.history?.close(false); this.copyOutput?.close(false); this.nativeSelection?.close(); } });
     if (show) requestAnimationFrame(() => { this.layout(); this.connect(); });
   }
   private layout(): void {
@@ -543,6 +546,7 @@ export class TerminalPane {
     this.prompts.dispose();
     this.history?.dispose();
     this.copyOutput?.dispose();
+    this.nativeSelection?.dispose();
     if (this.attachment && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'detach' }));
     this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminalReplies.dispose(); this.terminalRestore.dispose(); this.terminal.dispose(); this.element.remove();
   }

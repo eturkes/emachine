@@ -109,6 +109,106 @@ test('a deliberate hold selects the touched word without focusing the terminal',
   expect(t.input).toEqual([]);
 });
 
+test('iOS native handoff selects the exact wrapped occurrence and copies an adjusted browser range', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 10 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  const word = 'abcd\u754ce\u0301f';
+  const history = Array.from({ length: 35 }, (_, index) => 'history ' + index);
+  const prefix = [...history, 'first ' + word, ' '.repeat(15)].join('\n');
+  const output = prefix + word + '\nnext row';
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H' + output.replaceAll('\n', '\r\n')));
+  const rows = t.pane.locator('.xterm-rows');
+  await expect(rows).toContainText('next row');
+  const wrapped = rows.locator(':scope > div').filter({ hasText: '\u754ce\u0301f' }).last();
+  await expect(wrapped).not.toContainText('abcd');
+  const row = (await wrapped.boundingBox())!, screen = (await t.pane.locator('.xterm-screen').boundingBox())!;
+  await hold(page, browserName, t.pane, { x: screen.x + 1.5 * screen.width / 20, y: row.y + row.height / 2 });
+  const selected = () => page.evaluate(() => document.getSelection()?.toString());
+  await expect.poll(selected, { timeout: 3000 }).toBe(word);
+  t.send(Buffer.from('\r\nnew output'));
+  await expect(rows).toContainText('new output');
+  const inspection = await page.evaluate(() => {
+    const selection = document.getSelection()!, range = selection.getRangeAt(0);
+    const text = range.startContainer, target = text.parentElement!;
+    const bounds = range.getClientRects()[0];
+    const hit = bounds && document.elementFromPoint(bounds.left + 1, bounds.top + bounds.height / 2);
+    const result = {
+      text: text.textContent, offset: range.startOffset, editable: target.isContentEditable,
+      reachable: hit !== null && target.contains(hit), selectable: getComputedStyle(target).userSelect,
+      menu: target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+      drag: target.dispatchEvent(new Event('touchmove', { bubbles: true, cancelable: true })),
+    };
+    range.setEnd(range.endContainer, range.endOffset + '\nnext'.length);
+    selection.removeAllRanges(); selection.addRange(range);
+    return result;
+  });
+  expect(inspection).toEqual({ text: output, offset: prefix.length, editable: false, reachable: true, selectable: 'text', menu: true, drag: true });
+  await expect.poll(selected).toBe(word + '\nnext');
+  const copy = t.pane.getByRole('button', { name: 'Copy', exact: true });
+  await copy.tap();
+  await expect.poll(() => writes(page)).toEqual([word + '\nnext']);
+  // Target the final word by geometry. The browser's pointer handling must create this new selection.
+  const point = await t.pane.locator('.terminal-native-selection pre').evaluate(pre => {
+    const text = pre.firstChild as Text;
+    const range = document.createRange(); range.setStart(text, text.length - 3); range.setEnd(text, text.length);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.dblclick(point.x, point.y);
+  await expect.poll(selected, { timeout: 3000 }).toBe('row');
+  await copy.tap();
+  await expect.poll(() => writes(page)).toEqual([word + '\nnext', 'row']);
+  await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
+  expect(t.input).toEqual([]);
+});
+
+test('iOS native handoff clips a selection crossing the instructions to the output', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
+  const view = t.pane.getByRole('region', { name: 'Select terminal text', exact: true });
+  const hint = view.locator('.terminal-selection-bar span');
+  await expect.soft(hint).toHaveCSS('user-select', 'none', { timeout: 1000 });
+  await view.evaluate(element => {
+    const outside = element.querySelector('span')!.firstChild!;
+    const inside = element.querySelector('pre')!.firstChild!;
+    document.getSelection()!.setBaseAndExtent(outside, 0, inside, 'output'.length);
+  });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page), { timeout: 3000 }).toEqual(['output']);
+  expect(t.input).toEqual([]);
+});
+
+test('iOS native handoff ends on Done and is discarded when switching terminals', async ({ page, browserName }) => {
+  const t = await terminal(page, 'MacIntel');
+  const done = t.pane.getByRole('button', { name: 'Done selecting', exact: true });
+  const start = await cell(t.pane, 'output ready', 8);
+  await hold(page, browserName, t.pane, start);
+  await expect(done).toBeVisible({ timeout: 3000 });
+  await done.tap();
+  await expect(done).toBeHidden();
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
+  await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
+  await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
+  await expect(done).toBeVisible();
+  await page.getByRole('button', { name: 'beta on Test workstation, online', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(done).toBeHidden();
+  await page.getByRole('button', { name: 'alpha on Test workstation, online', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(done).toBeHidden();
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
+  expect(t.input).toEqual([]);
+});
+
+test('non-iOS touch keeps the live selection without a native handoff', async ({ page, browserName }) => {
+  const t = await terminal(page, 'Linux aarch64');
+  await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
+  await expect(t.pane.getByRole('button', { name: 'Done selecting' })).toBeHidden();
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual(['ready']);
+  expect(t.input).toEqual([]);
+});
+
 for (const backward of [false, true]) test(`a deliberate hold extends ${backward ? 'backward' : 'across rows'} before release`, async ({ page, browserName }) => {
   const t = await terminal(page);
   const first = 'alpha beta gamma', second = 'delta epsilon';

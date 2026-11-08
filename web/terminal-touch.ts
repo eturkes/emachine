@@ -31,7 +31,7 @@ function touchedRange(terminal: Terminal, screen: HTMLElement, x: number, y: num
   return { start, end };
 }
 
-export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal): () => void {
+export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal, finishSelection?: () => void): () => void {
   const screen = host.querySelector<HTMLElement>('.xterm-screen')!;
   const listeners = new AbortController();
   const { signal } = listeners;
@@ -112,7 +112,13 @@ export function attachTerminalTouchScroll(host: HTMLElement, terminal: Terminal)
   }, { passive: false, signal });
   host.addEventListener('touchend', event => {
     // Suppress the compatibility click that would clear the selection and reopen the keyboard.
-    if (anchor && event.cancelable) { event.preventDefault(); reset(); return; }
+    if (anchor) {
+      if (event.cancelable) event.preventDefault();
+      const completed = !anchor.marker.isDisposed && !event.touches.length;
+      reset();
+      if (completed) finishSelection?.();
+      return;
+    }
     const tap = gesture; reset();
     if (!tap || tap.vertical || event.defaultPrevented || event.touches.length || event.timeStamp - tap.started > 400) return;
     const touch = Array.from(event.changedTouches).find(touch => touch.identifier === tap.id);
