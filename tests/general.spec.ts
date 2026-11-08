@@ -50,6 +50,7 @@ test('General tabs reuse the lowest free name and retain panes and zmx daemons t
     }
     const third = (await sessions(f)).find(row => row.name === 'misc3')!;
     await page.getByRole('button', { name: 'Close misc3', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'misc4', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc3')).toEqual({ name: 'misc3', pid: third.pid, clients: 0 });
     await page.getByRole('tab', { name: 'misc1', exact: true }).click();
     await expect(pane(page, 'misc1')).toHaveAttribute('data-continuity', 'general-kept');
@@ -355,7 +356,7 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
       const css = getComputedStyle(tab), indicator = getComputedStyle(tab, '::after');
       let surface: Element = tab;
       while (surface.parentElement && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
-      return { color: css.color, padding: css.paddingInline, surface: getComputedStyle(surface).backgroundColor,
+      return { color: css.color, surface: getComputedStyle(surface).backgroundColor,
         underline: [indicator.height, indicator.backgroundColor] };
     });
     const projectAppearance = await appearance();
@@ -388,6 +389,17 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
         return { top, width, height, fontSize: getComputedStyle(button).fontSize };
       }));
       expect(addBox).toEqual(closeBox);
+      const tabRect = await activeTab.evaluate(tab => tab.getBoundingClientRect().toJSON());
+      const closeRect = await close.evaluate(button => button.getBoundingClientRect().toJSON());
+      const labelEnd = await activeTab.evaluate(tab => {
+        const range = document.createRange();
+        range.selectNodeContents(tab);
+        return range.getBoundingClientRect().right;
+      });
+      expect(closeRect.right).toBeLessThanOrEqual(tabRect.right);
+      expect(closeRect.top).toBeGreaterThanOrEqual(tabRect.top);
+      expect(closeRect.bottom).toBeLessThanOrEqual(tabRect.bottom);
+      expect(closeRect.left).toBeGreaterThanOrEqual(labelEnd);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (width <= 700) {
         expect(addBox.height).toBeGreaterThanOrEqual(44);
