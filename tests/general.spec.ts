@@ -568,4 +568,28 @@ test.describe('General mobile session tabs', () => {
       expect((await sessions(f)).find(row => row.name === 'misc2')!.pid).toBe(original.find(row => row.name === 'misc2')!.pid);
     } finally { await f.close(); }
   });
+
+  test('a native touch release keeps Close tab available for the next tap', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP drives the browser touch stream.');
+    const f = await fixture();
+    try {
+      await page.goto(f.origin);
+      await page.getByRole('button', { name: 'Open project drawer', exact: true }).tap();
+      await general(page).tap();
+      await add(page).tap();
+      await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
+      const inactive = page.getByRole('tab', { name: 'misc1', exact: true });
+      const box = (await inactive.boundingBox())!;
+      const touch = await page.context().newCDPSession(page);
+      try {
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
+        const close = tabMenu(page, 'misc1').getByRole('menuitem', { name: 'Close tab', exact: true });
+        await expect(close).toBeVisible({ timeout: 5000 });
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await close.tap({ timeout: 5000 });
+      } finally { await touch.detach(); }
+      await expect(inactive).toHaveCount(0);
+      await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveAttribute('aria-selected', 'true');
+    } finally { await f.close(); }
+  });
 });

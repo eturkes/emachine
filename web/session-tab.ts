@@ -23,6 +23,8 @@ export function attachSessionTabActions(tab: HTMLButtonElement, edit: () => void
     const clear = () => { controller.abort(); if (releaseClick === controller) releaseClick = undefined; };
     // A held finger can release over the new menu. Suppress only that release.
     document.addEventListener('pointerdown', clear, { capture: true, once: true, signal: controller.signal });
+    // Touch compatibility mousedown would refocus the tab and dismiss the menu before click.
+    document.addEventListener('mousedown', event => event.preventDefault(), { capture: true, once: true, signal: controller.signal });
     document.addEventListener('click', event => {
       if (event.detail > 0) { event.preventDefault(); event.stopImmediatePropagation(); }
       clear();
