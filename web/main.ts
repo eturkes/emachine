@@ -222,7 +222,7 @@ function renderRail(): void {
   const generalScroll = generalList.scrollTop; generalList.replaceChildren();
   for (const { key, link } of generalEntries()) {
     const machine = link.state!.machine;
-    const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `${machine.name}, ${link.online ? 'online' : 'offline'}`);
+    const b = button('', () => chooseGeneral(key), `general-item${key === selected ? ' active' : ''}`, `${machine.name}, ${link.status}`);
     b.dataset.generalKey = key; b.setAttribute('aria-current', key === selected ? 'page' : 'false');
     b.append($('strong', '', machine.name));
     if (link.online && machine.claudeStatus) b.append(claudeIndicator(b, machine.claudeStatus));
@@ -234,7 +234,7 @@ function renderRail(): void {
   for (const item of items) {
     const phase = item.project.phase ? item.project.phase[0] + item.project.phase.slice(1).toLowerCase() : '';
     const status = item.link.online ? item.project.claudeStatus : null;
-    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.online ? 'online' : 'offline'}${phase ? `, phase: ${phase}` : ''}`);
+    const b = button('', () => choose(item.key), `project-item${item.key === selected ? ' active' : ''}`, `${item.project.name} on ${item.link.state!.machine.name}, ${item.link.status}${phase ? `, phase: ${phase}` : ''}`);
     b.dataset.projectKey = item.key; b.setAttribute('aria-current', item.key === selected ? 'page' : 'false'); b.draggable = true;
     const copy = $('span', 'project-copy');
     const heading = $('span', 'project-heading'); heading.append($('strong', '', item.project.name));
@@ -373,7 +373,8 @@ function render(): void {
   if (!active && !general) { diagnostics.hidden = true; offline.hidden = true; return; }
   const activeLink = (active ?? general)!.link;
   offline.hidden = activeLink.online;
-  offline.textContent = `${activeLink.state!.machine.name} is offline. Its workspaces remain listed. ${activeLink.error}`;
+  offline.textContent = activeLink.status === 'connecting' ? `Connecting to ${activeLink.state!.machine.name}…` :
+    `${activeLink.state!.machine.name} is offline. Its workspaces remain listed. ${activeLink.error}`;
   if (general) { renderGeneral(general); return; }
   if (!active) return;
   const { link, project, key } = active;

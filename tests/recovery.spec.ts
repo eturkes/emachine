@@ -124,6 +124,66 @@ test('a consistently slow inventory response eventually connects to the real ter
   expect(successfulResponses).toBeGreaterThan(0);
 });
 
+test('cached single-route startup waits for slow inventory on its first request', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(machine.origin);
+  await expect(online(page)).toBeVisible();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let requests = 0;
+  await page.route('**/api/v1/state', async route => {
+    requests++;
+    await held;
+    await route.continue();
+  });
+  const started = page.waitForRequest('**/api/v1/state');
+  await page.reload(); await started;
+  try {
+    await page.clock.fastForward(6000);
+    const project = page.getByRole('button', { name: /^alpha on Recovery workstation,/ });
+    expect.soft(await project.getAttribute('aria-label')).toMatch(/connecting/i);
+    const banner = page.locator('.offline-banner:visible');
+    expect.soft(await banner.allTextContents()).not.toEqual([expect.stringMatching(/offline/i)]);
+  } finally { release(); }
+  await expect(online(page)).toBeVisible();
+  await expect(pane(page)).toHaveAttribute('data-mode', 'control');
+  expect(requests).toBe(1);
+});
+
+test('a stalled sole inventory route reports offline and retries automatically', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(machine.origin);
+  await expect(online(page)).toBeVisible();
+  let requests = 0;
+  await page.route('**/api/v1/state', route => { if (++requests > 1) return route.continue(); });
+  const started = page.waitForRequest('**/api/v1/state');
+  await page.reload(); await started;
+  await page.clock.fastForward(60000);
+  await expect(page.locator('.offline-banner')).toContainText(/offline.*timed out/i);
+  await expect(page.getByRole('button', { name: 'alpha on Recovery workstation, offline', exact: true })).toBeVisible();
+  await page.clock.fastForward(2000);
+  await expect(online(page)).toBeVisible();
+  await expect(pane(page)).toHaveAttribute('data-mode', 'control');
+  expect(requests).toBe(2);
+});
+
+test('a stalled preferred route promptly falls back to a working gateway', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(machine.origin);
+  await expect(online(page)).toBeVisible();
+  await page.evaluate(() => {
+    const key = 'emachine:connections:v1';
+    const [machine] = JSON.parse(localStorage.getItem(key)!);
+    localStorage.setItem(key, JSON.stringify([{ ...machine, gateway: machine.direct, direct: location.origin + '/stalled/' }]));
+  });
+  await page.route('**/stalled/api/v1/state', () => {});
+  const started = page.waitForRequest('**/stalled/api/v1/state');
+  await page.reload(); await started;
+  await page.clock.fastForward(6000);
+  await expect(online(page)).toBeVisible({ timeout: 3000 });
+  await expect(pane(page)).toHaveAttribute('data-mode', 'control');
+});
+
 for (const trigger of ['heartbeat', 'online wake'] as const) {
   test(`event recovery after ${trigger} does not wait for an old socket close event`, async ({ page }) => {
     await page.clock.install();

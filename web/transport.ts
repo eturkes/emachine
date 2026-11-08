@@ -73,12 +73,17 @@ async function fetchJson(base: string, path: string, timeout: number, request: A
     const response = await fetch(endpoint(base, path), { credentials: 'include', signal: request.signal, cache: 'no-store' });
     if (!response.ok) throw new Error(response.status === 403 ? 'Access denied: check the tailnet owner and allowed client origin.' : `HTTP ${response.status}`);
     return await response.json();
+  } catch (error) {
+    // WebKit can replace the supplied timeout reason with a generic fetch error.
+    request.signal.throwIfAborted();
+    throw error;
   } finally { window.clearTimeout(timer); }
 }
 export class Link {
   state?: Inventory;
   route?: string;
-  online = false;
+  status: 'connecting' | 'online' | 'offline' = 'connecting';
+  get online(): boolean { return this.status === 'online'; }
   error = '';
   stopped = false;
   private connecting = false;
@@ -110,7 +115,8 @@ export class Link {
     const candidates = [...new Set([this.route, this.config.direct, this.config.gateway].filter(Boolean) as string[])];
     const errors: string[] = [];
     for (const candidate of candidates) {
-      const timeout = this.deadlines.get(candidate) ?? 4500;
+      // A short probe saves time only if another address can take over.
+      const timeout = candidate === candidates.at(-1) ? 30000 : this.deadlines.get(candidate) ?? 4500;
       const request = new AbortController();
       this.request = request;
       try {
@@ -119,7 +125,7 @@ export class Link {
         if (this.stopped || generation !== this.generation) return;
         if (this.config.id && this.config.id !== next.machine.id) throw new Error('Machine identity mismatch.');
         this.route = base;
-        this.online = true;
+        this.status = 'online';
         this.error = '';
         this.attempts = 0;
         this.accept(next);
@@ -136,7 +142,7 @@ export class Link {
     }
     if (this.stopped || generation !== this.generation) return;
     this.connecting = false;
-    this.online = false;
+    this.status = 'offline';
     this.error = errors.join(' · ') || 'No machine address is configured.';
     this.changed();
     this.schedule();
@@ -187,7 +193,7 @@ export class Link {
     this.generation++;
     window.clearInterval(this.heartbeat);
     this.jobsRequest?.abort();
-    this.online = false;
+    this.status = 'offline';
     this.error ||= 'Connection lost. Reconnecting without replaying terminal input.';
     this.schedule();
     ws.close();
