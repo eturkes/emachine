@@ -30,7 +30,24 @@ async function atomicJson(path, value) {
 function errorMessage(error) {
   if (typeof error?.code === 'string' && error.code.startsWith('UI_')) return error.message;
   if (error?.code === 'ENOSPC') return 'There is not enough disk space. The current interface is unchanged.';
+  if (['EACCES', 'EPERM', 'EROFS'].includes(error?.code)) return 'The desktop interface cache is not writable. Check its permissions.';
   return 'The interface could not refresh. Check the trusted server and your connection. Your saved interface remains available.';
+}
+
+function downloadReason(error) {
+  if (typeof error?.code === 'string' && error.code.startsWith('UI_')) return error.message;
+  // Electron reports Chromium network errors in the message. Do not display arbitrary exception text.
+  if (/^net::ERR_CERT_[A-Z_]+$/.test(error?.message)) return 'The server certificate failed verification.';
+  switch (error?.message) {
+    case 'net::ERR_NAME_NOT_RESOLVED': return 'DNS could not resolve the server name.';
+    case 'net::ERR_CONNECTION_REFUSED': return 'The server refused the connection.';
+    case 'net::ERR_CONNECTION_TIMED_OUT':
+    case 'net::ERR_TIMED_OUT': return 'The network connection timed out.';
+    case 'net::ERR_CONNECTION_RESET': return 'The connection was reset during the download.';
+    case 'net::ERR_ADDRESS_UNREACHABLE':
+    case 'net::ERR_INTERNET_DISCONNECTED': return 'The server is unreachable from this device.';
+    default: return 'The network request failed. Check the source address and the connection from this device.';
+  }
 }
 
 async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request = globalThis.fetch,
@@ -107,7 +124,7 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
       if (!response.ok || wrongUrl) {
         await response.body?.cancel();
         const retry = !wrongUrl && transientStatus.has(response.status);
-        throw failure(retry ? 'UI_TRANSIENT' : 'UI_NETWORK', 'The trusted server did not provide the interface files. The current interface is unchanged.');
+        throw failure(retry ? 'UI_TRANSIENT' : 'UI_NETWORK', wrongUrl ? 'The response came from a different address.' : `The server returned HTTP ${response.status}.`);
       }
       if (Number(response.headers.get('content-length')) > limit) {
         await response.body?.cancel(); throw failure('UI_SIZE', 'The interface download exceeds its size limit.');
@@ -126,12 +143,17 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
         }
       } finally { await reader.cancel().catch(() => {}); }
       return Buffer.concat(chunks, size);
+    } catch (error) {
+      if (idle.signal.aborted) throw failure('UI_TRANSIENT', 'The download stalled for 30 seconds.');
+      throw error;
     } finally { clearTimeout(timer); }
   }
-  async function fetchBytes(url, limit, { deadline, attempts }, expectedHash) {
+  async function fetchBytes(path, limit, { deadline, attempts, timeoutMs }, expectedHash) {
+    const url = new URL(path, sourceUrl(config.source));
     for (let attempt = 1; ; attempt++) {
-      deadline.throwIfAborted();
       try {
+        deadline.throwIfAborted();
+        if (attempt > 1) await delay(500 * (attempt - 1), undefined, { signal: deadline });
         const bytes = await fetchOnce(url, limit, deadline);
         if (expectedHash) {
           if (bytes.length < limit) throw failure('UI_TRANSIENT', 'The interface download ended early. Try the refresh again.');
@@ -141,14 +163,19 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
       } catch (error) {
         // Fetch and body-read errors can be transient. Our own validation errors are final.
         if (attempt >= attempts || deadline.aborted ||
-            (String(error?.code).startsWith('UI_') && error.code !== 'UI_TRANSIENT')) throw error;
+            (String(error?.code).startsWith('UI_') && error.code !== 'UI_TRANSIENT')) {
+          const reason = deadline.aborted ? `The ${timeoutMs / 1000}-second time limit was reached.` : downloadReason(error);
+          throw failure('UI_DOWNLOAD', `Could not download ${path} from ${url.host}. ${reason}`);
+        }
       }
-      await delay(500 * attempt, undefined, { signal: deadline });
     }
   }
   async function probe(transfer) {
-    const url = new URL(MANIFEST, sourceUrl(config.source));
-    const manifest = validateManifest(JSON.parse(await fetchBytes(url, MAX_MANIFEST, transfer)));
+    const bytes = await fetchBytes(MANIFEST, MAX_MANIFEST, transfer);
+    let metadata;
+    try { metadata = JSON.parse(bytes); }
+    catch { throw failure('UI_MANIFEST', 'The interface manifest contains invalid JSON. Check the interface source address.'); }
+    const manifest = validateManifest(metadata);
     const current = manifest.revision === active.manifest.revision;
     set(current ? 'current' : 'available', current ? 'The interface matches the trusted server.' :
       'A new interface is available. Save work in your open views, then refresh.', { availableRevision: current ? undefined : manifest.revision });
@@ -174,7 +201,7 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
           } catch { /* A damaged local asset can still be fetched from the trusted source. */ }
         }
         if (!bytes) {
-          bytes = await fetchBytes(new URL(file.path, sourceUrl(config.source)), file.bytes, transfer, file.sha256);
+          bytes = await fetchBytes(file.path, file.bytes, transfer, file.sha256);
           downloadedBytes += bytes.length;
         }
         const path = join(directory, file.path);
@@ -256,7 +283,8 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
       }
       // A background metadata check shares the busy flag with the manual controls.
       const manual = action === 'refresh';
-      const transfer = { deadline: AbortSignal.timeout(manual ? 15 * 60_000 : 15_000), attempts: manual ? 3 : 1 };
+      const timeoutMs = manual ? 15 * 60_000 : 15_000;
+      const transfer = { deadline: AbortSignal.timeout(timeoutMs), attempts: manual ? 3 : 1, timeoutMs };
       set('checking', 'Checking the trusted interface server...');
       const manifest = await probe(transfer);
       if (manual && manifest.revision !== active.manifest.revision) {

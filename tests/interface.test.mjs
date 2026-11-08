@@ -116,6 +116,25 @@ test('failed or incompatible downloads leave the current interface untouched and
   assert.equal(f.c.getState().revision, f.manifest.revision);
 });
 
+for (const [name, fetch, reason] of [
+  ['DNS failure', async () => { throw new Error('net::ERR_NAME_NOT_RESOLVED'); }, /DNS|resolv|host ?name|server name/i],
+  ['connection refusal', async () => { throw new Error('net::ERR_CONNECTION_REFUSED'); }, /refus/i],
+  ['certificate rejection', async () => { throw new Error('net::ERR_CERT_AUTHORITY_INVALID'); }, /certificate/i],
+  ['HTTP denial', async () => new Response('private details', { status: 403, statusText: 'private details' }), /\b403\b/],
+  ['malformed JSON', async () => new Response('<html>private details</html>'), /JSON|invalid|malformed/i],
+  ['unknown transport failure', async () => { throw new TypeError('private details'); }, /network|connect|reach|fetch|download/i],
+]) {
+  test(`manifest diagnostic identifies ${name} without exposing response or exception text`, async t => {
+    const f = await setup(t, { fetch });
+    const state = await f.c.setSource('https://source.invalid/machine/');
+    assert.equal(state.status, 'error');
+    assert.match(state.message, /manifest|interface metadata/i);
+    assert.match(state.message, reason);
+    assert.doesNotMatch(state.message, /private details/i);
+    assert.equal(state.revision, f.bundled.revision);
+  });
+}
+
 test('a UI that does not report readiness rolls back; interrupted activation never replaces the startup pointer', async t => {
   const f = await setup(t); await f.c.setSource('https://source.invalid/machine/');
   await f.c.refresh(); const stale = f.c.documentToken();
@@ -272,6 +291,8 @@ test('a stalled body exhausts its file retries and keeps the active revision', {
   await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
   assert.equal(attempts, 3); assert.equal(f.loads, 0);
   assert.equal(f.c.getState().status, 'error');
+  assert.match(f.c.getState().message, /index\.html/);
+  assert.match(f.c.getState().message, /stall|timed? ?out|inactiv|no (data|progress)|stopped (responding|sending)/i);
   assert.equal(f.c.getState().revision, f.bundled.revision);
   assert.ok(!(await readdir(f.cacheRoot)).some(name => name.startsWith('.stage-')));
 });
@@ -291,6 +312,7 @@ test('the whole manual refresh stays bounded even when a body keeps making progr
   } }, factory);
   await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
   assert.equal(f.c.getState().status, 'error'); assert.equal(f.loads, 0);
+  assert.match(f.c.getState().message, /15[- ]?min|900[- ]?s/i);
   assert.equal(attempts, 1); assert.equal(f.c.getState().revision, f.bundled.revision);
 });
 
@@ -300,6 +322,22 @@ function gate() {
   const waiting = new Promise(resolve => { release = resolve; });
   return { entered, release, async pause() { enter(); await waiting; } };
 }
+
+test('cache write diagnostic distinguishes a denied staging write from a network failure', async t => {
+  const factory = await withFilesystem({ writeFile: async (path, ...args) => {
+    if (path.includes('.stage-')) throw Object.assign(new Error('private details'), { code: 'EACCES' });
+    return fs.writeFile(path, ...args);
+  } });
+  const f = await setup(t, {}, factory);
+  await f.c.setSource('https://source.invalid/machine/');
+  const state = await f.c.refresh();
+  assert.equal(state.status, 'error');
+  assert.match(state.message, /cache|disk|storage/i);
+  assert.match(state.message, /permission|write|denied|writab/i);
+  assert.doesNotMatch(state.message, /private details/i);
+  assert.equal(state.revision, f.bundled.revision);
+  assert.equal(f.loads, 0);
+});
 
 test('failure during a readiness pointer write cannot promote the failed revision on restart', async t => {
   const pause = gate(); let armed = false;
