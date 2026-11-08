@@ -80,12 +80,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tab.active::after { position: absolute; bottom: 0; left: 15px; right: 15px; height: 2px; content: ''; background: var(--accent); }
 /* The close button overlays the tab's trailing edge and keeps its own focus and hit target. */
 .general-tab { --close-size: 32px; position: relative; display: flex; flex-shrink: 0; align-self: center; height: max(36px,var(--close-size)); margin-inline-end: 4px; }
-.general-tab .tab { min-width: calc(2 * var(--close-size) + 4px); max-width: min(320px,60vw); padding-inline: 10px calc(var(--close-size) + 2px); border: 1px solid var(--border); border-radius: 7px; text-align: start; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
-.general-tab .tab.active { border-color: var(--muted); }
+.general-tab .tab { min-width: calc(2 * var(--close-size) + 4px); max-width: min(320px,60vw); padding-inline: 10px calc(var(--close-size) + 2px); text-align: end; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
 .general-tab .tab.active::after { inset-inline: 6px; }
 .general-tab button:focus-visible { outline-offset: -3px; }
 .close-terminal, .new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; padding: 0; border-radius: 6px; color: var(--muted); font-size: 19px; line-height: 1; }
-.close-terminal { position: absolute; inset-inline-end: 1px; width: var(--close-size); height: var(--close-size); }
+.close-terminal { position: absolute; inset-inline-end: 1px; width: var(--close-size); height: var(--close-size); justify-items: start; padding-inline-start: 3px; }
 .new-terminal { width: 32px; height: 32px; margin: 0 4px; }
 .close-terminal:hover, .new-terminal:hover { color: var(--text); background: var(--hover); }
 .stale-indicator { margin-left: 7px; color: var(--warning); font-size: 11px; }

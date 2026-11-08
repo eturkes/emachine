@@ -380,6 +380,12 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     await page.keyboard.press('Delete');
     await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toBeFocused();
+    const textBounds = (element: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const { left, right } = range.getBoundingClientRect();
+      return { left, right };
+    };
     for (const width of [1360, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(add(page)).toBeInViewport({ ratio: 1 });
@@ -391,15 +397,16 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
       expect(addBox).toEqual(closeBox);
       const tabRect = await activeTab.evaluate(tab => tab.getBoundingClientRect().toJSON());
       const closeRect = await close.evaluate(button => button.getBoundingClientRect().toJSON());
-      const labelEnd = await activeTab.evaluate(tab => {
-        const range = document.createRange();
-        range.selectNodeContents(tab);
-        return range.getBoundingClientRect().right;
-      });
+      const labelEnd = (await activeTab.evaluate(textBounds)).right;
+      const gap = (await close.evaluate(textBounds)).left - labelEnd;
       expect(closeRect.right).toBeLessThanOrEqual(tabRect.right);
       expect(closeRect.top).toBeGreaterThanOrEqual(tabRect.top);
       expect(closeRect.bottom).toBeLessThanOrEqual(tabRect.bottom);
       expect(closeRect.left).toBeGreaterThanOrEqual(labelEnd);
+      expect(gap).toBeGreaterThanOrEqual(2);
+      expect(gap).toBeLessThanOrEqual(5);
+      expect(await page.getByRole('tab').evaluateAll(tabs =>
+        tabs.every(tab => getComputedStyle(tab).borderStyle === 'none'))).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (width <= 700) {
         expect(addBox.height).toBeGreaterThanOrEqual(44);
