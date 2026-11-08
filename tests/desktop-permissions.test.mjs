@@ -28,7 +28,7 @@ async function fixture() {
       setPermissionRequestHandler: handler => { request = handler; },
     } },
     dialog: { showMessageBox: async () => { f.prompts++; return { response: f.answer }; } },
-    Menu: { buildFromTemplate() {} },
+    Menu: { buildFromTemplate() {}, setApplicationMenu() {} },
   };
   runInNewContext(readFileSync(mainPath, 'utf8'), {
     require: name => name === 'electron' ? electron

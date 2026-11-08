@@ -1,6 +1,6 @@
 {
   "name": "emachine",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "A personal, multi-machine project command center",
   "author": "eturkes",
@@ -33,9 +33,11 @@
     "test:desktop-storage": "node tests/desktop-storage.mjs",
     "test:window-state": "node --test tests/desktop-window-state.test.mjs",
     "test:desktop-window-state": "node tests/desktop-window-state.mjs",
+    "test:desktop-tailscale-network": "node tests/desktop-tailscale-network.mjs",
+    "test:tailscale-network": "node --test tests/desktop-tailscale-network.test.mjs",
     "test:interface": "node --test tests/interface.test.mjs",
     "test:release": "node --test tests/release.test.mjs",
-    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:interface && pnpm test:permissions && pnpm test:storage && pnpm test:window-state && pnpm build && pnpm test:network && pnpm test:gateway && pnpm test:web",
+    "verify": "pnpm check && pnpm test:core && pnpm test:release && pnpm test:interface && pnpm test:permissions && pnpm test:storage && pnpm test:window-state && pnpm test:tailscale-network && pnpm build && pnpm test:network && pnpm test:gateway && pnpm test:web",
     "release:prepare": "node scripts/prepare-release.mjs",
     "desktop": "electron .",
     "appimage": "pnpm build:web && electron-builder --linux AppImage --publish never"

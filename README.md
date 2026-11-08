@@ -10,6 +10,10 @@ Download the Linux x86-64 AppImage and `SHA256SUMS` from [GitHub Releases](https
 Release builds start with an empty machine list. Add your machine's direct Tailscale address in **Machines**.
 The AppImage is a client; run the MoonBit server separately on each project machine.
 
+If a Tailscale machine works only when you bypass a proxy and pin its IPv4 address, press **Alt** in the AppImage and choose **Network → Direct Tailscale networking**. Save the setting, quit emachine, and reopen it from your usual launcher. Keep the machine's HTTPS hostname as its address.
+
+This optional mode reads current peer IPv4 addresses from the local Tailscale client at startup. When active, all AppImage connections bypass proxies. If Tailscale is unavailable at startup, emachine uses its normal network settings. To turn the mode off, clear the same checkbox and restart.
+
 ```sh
 mv emachine-0.1.3-x86_64.AppImage emachine.AppImage
 chmod +x emachine.AppImage

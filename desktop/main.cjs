@@ -3,8 +3,10 @@ const { app, BrowserWindow, protocol, net, session, dialog, ipcMain, Menu, scree
 const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { lstatSync, writeFileSync, unlinkSync } = require('node:fs');
 const { createInterfaceController, registerInterfaceIpc } = require('./interface.cjs');
 const { configureDesktopStorage } = require('./storage.cjs');
+const { configureTailscaleNetwork } = require('./tailscale-network.cjs');
 const { createWindowState } = require('./window-state.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
@@ -12,6 +14,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'emachine', privileges: {
 } }]);
 app.setName('emachine');
 let main;
+let networkPreference;
+let directNetworkActive = false;
 const mediaGrants = new Set();
 const clipboardPermissions = new Set(['clipboard-read', 'clipboard-sanitized-write']);
 function isShellUrl(value) {
@@ -37,6 +41,7 @@ app.on('login', (event, contents, details, authInfo, callback) => {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true,
       preload: join(__dirname, 'auth-preload.cjs'), additionalArguments: [channel] },
   });
+  prompt.setMenu(null);
   let finished = false;
   const finish = credentials => {
     if (finished) return;
@@ -56,6 +61,36 @@ app.on('login', (event, contents, details, authInfo, callback) => {
   prompt.once('ready-to-show', () => prompt.show());
   void prompt.loadFile(join(__dirname, 'auth.html'), { query: { host: new URL(details.url).host } });
 });
+
+function directNetworkSelected() {
+  try {
+    const marker = lstatSync(networkPreference);
+    return marker.isFile() && marker.size === 0;
+  } catch { return false; }
+}
+
+function networkMenu() {
+  return { label: 'Network', submenu: [
+    { label: 'Direct Tailscale networking', type: 'checkbox', checked: directNetworkSelected(), click: async item => {
+      const enable = item.checked;
+      const answer = await dialog.showMessageBox(main, { type: 'question', title: 'Desktop networking',
+        message: enable ? 'Use direct Tailscale networking on the next launch?' : 'Restore normal networking on the next launch?',
+        detail: enable
+          ? 'At startup, emachine will look up peer IPv4 addresses with the local Tailscale client. In this mode, all requests from this AppImage bypass proxies. Quit and reopen emachine to apply this setting.'
+          : 'Quit and reopen emachine to use your normal proxy and DNS settings.',
+        buttons: ['Cancel', 'Save setting'], defaultId: 0, cancelId: 0 });
+      if (answer.response !== 1) { item.checked = !enable; return; }
+      try {
+        if (enable) writeFileSync(networkPreference, '', { flag: 'wx', mode: 0o600 });
+        else unlinkSync(networkPreference);
+      } catch {
+        item.checked = directNetworkSelected();
+        dialog.showErrorBox('Desktop networking', 'Could not save the network setting. Check the desktop profile permissions.');
+      }
+    } },
+    { label: directNetworkActive ? 'Using direct Tailscale networking' : 'Using system or command-line network settings', enabled: false },
+  ] };
+}
 
 async function start() {
   const root = resolve(__dirname, '../web/dist');
@@ -116,7 +151,7 @@ async function start() {
   });
   registerInterfaceIpc(ipcMain, main, ui);
   // Native recovery remains reachable when a downloaded renderer cannot display its controls.
-  main.setMenu(Menu.buildFromTemplate([{ label: 'Interface', submenu: [
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Interface', submenu: [
     { label: 'Refresh interface', accelerator: 'CommandOrControl+Shift+R', click: () => { void ui.refresh(); } },
     { label: 'Use bundled interface', accelerator: 'CommandOrControl+Shift+B', click: async () => {
       const answer = await dialog.showMessageBox(main, { type: 'question', title: 'Restore bundled interface',
@@ -124,7 +159,7 @@ async function start() {
         buttons: ['Cancel', 'Reload'], defaultId: 0, cancelId: 0 });
       if (answer.response === 1) await ui.restore();
     } },
-  ] }]));
+  ] }, networkMenu()]));
   main.setMenuBarVisibility(false);
   main.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   main.webContents.on('will-navigate', event => event.preventDefault());
@@ -153,6 +188,9 @@ else {
     }
     if (!ownsProfile) app.exit(0);
     else {
+      networkPreference = join(app.getPath('userData'), 'direct-tailscale');
+      // Chromium reads host resolver switches when its network service starts.
+      if (directNetworkSelected()) directNetworkActive = configureTailscaleNetwork(app.commandLine);
       app.on('second-instance', () => { if (main) { if (main.isMinimized()) main.restore(); main.show(); main.focus(); } });
       app.whenReady().then(start).catch(error => { console.error(error); app.quit(); });
       app.on('window-all-closed', () => app.quit());

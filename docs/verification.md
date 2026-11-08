@@ -14,6 +14,8 @@
 | `pnpm test:desktop-interface` | Real AppImage, native source approval, UI-only transfer, unchanged process and binary, retained selection and live terminal, feature-frame isolation, integrity and bridge rejection, offline startup, and native recovery |
 | `pnpm test:window-state` | Saved dimensions and maximized state, startup rounding, special-state bounds, malformed preferences, display constraints, atomic writes, close flushing, and profile isolation |
 | `pnpm test:desktop-window-state` | Real AppImage relaunches after resizing, maximizing, restoring, minimized/fullscreen closure, and repeated fractional-DPI launches without growth |
+| `pnpm test:tailscale-network` | Local peer mapping, address validation, explicit routing switches, and fallback when discovery fails |
+| `pnpm test:desktop-tailscale-network` | AppImage default proxy, saved direct mode, TLS hostname and WebSockets, and opt-out. Uses a private Linux network namespace with a fixture peer and a proxy. |
 | `node tests/desktop.mjs --configured` | The desktop gate plus the seeded Tailscale machine and its existing project terminal |
 | `node scripts/check-installation.mjs` | Enabled and active service, valid systemd unit, disjoint storage, HTTPS, exact desktop CORS, and credential-free client files |
 | `git diff --check` | Patch whitespace integrity |

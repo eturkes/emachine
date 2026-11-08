@@ -53,7 +53,7 @@ async function fixture(t, { saved, workArea = { width: 1920, height: 1080 }, fai
     BrowserWindow, screen: { getPrimaryDisplay: () => ({ workAreaSize: workArea }) },
     protocol: { registerSchemesAsPrivileged() {}, handle() {} },
     session: { defaultSession: { setPermissionCheckHandler() {}, setPermissionRequestHandler() {} } },
-    Menu: { buildFromTemplate() {} }, dialog: {}, ipcMain: {},
+    Menu: { buildFromTemplate() {}, setApplicationMenu() {} }, dialog: {}, ipcMain: {},
   };
   const context = { __dirname: dirname(mainPath), URL, console: { warn: (...args) => warnings.push(args), error: console.error }, ...clock };
   context.require = name => {
