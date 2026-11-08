@@ -24,6 +24,8 @@ A new revision highlights **Refresh**. A check does not download the interface o
 
 Save work in your open views. Select **Refresh**, then **Refresh interface**.
 The client fetches changed files and reuses matching files from its local interface or bundled copy.
+Starting with AppImage 0.1.9, a file can take more than 15 seconds to download. Each time data arrives, the client gives the server another 30 seconds to send more.
+If a transfer stalls, the connection drops, or the server reports a temporary failure, the client retries that file up to twice. The full refresh has a 15-minute time limit.
 It verifies every file before opening the complete revision. The AppImage and application process stay unchanged.
 
 Your saved connections, selected project, and preferences stay in the same desktop profile.

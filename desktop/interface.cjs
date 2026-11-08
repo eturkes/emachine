@@ -2,7 +2,10 @@
 const { readFile, writeFile, mkdir, mkdtemp, rename, rm, readdir, lstat } = require('node:fs/promises');
 const { join, dirname } = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const { MANIFEST, MAX_MANIFEST, digest, isDigest, assetPath, sourceUrl, validateManifest, failure } = require('./interface-manifest.cjs');
+
+const transientStatus = new Set([408, 429, 500, 502, 503, 504]);
 
 async function localBytes(path, limit) {
   const info = await lstat(path);
@@ -92,38 +95,66 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
   }
   await clean();
   if (!cacheAvailable) cacheError();
-  async function fetchBytes(url, limit, deadline) {
-    const response = await request(url.href, { redirect: 'error', credentials: 'omit', cache: 'no-store',
-      headers: { Origin: 'emachine://app' }, signal: AbortSignal.any([AbortSignal.timeout(15000), deadline]) });
-    if (!response.ok || (response.url && response.url !== url.href)) {
-      await response.body?.cancel();
-      throw failure('UI_NETWORK', 'The trusted server did not provide the interface files. The current interface is unchanged.');
-    }
-    if (Number(response.headers.get('content-length')) > limit) {
-      await response.body?.cancel(); throw failure('UI_SIZE', 'The interface download exceeds its size limit.');
-    }
-    const reader = response.body?.getReader();
-    if (!reader) throw failure('UI_NETWORK', 'The interface download was empty.');
-    const chunks = []; let size = 0;
+  async function fetchOnce(url, limit, deadline) {
+    const idle = new AbortController();
+    const signal = AbortSignal.any([deadline, idle.signal]);
+    const timer = setTimeout(() => idle.abort(), 30_000);
     try {
-      for (;;) {
-        const { done, value } = await reader.read(); if (done) break;
-        size += value.length;
-        if (size > limit) throw failure('UI_SIZE', 'The interface download exceeds its size limit.');
-        chunks.push(Buffer.from(value));
+      const response = await request(url.href, { redirect: 'error', credentials: 'omit', cache: 'no-store',
+        headers: { Origin: 'emachine://app' }, signal });
+      timer.refresh();
+      const wrongUrl = response.url && response.url !== url.href;
+      if (!response.ok || wrongUrl) {
+        await response.body?.cancel();
+        const retry = !wrongUrl && transientStatus.has(response.status);
+        throw failure(retry ? 'UI_TRANSIENT' : 'UI_NETWORK', 'The trusted server did not provide the interface files. The current interface is unchanged.');
       }
-    } finally { await reader.cancel().catch(() => {}); }
-    return Buffer.concat(chunks, size);
+      if (Number(response.headers.get('content-length')) > limit) {
+        await response.body?.cancel(); throw failure('UI_SIZE', 'The interface download exceeds its size limit.');
+      }
+      const reader = response.body?.getReader();
+      if (!reader) throw failure('UI_NETWORK', 'The interface download was empty.');
+      const chunks = []; let size = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read(); if (done) break;
+          if (!value.length) continue;
+          size += value.length;
+          if (size > limit) throw failure('UI_SIZE', 'The interface download exceeds its size limit.');
+          timer.refresh();
+          chunks.push(Buffer.from(value));
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+      return Buffer.concat(chunks, size);
+    } finally { clearTimeout(timer); }
   }
-  async function probe(deadline) {
+  async function fetchBytes(url, limit, { deadline, attempts }, expectedHash) {
+    for (let attempt = 1; ; attempt++) {
+      deadline.throwIfAborted();
+      try {
+        const bytes = await fetchOnce(url, limit, deadline);
+        if (expectedHash) {
+          if (bytes.length < limit) throw failure('UI_TRANSIENT', 'The interface download ended early. Try the refresh again.');
+          if (digest(bytes) !== expectedHash) throw failure('UI_DIGEST', 'The interface failed its integrity check. The current interface is unchanged.');
+        }
+        return bytes;
+      } catch (error) {
+        // Fetch and body-read errors can be transient. Our own validation errors are final.
+        if (attempt >= attempts || deadline.aborted ||
+            (String(error?.code).startsWith('UI_') && error.code !== 'UI_TRANSIENT')) throw error;
+      }
+      await delay(500 * attempt, undefined, { signal: deadline });
+    }
+  }
+  async function probe(transfer) {
     const url = new URL(MANIFEST, sourceUrl(config.source));
-    const manifest = validateManifest(JSON.parse(await fetchBytes(url, MAX_MANIFEST, deadline)));
+    const manifest = validateManifest(JSON.parse(await fetchBytes(url, MAX_MANIFEST, transfer)));
     const current = manifest.revision === active.manifest.revision;
     set(current ? 'current' : 'available', current ? 'The interface matches the trusted server.' :
       'A new interface is available. Save work in your open views, then refresh.', { availableRevision: current ? undefined : manifest.revision });
     return manifest;
   }
-  async function stage(manifest, deadline) {
+  async function stage(manifest, transfer) {
     const destination = join(releases, manifest.revision);
     try {
       const cached = await localRelease(destination);
@@ -143,8 +174,7 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
           } catch { /* A damaged local asset can still be fetched from the trusted source. */ }
         }
         if (!bytes) {
-          bytes = await fetchBytes(new URL(file.path, sourceUrl(config.source)), file.bytes, deadline);
-          if (bytes.length !== file.bytes || digest(bytes) !== file.sha256) throw failure('UI_DIGEST', 'The interface failed its integrity check. The current interface is unchanged.');
+          bytes = await fetchBytes(new URL(file.path, sourceUrl(config.source)), file.bytes, transfer, file.sha256);
           downloadedBytes += bytes.length;
         }
         const path = join(directory, file.path);
@@ -224,12 +254,14 @@ async function createInterfaceController({ bundleRoot, cacheRoot, fetch: request
         set('unconfigured', 'Choose a trusted server for interface updates. The current interface remains available.');
         return getState();
       }
-      const deadline = AbortSignal.timeout(90000);
+      // A background metadata check shares the busy flag with the manual controls.
+      const manual = action === 'refresh';
+      const transfer = { deadline: AbortSignal.timeout(manual ? 15 * 60_000 : 15_000), attempts: manual ? 3 : 1 };
       set('checking', 'Checking the trusted interface server...');
-      const manifest = await probe(deadline);
-      if (action === 'refresh' && manifest.revision !== active.manifest.revision) {
+      const manifest = await probe(transfer);
+      if (manual && manifest.revision !== active.manifest.revision) {
         set('loading', 'Fetching changed interface files. The current window stays open until verification finishes.');
-        const { release, downloadedBytes } = await stage(manifest, deadline);
+        const { release, downloadedBytes } = await stage(manifest, transfer);
         if (token !== startingToken) {
           if (![config.good, config.previous, active.manifest.revision].includes(release.manifest.revision)) await rm(release.root, { recursive: true, force: true });
           return getState();

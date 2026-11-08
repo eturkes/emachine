@@ -142,14 +142,158 @@ test('only the application main frame can access interface control IPC', async (
   }
 });
 
-async function withFilesystem(overrides) {
+async function withFilesystem(overrides, globals = {}) {
   const file = new URL('../desktop/interface.cjs', import.meta.url);
   const localRequire = createRequire(file); const module = { exports: {} };
   const load = runInNewContext(`(function(require, module, exports) {${await readFile(file, 'utf8')}\n})`,
-    { Buffer, URL, AbortSignal, setTimeout, clearTimeout });
+    { Buffer, URL, AbortController, AbortSignal, setTimeout, clearTimeout, ...globals });
   load(name => name === 'node:fs/promises' ? { ...fs, ...overrides } : localRequire(name), module, module.exports);
   return module.exports.createInterfaceController;
 }
+
+function virtualClock(t) {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  // Native AbortSignal.timeout uses an internal clock. Put network deadlines on the same clock as the feed.
+  class TimedSignal extends AbortSignal {
+    static timeout(ms) {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+      return controller.signal;
+    }
+  }
+  // Node MockTimers' Timeout.refresh() does not reschedule the callback from the current tick.
+  function timeout(callback, ms) {
+    let id = setTimeout(callback, ms);
+    return {
+      refresh() { clearTimeout(id); id = setTimeout(callback, ms); },
+      cancel() { clearTimeout(id); },
+    };
+  }
+  return withFilesystem({}, { AbortSignal: TimedSignal, Date, setTimeout: timeout, clearTimeout: t => t?.cancel() });
+}
+
+test('manual refresh finishes a progressing download that takes over 90 seconds', { timeout: 5000 }, async t => {
+  const factory = await virtualClock(t);
+  const f = await setup(t, { fetch: async (url, { signal }) => {
+    if (url.endsWith('/ui-manifest.json')) return new Response(JSON.stringify(f.manifest));
+    const bytes = f.files.get('index.html');
+    let offset = 0;
+    return new Response(new ReadableStream({ pull(controller) {
+      t.mock.timers.tick(10000);
+      signal.throwIfAborted();
+      controller.enqueue(bytes.subarray(offset, offset + 4));
+      offset += 4;
+      if (offset >= bytes.length) controller.close();
+    } }, { highWaterMark: 0 }));
+  } }, factory);
+  await f.c.setSource('https://source.invalid/machine/');
+  const started = Date.now();
+  await f.c.refresh();
+  assert.equal(f.c.getState().revision, f.manifest.revision, f.c.getState().message);
+  assert.ok(Date.now() - started > 90000);
+  assert.deepEqual(await readFile(f.c.assetPath('index.html')), f.files.get('index.html'));
+});
+
+test('manual refresh recovers from an unavailable manifest and a mid-file disconnect', async t => {
+  let refreshing = false, manifests = 0, assets = 0;
+  const f = await setup(t, { fetch: async (url, init) => {
+    assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
+    if (url.endsWith('/ui-manifest.json')) {
+      if (refreshing && ++manifests === 1) return new Response(null, { status: 503 });
+      return new Response(JSON.stringify(f.manifest));
+    }
+    assert.ok(url.endsWith('/index.html'));
+    const bytes = f.files.get('index.html');
+    if (++assets > 1) return new Response(bytes);
+    let sent = false;
+    return new Response(new ReadableStream({ pull(controller) {
+      if (sent) throw new TypeError('body connection reset');
+      controller.enqueue(bytes.subarray(0, 4)); sent = true;
+    } }, { highWaterMark: 0 }));
+  } });
+  await f.c.setSource('https://source.invalid/machine/'); refreshing = true;
+  await f.c.refresh(); await f.c.ready(f.c.documentToken());
+  assert.equal(f.c.getState().revision, f.manifest.revision, f.c.getState().message);
+  assert.deepEqual([manifests, assets], [2, 2]);
+  assert.deepEqual(await readFile(f.c.assetPath('index.html')), f.files.get('index.html'));
+});
+
+test('manual refresh retries a short file that ends cleanly without Content-Length', async t => {
+  let assets = 0;
+  const f = await setup(t, { fetch: async url => {
+    if (url.endsWith('/ui-manifest.json')) return new Response(JSON.stringify(f.manifest));
+    assert.ok(url.endsWith('/index.html'));
+    const bytes = f.files.get('index.html');
+    return new Response(++assets === 1 ? bytes.subarray(0, -1) : bytes);
+  } });
+  await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
+  assert.equal(f.c.getState().revision, f.manifest.revision, f.c.getState().message);
+  assert.equal(assets, 2);
+  assert.deepEqual(await readFile(f.c.assetPath('index.html')), f.files.get('index.html'));
+});
+
+test('permanent file errors fail closed without repeating the request', async t => {
+  for (const [name, reply] of [
+    ['missing', () => new Response(null, { status: 404 })],
+    ['redirect', () => Response.redirect('https://other.invalid/')],
+    ['oversized', bytes => new Response(Buffer.concat([bytes, bytes]))],
+    ['wrong digest', bytes => new Response(Buffer.alloc(bytes.length))],
+  ]) {
+    let attempts = 0;
+    const f = await setup(t, { fetch: async url => {
+      if (url.endsWith('/ui-manifest.json')) return new Response(JSON.stringify(f.manifest));
+      attempts++; return reply(f.files.get('index.html'));
+    } });
+    await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
+    assert.equal(f.c.getState().status, 'error', name);
+    assert.equal(attempts, 1, name); assert.equal(f.loads, 0, name);
+    assert.equal(f.c.getState().revision, f.bundled.revision, name);
+    assert.ok(!(await readdir(f.cacheRoot)).some(name => name.startsWith('.stage-')));
+  }
+});
+
+test('a stalled body exhausts its file retries and keeps the active revision', { timeout: 5000 }, async t => {
+  const factory = await virtualClock(t); let attempts = 0;
+  const f = await setup(t, { fetch: async (url, { signal }) => {
+    if (url.endsWith('/ui-manifest.json')) return new Response(JSON.stringify(f.manifest));
+    attempts++;
+    let emptyChunks = 0;
+    return new Response(new ReadableStream({ pull(controller) {
+      t.mock.timers.tick(10000);
+      if (signal.aborted) {
+        // Let rejection reach the loader, then advance through its retry delay.
+        if (attempts < 3) setImmediate(() => t.mock.timers.tick(2000));
+        signal.throwIfAborted();
+      }
+      if (++emptyChunks < 5) controller.enqueue(new Uint8Array());
+      else { controller.enqueue(f.files.get('index.html')); controller.close(); }
+    } }, { highWaterMark: 0 }));
+  } }, factory);
+  await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
+  assert.equal(attempts, 3); assert.equal(f.loads, 0);
+  assert.equal(f.c.getState().status, 'error');
+  assert.equal(f.c.getState().revision, f.bundled.revision);
+  assert.ok(!(await readdir(f.cacheRoot)).some(name => name.startsWith('.stage-')));
+});
+
+test('the whole manual refresh stays bounded even when a body keeps making progress', { timeout: 5000 }, async t => {
+  const factory = await virtualClock(t); let attempts = 0;
+  const f = await setup(t, { fetch: async (url, { signal }) => {
+    if (url.endsWith('/ui-manifest.json')) return new Response(JSON.stringify(f.manifest));
+    attempts++;
+    const bytes = f.files.get('index.html'); let offset = 0;
+    return new Response(new ReadableStream({ pull(controller) {
+      t.mock.timers.tick(25000);
+      signal.throwIfAborted();
+      controller.enqueue(bytes.subarray(offset, ++offset));
+      if (offset === bytes.length) controller.close();
+    } }, { highWaterMark: 0 }));
+  } }, factory);
+  await f.c.setSource('https://source.invalid/machine/'); await f.c.refresh();
+  assert.equal(f.c.getState().status, 'error'); assert.equal(f.loads, 0);
+  assert.equal(attempts, 1); assert.equal(f.c.getState().revision, f.bundled.revision);
+});
+
 function gate() {
   let enter, release;
   const entered = new Promise(resolve => { enter = resolve; });

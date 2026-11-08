@@ -21,7 +21,7 @@ for (const line of execFileSync('systemctl', ['--user', 'show-environment'], { e
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function imageDigest() { const h = createHash('sha256'); for await (const chunk of createReadStream(image)) h.update(chunk); return h.digest('hex'); }
 let app, server, machine, observer;
-let manifest, corrupt = false, unavailable = false;
+let manifest, corrupt = false, unavailable = false, weakLink = false;
 const requests = [];
 async function launch() {
   app = await electron.launch({ executablePath: image, args: ['--user-data-dir=' + profile], env, timeout: 60000 });
@@ -60,7 +60,14 @@ try {
     try {
       const bytes = await readFile(join(feedRoot, path));
       if (corrupt && path === 'index.html') bytes[0] ^= 1;
-      response.setHeader('Content-Length', bytes.length); response.end(bytes);
+      response.setHeader('Content-Length', bytes.length);
+      if (weakLink && path === 'index.html') {
+        const half = Math.floor(bytes.length / 2);
+        response.write(bytes.subarray(0, half), () => {
+          if (requests.filter(path => path === 'index.html').length === 1) response.destroy();
+          else setTimeout(() => response.end(bytes.subarray(half)), 16000);
+        });
+      } else response.end(bytes);
     } catch { response.writeHead(404); response.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -150,8 +157,11 @@ try {
   await expect(page.locator('.interface-message')).toContainText('runtime');
   assert.equal((await state(page)).revision, a);
   await publish('revision-b');
+  requests.length = 0; weakLink = true;
   await page.getByRole('button', { name: 'Refresh interface', exact: true }).click();
-  await expect(page.locator('meta[name="emachine-ui-test"]')).toHaveAttribute('content', 'revision-b');
+  await expect(page.locator('meta[name="emachine-ui-test"]')).toHaveAttribute('content', 'revision-b', { timeout: 35000 });
+  weakLink = false;
+  assert.deepEqual(requests.filter(path => path !== 'ui-manifest.json'), ['index.html', 'index.html']);
   await expect.poll(async () => (await state(page)).status).toBe('current');
   assert.equal((await state(page)).revision, b);
   await publish('broken', true); await open(page);
