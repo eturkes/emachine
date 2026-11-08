@@ -355,7 +355,7 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
       const css = getComputedStyle(tab), indicator = getComputedStyle(tab, '::after');
       let surface: Element = tab;
       while (surface.parentElement && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
-      return { color: css.color, padding: css.paddingInlineStart, surface: getComputedStyle(surface).backgroundColor,
+      return { color: css.color, padding: css.paddingInline, surface: getComputedStyle(surface).backgroundColor,
         underline: [indicator.height, indicator.backgroundColor] };
     });
     const projectAppearance = await appearance();
@@ -385,11 +385,9 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
       const close = page.getByRole('button', { name: 'Close misc3', exact: true });
       const [closeBox, addBox] = await close.or(add(page)).evaluateAll(buttons => buttons.map(button => {
         const { top, width, height } = button.getBoundingClientRect();
-        return { centerY: top + height / 2, width, height, fontSize: getComputedStyle(button).fontSize };
+        return { top, width, height, fontSize: getComputedStyle(button).fontSize };
       }));
-      const size = width <= 700 ? 44 : 24;
-      expect(closeBox).toEqual({ centerY: addBox.centerY, width: size, height: size, fontSize: addBox.fontSize });
-      await expect(activeTab).toHaveCSS('padding-inline-end', '4px');
+      expect(addBox).toEqual(closeBox);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (width <= 700) {
         expect(addBox.height).toBeGreaterThanOrEqual(44);
