@@ -1,22 +1,18 @@
 import type { Terminal } from '@xterm/xterm';
 
-export function terminalSnapshot(terminal: Terminal, selection?: ReturnType<Terminal['getSelectionPosition']>) {
+function terminalSnapshot(terminal: Terminal): string {
   const buffer = terminal.buffer.active;
   let text = '', lastOutput = 0;
-  let start: number | undefined, end: number | undefined;
   for (let row = 0; row < buffer.length; row++) {
     const line = buffer.getLine(row);
     if (!line) continue;
     if (row && !line.isWrapped) text += '\n';
-    // Buffer columns count cells; DOM range offsets count UTF-16 code units.
-    if (selection?.start.y === row) start = text.length + line.translateToString(true, 0, selection.start.x).length;
-    if (selection?.end.y === row) end = text.length + line.translateToString(true, 0, selection.end.x).length;
     const contents = line.translateToString(true);
     text += contents;
     if (contents) lastOutput = text.length;
   }
   // Trim empty screen cells, not printed spaces; a TUI may have text below its cursor.
-  return { text: text.slice(0, lastOutput), start: Math.min(start ?? lastOutput, lastOutput), end: Math.min(end ?? lastOutput, lastOutput) };
+  return text.slice(0, lastOutput);
 }
 
 let nextId = 0;
@@ -62,7 +58,7 @@ export class TerminalCopyOutput {
   open(selectedText?: string): void {
     if (this.disposed || this.element.open) return;
     this.revision++;
-    this.text.value = selectedText ?? terminalSnapshot(this.terminal).text;
+    this.text.value = selectedText ?? terminalSnapshot(this.terminal);
     this.status.textContent = selectedText ? "Clipboard access was not granted. Use your device's Copy command for the selected text."
       : this.text.value ? '' : 'No terminal output to copy.';
     this.all.disabled = !this.text.value;

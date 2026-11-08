@@ -122,7 +122,7 @@ Closing or switching a tab leaves its zmx session and running programs alive. Sw
 
 To select live output, press and hold a word until it is highlighted. You can drag in either direction before lifting your finger.
 
-On iPhone or iPad, lift your finger to keep that passage selected in a still copy of the terminal. Tap the highlight to show the system menu. Drag the selection handles to adjust the passage, or press and hold another word to start a new selection. Choose **Copy** in the system menu or the terminal toolbar. Tap **Done** to return to live output.
+On iPhone or iPad, lift your finger to keep that passage selected in a still copy of the terminal. The text keeps its colors, formatting, and position. Tap the highlight to show the system menu. Drag the selection handles to adjust the passage, or press and hold another word to start a new selection. Choose **Copy** in the system menu or the terminal toolbar. Tap **Done** to return to live output.
 
 To select from a snapshot, tap **Copy** with no text selected. This opens **Copy terminal output**. Use this option when a terminal program handles the mouse.
 Press and hold the text to select a passage and adjust the native selection handles, then tap **Copy selection** or the device's **Copy** command.

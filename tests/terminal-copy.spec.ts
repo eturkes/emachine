@@ -52,6 +52,22 @@ async function select(text: Locator, start: number, end: number) {
 }
 
 type Point = { x: number; y: number };
+async function snapshotRange(output: Locator, start: number, end: number) {
+  return output.evaluateHandle((pre, { start, end }) => {
+    // Resolve logical UTF-16 offsets across any number of styled text runs.
+    const boundary = (offset: number): [Text, number] => {
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        if (offset <= node.length) return [node, offset];
+        offset -= node.length;
+      }
+      throw new RangeError('Offset outside terminal output');
+    };
+    const range = document.createRange(); range.setStart(...boundary(start)); range.setEnd(...boundary(end));
+    return range;
+  }, { start, end });
+}
+
 async function cell(pane: Locator, line: string, column: number): Promise<Point> {
   const span = pane.locator('.xterm-rows').getByText(line, { exact: true }).first();
   const bounds = (await span.boundingBox())!;
@@ -109,6 +125,105 @@ test('a deliberate hold selects the touched word without focusing the terminal',
   expect(t.input).toEqual([]);
 });
 
+for (const theme of ['dark', 'light']) test(`iOS native handoff preserves terminal colors and formatting in ${theme} mode`, async ({ page, browserName }) => {
+  const t = await terminal(page);
+  if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).tap();
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 32, rows: 12 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  const history = Array.from({ length: 24 }, (_, i) => 'history ' + i);
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H\u001b[?25l' + [
+    ...history,
+    '   \u001b[1;3;4;38;2;255;226;75;48;2;57;30;111mStyled wide \u754c   \u001b[0m',
+    '      \u001b[38;5;23;48;5;221;7mAligned column\u001b[0m tail',
+    'tap target', 'ready',
+  ].join('\r\n')));
+  const rows = t.pane.locator('.xterm-rows');
+  const row = rows.locator(':scope > div').filter({ hasText: 'Styled wide' });
+  await expect(row).toBeVisible();
+  await expect(rows).not.toContainText('history 0');
+  const box = (await row.boundingBox())!;
+  // Compare the same screen pixels for two unselected rows. The cursor, handles and controls are outside this crop.
+  const clip = { x: Math.ceil(box.x), y: Math.ceil(box.y), width: Math.floor(box.width) - 1, height: Math.floor(box.height * 2) - 1 };
+  const capture = () => page.screenshot({ clip, scale: 'css', animations: 'disabled', caret: 'hide' });
+  const before = await capture();
+  await hold(page, browserName, t.pane, await cell(t.pane, 'tap target', 6));
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe('target');
+  expect((await capture()).equals(before), 'the frozen rows match the live renderer at their original coordinates').toBe(true);
+  t.send(Buffer.from('\u001b[2J\u001b[Hnew frame'));
+  await expect(rows).toContainText('new frame');
+  expect((await capture()).equals(before), 'live redraws cannot change the frozen formatting').toBe(true);
+  expect(t.input).toEqual([]);
+});
+
+test('iOS native handoff preserves styled scrollback and concealed cells', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 32, rows: 10 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  const rows = t.pane.locator('.xterm-rows');
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H\u001b[?25l\u001b[1;31;44mold \u001b[8mhidden\u001b[28m end\u001b[0m'));
+  await expect(rows).toContainText(' end');
+  await expect(rows).not.toContainText('hidden');
+  const first = (await rows.locator(':scope > div').first().boundingBox())!;
+  const clip = { x: Math.ceil(first.x), y: Math.ceil(first.y), width: Math.floor(first.width) - 1, height: Math.floor(first.height) - 1 };
+  const capture = () => page.screenshot({ clip, scale: 'css', animations: 'disabled', caret: 'hide' });
+  const before = await capture();
+  const history = Array.from({ length: 1000 }, (_, i) => 'filler ' + i);
+  t.send(Buffer.from('\r\n' + [...history, 'tap target'].join('\r\n')));
+  await expect(rows).toContainText('tap target');
+  await expect(rows).not.toContainText('old ');
+  await hold(page, browserName, t.pane, await cell(t.pane, 'tap target', 6));
+  const snapshot = t.pane.locator('.terminal-native-selection pre');
+  // The frozen row must survive replacement of both its live buffer and the palette used to paint it.
+  await expect(snapshot.locator('.terminal-native-placeholder').filter({ hasText: 'old hidden end' })).toHaveCount(1);
+  t.send(Buffer.from('\u001b]4;1;rgb:22/ff/22;4;rgb:55/00/55\u0007\u001b[2J\u001b[3J\u001b[H\u001b[31;44mlive palette\u001b[0m'));
+  await expect(rows.locator('span').filter({ hasText: 'live palette' }).first()).toHaveCSS('background-color', 'rgb(85, 0, 85)');
+  const original = ['old hidden end', ...history, 'tap target'].join('\n');
+  const all = await snapshot.evaluate(pre => {
+    const selection = document.getSelection()!; selection.selectAllChildren(pre);
+    return { native: selection.toString(), dom: selection.getRangeAt(0).toString() };
+  });
+  expect(all.dom).toBe(original);
+  expect(all.native).toBe(original);
+  expect(await snapshot.evaluate(pre => pre.scrollTop)).toBeGreaterThan(0);
+  const concealed = await snapshotRange(snapshot, 4, 10);
+  await concealed.evaluate(range => {
+    document.getSelection()!.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+  });
+  await snapshot.evaluate(pre => { pre.scrollTop = 0; });
+  await expect(snapshot.locator('.terminal-native-row').filter({ hasText: 'old hidden end' }).locator('span').first()).toBeInViewport();
+  expect(await page.evaluate(() => {
+    const selection = document.getSelection()!, range = selection.getRangeAt(0);
+    return { text: selection.toString(), reversed: selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset };
+  })).toEqual({ text: 'hidden', reversed: true });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual(['hidden']);
+  // Match the original unselected pixels after verifying the restored handles and copy bytes.
+  await page.evaluate(() => document.getSelection()!.removeAllRanges());
+  await expect.poll(async () => (await capture()).equals(before), {
+    message: 'the old row retains its original palette, glyphs and concealment after a live palette change and history clear', timeout: 3000,
+  }).toBe(true);
+  expect(t.input).toEqual([]);
+});
+
+test('iOS native handoff preserves a horizontally scrolled observer grid', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 100, rows: 12 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H\u001b[?25l\u001b[4;72H\u001b[1;33;44mposition check\u001b[0m\u001b[7;72H\u001b[3mtap target\u001b[0m'));
+  const rows = t.pane.locator('.xterm-rows');
+  await expect(rows).toContainText('tap target');
+  const host = t.pane.locator('.terminal-host');
+  expect(await host.evaluate(el => { el.scrollLeft = el.scrollWidth; return el.scrollLeft; })).toBeGreaterThan(0);
+  const marker = (await rows.locator('span').filter({ hasText: /^position check$/ }).first().boundingBox())!;
+  const clip = { x: Math.ceil(marker.x), y: Math.ceil(marker.y), width: Math.floor(marker.width) - 1, height: Math.floor(marker.height) - 1 };
+  const capture = () => page.screenshot({ clip, scale: 'css', animations: 'disabled', caret: 'hide' });
+  const before = await capture();
+  await hold(page, browserName, t.pane, await cell(t.pane, 'tap target', 6));
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe('target');
+  expect((await capture()).equals(before), 'the scrolled column stays at its screen coordinates').toBe(true);
+  expect(t.input).toEqual([]);
+});
+
 test('iOS native handoff selects the exact wrapped occurrence and copies an adjusted browser range', async ({ page, browserName }) => {
   const t = await terminal(page);
   t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 10 }));
@@ -128,30 +243,32 @@ test('iOS native handoff selects the exact wrapped occurrence and copies an adju
   await expect.poll(selected, { timeout: 3000 }).toBe(word);
   t.send(Buffer.from('\r\nnew output'));
   await expect(rows).toContainText('new output');
-  const inspection = await page.evaluate(() => {
+  const snapshot = t.pane.locator('.terminal-native-selection pre');
+  const inspection = await snapshot.evaluate(pre => {
     const selection = document.getSelection()!, range = selection.getRangeAt(0);
-    const text = range.startContainer, target = text.parentElement!;
+    const prefix = document.createRange(); prefix.selectNodeContents(pre); prefix.setEnd(range.startContainer, range.startOffset);
     const bounds = range.getClientRects()[0];
     const hit = bounds && document.elementFromPoint(bounds.left + 1, bounds.top + bounds.height / 2);
-    const result = {
-      text: text.textContent, offset: range.startOffset, editable: target.isContentEditable,
-      reachable: hit !== null && target.contains(hit), selectable: getComputedStyle(target).userSelect,
+    const target = hit ?? pre;
+    return {
+      text: pre.textContent, offset: prefix.toString().length, editable: (target as HTMLElement).isContentEditable,
+      reachable: hit !== null && pre.contains(hit), selectable: getComputedStyle(pre).userSelect,
       menu: target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
       drag: target.dispatchEvent(new Event('touchmove', { bubbles: true, cancelable: true })),
     };
-    range.setEnd(range.endContainer, range.endOffset + '\nnext'.length);
-    selection.removeAllRanges(); selection.addRange(range);
-    return result;
   });
   expect(inspection).toEqual({ text: output, offset: prefix.length, editable: false, reachable: true, selectable: 'text', menu: true, drag: true });
+  const extended = await snapshotRange(snapshot, prefix.length, prefix.length + word.length + '\nnext'.length);
+  await extended.evaluate(range => {
+    const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+  });
   await expect.poll(selected).toBe(word + '\nnext');
   const copy = t.pane.getByRole('button', { name: 'Copy', exact: true });
   await copy.tap();
   await expect.poll(() => writes(page)).toEqual([word + '\nnext']);
   // Target the final word by geometry. The browser's pointer handling must create this new selection.
-  const point = await t.pane.locator('.terminal-native-selection pre').evaluate(pre => {
-    const text = pre.firstChild as Text;
-    const range = document.createRange(); range.setStart(text, text.length - 3); range.setEnd(text, text.length);
+  const lastWord = await snapshotRange(snapshot, output.length - 3, output.length);
+  const point = await lastWord.evaluate(range => {
     const rect = range.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   });
@@ -167,15 +284,15 @@ test('iOS native handoff clips a selection crossing the instructions to the outp
   const t = await terminal(page);
   await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
   const view = t.pane.getByRole('region', { name: 'Select terminal text', exact: true });
-  const hint = view.locator('.terminal-selection-bar span');
+  const hint = t.pane.locator('.terminal-selection-bar span');
   await expect.soft(hint).toHaveCSS('user-select', 'none', { timeout: 1000 });
-  await view.evaluate(element => {
-    const outside = element.querySelector('span')!.firstChild!;
-    const inside = element.querySelector('pre')!.firstChild!;
-    document.getSelection()!.setBaseAndExtent(outside, 0, inside, 'output'.length);
+  const inside = await snapshotRange(view.locator('pre'), 'output '.length, 'output ready'.length);
+  await inside.evaluate(range => {
+    const outside = range.startContainer.parentElement!.closest('.terminal-pane')!.querySelector('.terminal-selection-bar span')!.firstChild!;
+    document.getSelection()!.setBaseAndExtent(range.startContainer, range.startOffset, outside, outside.textContent!.length);
   });
   await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
-  await expect.poll(() => writes(page), { timeout: 3000 }).toEqual(['output']);
+  await expect.poll(() => writes(page), { timeout: 3000 }).toEqual(['ready']);
   expect(t.input).toEqual([]);
 });
 

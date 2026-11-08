@@ -1,5 +1,6 @@
 import type { Terminal } from '@xterm/xterm';
-import { terminalSnapshot } from './terminal-copy';
+import { snapshotGrid } from './terminal-snapshot-grid';
+import { selectionPages, textPoint } from './terminal-selection-pages';
 
 export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, terminal: Terminal, copy: HTMLButtonElement) {
   const display = document.createElement('div'); display.className = 'terminal-display';
@@ -11,24 +12,38 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
   const done = document.createElement('button'); done.type = 'button'; done.textContent = 'Done';
   done.className = 'text-button'; done.setAttribute('aria-label', 'Done selecting');
   const output = document.createElement('pre'); output.tabIndex = -1;
-  bar.append(hint, done); view.append(bar, output); display.append(view);
+  // Use the keyboard control strip for Done so the frozen grid keeps its entire viewport.
+  const keys = pane.querySelector<HTMLElement>('.terminal-keyboard-controls')!;
+  bar.hidden = true; bar.append(hint, done); keys.after(bar);
+  view.append(output); display.append(view);
   const events = new AbortController(), { signal } = events;
   let pressedText: string | undefined;
+  let snapshot: { grid: NonNullable<ReturnType<typeof snapshotGrid>>; pages: ReturnType<typeof selectionPages> } | undefined;
+  const paintViewport = () => {
+    if (!snapshot) return;
+    const { grid, pages } = snapshot;
+    pages.paintAround(Math.floor(output.scrollTop / grid.rowHeight), Math.ceil(output.clientHeight / grid.rowHeight));
+  };
+  output.addEventListener('scroll', paintViewport, { passive: true, signal });
+  const resize = new ResizeObserver(paintViewport);
 
   const selectedText = () => {
-    const selection = document.getSelection(), node = output.firstChild;
-    if (!node || !selection?.rangeCount || selection.isCollapsed) return '';
-    const range = selection.getRangeAt(0);
-    if (!range.intersectsNode(node)) return '';
-    const start = range.startContainer === node ? range.startOffset : 0;
-    const end = range.endContainer === node ? range.endOffset : undefined;
-    return node.textContent!.slice(start, end);
+    const selection = document.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return '';
+    const range = selection.getRangeAt(0).cloneRange();
+    if (!range.intersectsNode(output)) return '';
+    const bounds = document.createRange(); bounds.selectNodeContents(output);
+    if (range.compareBoundaryPoints(Range.START_TO_START, bounds) < 0) range.setStart(output, 0);
+    if (range.compareBoundaryPoints(Range.END_TO_END, bounds) > 0) range.setEnd(output, output.childNodes.length);
+    return range.toString();
   };
   const close = (focus = false) => {
     if (view.hidden) return;
     const selection = document.getSelection();
     if (selection?.rangeCount && selection.getRangeAt(0).intersectsNode(output)) selection.removeAllRanges();
-    view.hidden = true; output.replaceChildren(); host.inert = false; pressedText = undefined;
+    view.hidden = bar.hidden = true; output.replaceChildren(); view.querySelector('style')?.remove();
+    resize.disconnect(); snapshot?.grid.dispose(); snapshot = undefined;
+    keys.inert = host.inert = false; pressedText = undefined;
     terminal.clearSelection();
     if (focus) copy.focus({ preventScroll: true });
   };
@@ -45,23 +60,32 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
   copy.addEventListener('pointercancel', () => { pressedText = undefined; }, { signal });
   copy.addEventListener('mousedown', event => { if (!view.hidden) event.preventDefault(); }, { signal });
   pane.addEventListener('click', event => {
-    if (event.target instanceof Element && event.target.closest('.terminal-toolbar button, .terminal-session button') && !copy.contains(event.target)) close();
+    if (event.target instanceof Element && event.target.closest('.terminal-toolbar button, .terminal-session button') && !bar.contains(event.target) && !copy.contains(event.target)) close();
   }, { capture: true, signal });
   return {
     open() {
       const position = terminal.getSelectionPosition(), selection = document.getSelection();
       if (!position || !selection || !view.hidden) return;
-      const { text, start, end } = terminalSnapshot(terminal, position);
-      if (start >= end) return;
-      // xterm replaces rendered rows. Give Safari one stable, noneditable text node outside its touch handlers.
-      const node = document.createTextNode(text);
-      output.replaceChildren(node);
-      terminal.blur(); host.inert = true; view.hidden = false;
+      const grid = snapshotGrid(terminal, host);
+      if (!grid) return;
+      const buffer = terminal.buffer.active, viewportY = buffer.viewportY;
+      const pages = selectionPages(grid, buffer.getNullCell());
+      const start = pages.offsetAt(position.start.y, position.start.x), end = pages.offsetAt(position.end.y, position.end.x);
+      if (start >= end) { grid.dispose(); return; }
+      const visibleRows = Math.ceil(host.clientHeight / grid.rowHeight);
+      pages.paintAround(viewportY, visibleRows);
+      pages.element.style.paddingBottom = Math.max(0, host.clientHeight - terminal.rows * grid.rowHeight) + 'px';
+      snapshot = { grid, pages };
+      output.className = grid.ownerClass; output.style.backgroundColor = grid.background;
+      view.prepend(grid.css); output.replaceChildren(pages.element);
+      terminal.blur(); host.inert = keys.inert = true; view.hidden = bar.hidden = false;
       output.focus({ preventScroll: true });
-      const range = document.createRange(); range.setStart(node, start); range.setEnd(node, end);
+      const range = document.createRange();
+      range.setStart(...textPoint(output, start, false)); range.setEnd(...textPoint(output, end, true));
       selection.removeAllRanges(); selection.addRange(range);
-      const first = range.getClientRects()[0];
-      if (first) output.scrollTop += first.top - output.getBoundingClientRect().top - output.clientHeight / 3;
+      output.scrollTop = viewportY * grid.rowHeight + grid.scrollOffsetY;
+      output.scrollLeft = grid.scrollLeft;
+      resize.observe(output);
     },
     copyText() {
       if (view.hidden) return undefined;
