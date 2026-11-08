@@ -78,11 +78,15 @@ export function attachTerminalClipboard(host: HTMLElement, terminal: Terminal, a
     enabled[next]?.focus();
   });
   // Intercept before xterm moves its hidden textarea or sends right-button mouse reports to a TUI.
+  let finger = false;
+  host.addEventListener('pointerdown', event => { finger = event.pointerType === 'touch'; }, { capture: true, signal: lifetime.signal });
   for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) host.addEventListener(type, event => {
     if (event.button === 2) { event.preventDefault(); event.stopPropagation(); }
   }, { capture: true, signal: lifetime.signal });
   host.addEventListener('contextmenu', event => {
     event.preventDefault(); event.stopPropagation();
+    // A finger hold on the grid belongs to touch selection, even if the browser sends contextmenu first.
+    if (finger && terminal.modes.mouseTrackingMode === 'none' && event.target instanceof Element && event.target.closest('.xterm-screen')) return;
     if (event.clientX || event.clientY) open(event.clientX, event.clientY);
     else openAtCursor();
   }, { capture: true, signal: lifetime.signal });

@@ -100,6 +100,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-main { container: terminal / inline-size; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 14px 16px 0; }
 .terminal-host { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
 .terminal-host .xterm { height: 100%; }
+.terminal-host .xterm-screen { -webkit-touch-callout: none; }
 .terminal-host .xterm-viewport { background-color: var(--bg); }
 /* Safari's focus zoom follows the editable input, independently of the terminal cells. */
 .terminal-host .xterm-helper-textarea { font-size: 16px; }

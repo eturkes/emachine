@@ -120,8 +120,9 @@ Closing or switching a tab leaves its zmx session and running programs alive. Sw
 
 ## Copy terminal output
 
-On a touchscreen, tap **Copy** in the text tools row below the terminal keys.
-When no terminal text is already selected, this opens **Copy terminal output** with a selectable snapshot.
+To select live output, press and hold a word until it is highlighted. Without lifting your finger, drag in either direction to extend the selection. Lift your finger and tap **Copy** in the text tools row below the terminal keys.
+
+To select from a snapshot, tap **Copy** with no text selected. This opens **Copy terminal output**. Use this option when a terminal program handles the mouse.
 Press and hold the text to select a passage and adjust the native selection handles, then tap **Copy selection** or the device's **Copy** command.
 Tap **Copy all** to copy the whole snapshot, including the available terminal scrollback.
 

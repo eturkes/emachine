@@ -284,10 +284,14 @@ export class TerminalPane {
   private async copy(): Promise<void> {
     const text = this.terminal.getSelection();
     if (!text && this.copyOutput) { this.copyOutput.open(); return; }
-    this.terminal.focus();
+    if (!this.copyOutput) this.terminal.focus();
     if (!text) { this.notice('Select terminal text to copy.'); return; }
     try { await navigator.clipboard.writeText(text); }
-    catch { this.notice('Clipboard access was not granted. Use your device’s Copy command.'); }
+    catch {
+      if (!this.visible || this.closed) return;
+      if (this.copyOutput) this.copyOutput.open(text);
+      else this.notice('Clipboard access was not granted. Use your device’s Copy command.');
+    }
   }
   private async paste(): Promise<void> {
     this.terminal.focus();

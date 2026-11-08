@@ -51,6 +51,143 @@ async function select(text: Locator, start: number, end: number) {
   }, { start, end });
 }
 
+type Point = { x: number; y: number };
+async function cell(pane: Locator, line: string, column: number): Promise<Point> {
+  const span = pane.locator('.xterm-rows').getByText(line, { exact: true }).first();
+  const bounds = (await span.boundingBox())!;
+  // These fixture rows contain single-width ASCII cells.
+  return { x: bounds.x + (column + 0.5) * bounds.width / line.length, y: bounds.y + bounds.height / 2 };
+}
+
+async function finger(page: Page, phase: 'start' | 'move' | 'end' | 'cancel', origin: Point, at = origin) {
+  await page.evaluate(({ phase, origin, at }) => {
+    const target = document.elementFromPoint(origin.x, origin.y)!;
+    const touch = { identifier: 1, target, clientX: at.x, clientY: at.y };
+    const finished = phase === 'end' || phase === 'cancel';
+    target.dispatchEvent(new PointerEvent({ start: 'pointerdown', move: 'pointermove', end: 'pointerup', cancel: 'pointercancel' }[phase], {
+      bubbles: true, cancelable: true, pointerType: 'touch', pointerId: 1, isPrimary: true,
+      button: 0, buttons: finished ? 0 : 1, clientX: at.x, clientY: at.y,
+    }));
+    const event = new Event('touch' + phase, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { touches: { value: finished ? [] : [touch] }, changedTouches: { value: [touch] } });
+    target.dispatchEvent(event);
+  }, { phase, origin, at });
+}
+
+async function hold(page: Page, browserName: string, pane: Locator, start: Point, dragTo?: Point | (() => Promise<Point>)) {
+  const session = browserName === 'chromium' ? await page.context().newCDPSession(page) : undefined;
+  const dispatch = (phase: 'start' | 'move' | 'end', at: Point) => {
+    if (!session) return finger(page, phase, start, at);
+    return session.send('Input.dispatchTouchEvent', {
+      type: ({ start: 'touchStart', move: 'touchMove', end: 'touchEnd' } as const)[phase],
+      touchPoints: phase === 'end' ? [] : [{ ...at, id: 1 }],
+    });
+  };
+  const selected = pane.locator('.xterm-selection > div').first();
+  try {
+    await dispatch('start', start);
+    await expect(selected).toBeVisible({ timeout: 3000 });
+    const end = typeof dragTo === 'function' ? await dragTo() : dragTo;
+    if (end) {
+      for (let step = 1; step <= 4; step++) await dispatch('move', {
+        x: start.x + (end.x - start.x) * step / 4, y: start.y + (end.y - start.y) * step / 4,
+      });
+    }
+    await dispatch('end', end ?? start);
+    await expect(selected).toBeVisible();
+  } finally { await session?.detach(); }
+}
+
+test('a deliberate hold selects the touched word without focusing the terminal', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
+  const helper = t.pane.locator('.xterm-helper-textarea');
+  await expect(helper).not.toBeFocused();
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual(['ready']);
+  await expect(helper).not.toBeFocused();
+  expect(t.input).toEqual([]);
+});
+
+for (const backward of [false, true]) test(`a deliberate hold extends ${backward ? 'backward' : 'across rows'} before release`, async ({ page, browserName }) => {
+  const t = await terminal(page);
+  const first = 'alpha beta gamma', second = 'delta epsilon';
+  t.send(Buffer.from('\u001b[2J\u001b[H' + first + '\r\n' + second));
+  await expect(t.pane.locator('.xterm-rows')).toContainText(second);
+  const start = await cell(t.pane, first, 7);
+  const end = await cell(t.pane, backward ? first : second, 2);
+  await hold(page, browserName, t.pane, start, end);
+  await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
+  if (backward) await page.evaluate(() => { (window as any).copyFixture.denied = true; });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  if (backward) {
+    const output = t.pane.getByRole('textbox', { name: 'Terminal output', exact: true });
+    await expect(output).toBeVisible();
+    await expect(output).toHaveAttribute('readonly', '');
+    expect(await output.evaluate((field: HTMLTextAreaElement) => field.value.slice(field.selectionStart, field.selectionEnd))).toBe('pha beta');
+    expect(await writes(page)).toEqual([]);
+  } else {
+    await expect.poll(() => writes(page)).toEqual(['beta gamma\ndel']);
+    await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
+  }
+  expect(t.input).toEqual([]);
+});
+
+test('a deliberate hold on a wide trailing cell selects the complete soft-wrapped word in scrollback', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 10 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  const history = Array.from({ length: 40 }, (_, i) => 'history-' + i + '\r\n').join('');
+  const word = 'abcd\u754ce\u0301f';
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H' + history + ' '.repeat(15) + word));
+  const rows = t.pane.locator('.xterm-rows');
+  const wrapped = rows.locator(':scope > div').filter({ hasText: '\u754c' });
+  await expect(wrapped).toContainText('\u754ce\u0301f');
+  await expect(wrapped).not.toContainText('abcd');
+  await expect(rows).not.toContainText('history-0');
+  const row = (await wrapped.boundingBox())!, screen = (await t.pane.locator('.xterm-screen').boundingBox())!;
+  await hold(page, browserName, t.pane, { x: screen.x + 1.5 * screen.width / 20, y: row.y + row.height / 2 });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual([word]);
+  expect(t.input).toEqual([]);
+});
+
+test('a deliberate hold tracks its original word when new output trims full scrollback', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 20, rows: 10 }));
+  await expect(t.pane).toHaveAttribute('data-mode', 'observe');
+  const history = Array.from({ length: 10020 }, (_, i) => i + '\r\n').join('');
+  t.send(Buffer.from(history + 'hold original\r\nfinish there'));
+  const rows = t.pane.locator('.xterm-rows');
+  await expect(rows).toContainText('finish there');
+  await hold(page, browserName, t.pane, await cell(t.pane, 'hold original', 6), async () => {
+    t.send(Buffer.from('\r\nnew row'));
+    await expect(rows).toContainText('new row');
+    return cell(t.pane, 'finish there', 2);
+  });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual(['original\nfin']);
+  expect(t.input).toEqual([]);
+});
+
+test('interrupted touch and application mouse tracking suppress deliberate hold selection', async ({ page }) => {
+  const t = await terminal(page);
+  const selected = t.pane.locator('.xterm-selection > div');
+  const start = await cell(t.pane, 'output ready', 8);
+  await page.clock.install();
+  await finger(page, 'start', start);
+  await finger(page, 'cancel', start);
+  await page.clock.runFor(1000);
+  await expect(selected).toHaveCount(0);
+  t.send(Buffer.from('\u001b[?1000h\u001b[?1006h\r\nmouse ready'));
+  await expect(t.pane.locator('.xterm-rows')).toContainText('mouse ready');
+  const mouse = await cell(t.pane, 'mouse ready', 8);
+  await finger(page, 'start', mouse);
+  await page.clock.runFor(1000);
+  await expect(selected).toHaveCount(0);
+  await finger(page, 'end', mouse);
+});
+
 test('repeated finger taps leave terminal output unselected and Copy opens the snapshot', async ({ page }) => {
   const t = await terminal(page);
   const word = t.pane.locator('.xterm-rows span').filter({ hasText: /^output ready$/ }).first();
@@ -186,4 +323,18 @@ test('iOS Copy snapshots are discarded when a pane is hidden or disposed', async
   await t.open();
   await page.goto('about:blank');
   expect(t.input).toEqual([]);
+});
+
+test('clipboard denial after switching terminals stays with the originating pane', async ({ page }) => {
+  const t = await terminal(page);
+  const point = await cell(t.pane, 'output ready', 8);
+  await page.mouse.dblclick(point.x, point.y);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = () => new Promise((_, reject) => { (window as any).denyCopy = reject; });
+  });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await page.getByRole('button', { name: 'beta on Test workstation, online', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+  await page.evaluate(() => (window as any).denyCopy(new DOMException('Denied', 'NotAllowedError')));
+  expect(await page.locator('.toast-region').innerText()).not.toContain('Clipboard access was not granted');
+  await expect(page.getByRole('dialog', { name: 'Copy terminal output' })).not.toBeVisible();
 });

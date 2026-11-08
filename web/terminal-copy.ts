@@ -36,7 +36,7 @@ export class TerminalCopyOutput {
     close.setAttribute('aria-label', 'Close output'); close.onclick = () => this.close();
     const header = document.createElement('div'); header.className = 'dialog-header'; header.append(title, close);
     const hint = document.createElement('p'); hint.className = 'terminal-copy-hint'; hint.id = `${this.element.id}-hint`;
-    hint.textContent = 'Press and hold to select text. Copy all includes available history. Reopen this view for new output.';
+    hint.textContent = 'Press and hold to adjust the selection. Reopen this view for new output.';
     this.text.className = 'terminal-copy-output'; this.text.readOnly = true; this.text.spellcheck = false;
     this.text.setAttribute('aria-label', 'Terminal output'); this.text.setAttribute('aria-describedby', hint.id);
     this.text.addEventListener('select', () => this.refreshSelection());
@@ -52,16 +52,17 @@ export class TerminalCopyOutput {
     this.element.addEventListener('close', () => { if (!this.element.open) this.clear(); });
   }
 
-  open(): void {
+  open(selectedText?: string): void {
     if (this.disposed || this.element.open) return;
     this.revision++;
-    this.text.value = snapshot(this.terminal);
-    this.status.textContent = this.text.value ? '' : 'No terminal output to copy.';
+    this.text.value = selectedText ?? snapshot(this.terminal);
+    this.status.textContent = selectedText ? "Clipboard access was not granted. Use your device's Copy command for the selected text."
+      : this.text.value ? '' : 'No terminal output to copy.';
     this.all.disabled = !this.text.value;
     this.terminal.blur();
     this.element.showModal(); this.trigger.setAttribute('aria-expanded', 'true');
     this.text.focus({ preventScroll: true });
-    this.text.setSelectionRange(this.text.value.length, this.text.value.length);
+    this.text.setSelectionRange(selectedText ? 0 : this.text.value.length, this.text.value.length);
     this.text.scrollTop = this.text.scrollHeight;
     this.refreshSelection();
     this.opened = new AbortController();
