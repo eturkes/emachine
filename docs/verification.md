@@ -5,6 +5,7 @@
 | Command | Coverage |
 | --- | --- |
 | `pnpm verify` | Type and native checking, native tests, release metadata tests, interface and IPC tests, production builds, network tests, and browser tests |
+| `pnpm test:iphone` | iPhone 13 mini WebKit touch flows, terminal layout checks, named screenshots and replayable traces |
 | `pnpm test:gateway` | Real Caddy authentication, hostile headers and origins, HTTP and WebSocket proxying, native fixture terminal, and phone-sized PWA without private-route requests |
 | `pnpm appimage` | Production browser bundle and x86-64 Linux AppImage |
 | `pnpm test:desktop` | Real AppImage, renderer isolation, absent app-updater bridge and dependency, a real fixture machine, and zmx attachment |
@@ -39,6 +40,25 @@ Source gates and packaged-client checks passed. The installation check passed. A
 
 MoonBit emits warning-only diagnostics for declaration visibility and deprecated JSON depth parameters. These are not suppressed. No native test failures or type-check errors remain.
 
+## Review an iPhone 13 mini UI change
+
+On a fresh CachyOS checkout, install the locked dependencies and run `pnpm build:server` with the MoonBit version listed in the README. Rebuild the server after native changes. For each UI revision, run these commands from the checkout root.
+
+```sh
+pnpm test:iphone
+pnpm exec playwright show-report playwright-report/iphone-13-mini
+```
+
+The first command builds the current web source under `.work/iphone-13-mini-web` and runs it against a temporary loopback machine with two projects and real zmx shells. The second opens the report. Select either test to inspect its screenshots or replay the taps in its trace. For a before/after review, copy the report directory before running the next revision. The original named PNGs and traces are under `test-results/iphone-13-mini/`.
+
+| View | What to inspect |
+| --- | --- |
+| Portrait, 375 × 629 CSS px | Light and dark terminal text, line wrapping, fixed keys, and the project drawer while switching shells. |
+| Portrait with 400 CSS px visible | A focused Text draft, the Send button, and the space left for output. The test models a keyboard by shrinking the visual viewport and checks that the draft reaches the fixture shell after Send and Enter. |
+| Landscape, 712 × 327 CSS px | The project rail with the terminal beside it, then the wider terminal grid after hiding the rail. |
+
+The two browser sizes come from the pinned Playwright iPhone 13 Mini profiles, which emulate touch and render at 3×. The 400 px case is a chosen stress size. To check the physical iPhone, repeat the flows in Safari and from the Home Screen icon. Open and dismiss the system keyboard, rotate with the terminal open, and check controls near the notch and home indicator. Use **Copy** on sample output to check native selection handles. Connection steps are in [iPhone access](phone-access.md).
+
 ## Regression evidence
 
 The fixes were exercised against failing checks before correction:
@@ -61,7 +81,7 @@ The FreeBSD public gateway is not deployed. Its jail needs a narrow NAT exceptio
 The host-local phone gateway has a separate [setup and verification workflow](phone-access.md).
 Local authentication and proxy tests do not prove public Funnel reachability. Verify that route after Tailscale approval.
 
-Physical iPhone and Android behavior has not been exercised. The phone test uses a 390-by-844 Chromium viewport. Browser storage eviction remains outside the application's control.
+Physical iPhone and Android behavior has not been exercised. Browser storage eviction remains outside the application's control.
 
 The bcachefs adapter is implemented, but live native snapshots have not been exercised on this machine. Copy-based checkpoints and recovery are covered by native and network tests.
 

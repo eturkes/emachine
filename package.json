@@ -25,6 +25,7 @@
     "phone:status": "node scripts/phone-access.mjs status",
     "phone:revoke": "node scripts/phone-access.mjs revoke",
     "test:web": "node scripts/setup-webkit.mjs && playwright test --config tests/playwright.config.ts",
+    "test:iphone": "node scripts/setup-webkit.mjs && vite build --config web/vite.config.ts --outDir ../.work/iphone-13-mini-web && playwright test --config tests/iphone-13-mini.config.ts",
     "test:desktop": "node tests/desktop.mjs",
     "test:permissions": "node --test tests/desktop-permissions.test.mjs",
     "test:desktop-interface": "node tests/desktop-interface.mjs",

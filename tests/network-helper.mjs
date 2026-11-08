@@ -38,7 +38,7 @@ export async function fixture(options = {}) {
   const config = {
     port, projectRoot: join(home, 'Projects'), dataRoot: join(home, 'data'),
     stateRoot: join(home, 'state'), runtimeRoot: join(home, 'runtime'),
-    webRoot: resolve(root, 'web/dist'), machineName: options.name ?? 'Test workstation',
+    webRoot: options.webRoot ?? resolve(root, 'web/dist'), machineName: options.name ?? 'Test workstation',
     allowedUsers: ['fixture-owner'], allowedOrigins: [origin, 'emachine://app', ...(options.origins ?? [])],
     directUrl: `${origin}/`, gatewayUrl: '', gatewaySecret: randomUUID(),
     snapshotBackend: 'copy', shell: '/bin/bash',

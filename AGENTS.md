@@ -29,6 +29,7 @@
 ## Gates
 
 - Install graph: `pnpm install --frozen-lockfile`.
+- iPhone 13 mini visual review: after `pnpm build:server`, run `pnpm test:iphone` for phone UI changes. Inspect the named PNGs and touch traces in the Playwright report. Uses the pinned portrait/landscape WebKit profiles, an isolated web build and fixture zmx sessions. Reproduction and physical-device checks = `docs/verification.md`.
 - Standard acceptance: `pnpm verify` = type/core check, native tests, native+web build, real network tests, ChromiumFish browser tests.
 - Phone gateway: `pnpm test:gateway` = real Caddy authentication/authority/Origin/WS boundaries + native inventory/events/terminal + Chromium/PWA + WebKit HTTPS/WSS and cookie-only reload + session expiry/revocation/socket ownership + install rollback/password/flock/foreground ownership. Included in `pnpm verify`. Caddy pin = `scripts/caddy.mjs`; WebKit setup + pinned Arch compatibility libraries = `scripts/setup-webkit.mjs`; caches = ignored `.tools/`.
 - Desktop: `pnpm appimage && pnpm test:desktop && pnpm test:desktop-interface`; real AppImages + graphical session. Runtime gate = packaged/PWA icon equality, neutral light/dark themes, isolated renderer, absent app-updater bridge/dependency, real server + terminal. Interface gate = native trust, selective transfer, same binary/PID, retained selection/terminal, failure/offline recovery. `node scripts/install-desktop.mjs` copies to versionless `desktop/installed/emachine.AppImage` + updates own launcher/menu entry.
