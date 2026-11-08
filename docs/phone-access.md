@@ -114,9 +114,9 @@ Keyboard animations settle before the terminal sends its new dimensions to the r
 
 Tap the machine name in the project drawer to open its terminals. Tap **+** to open the first available tab name in the sequence `misc1`, `misc2`, `misc3`, and so on. Closing a tab makes its name available again, including gaps between open tabs.
 
-Long-press a terminal tab to open **Choose zmx session**. Enter the exact session name and select **Open session**. An existing session resumes with its shell state and working directory. A new session starts in the server user's home directory. Desktop users can double-click the tab or press F2 while it is focused. Choosing a session already open in another tab selects that tab.
+Long-press the tab name with a finger or pen to open its menu. Select **Close tab** to dismiss that tab and leave its shell and programs running. Swipe the tab strip to reach other tabs.
 
-Closing or switching a tab leaves its zmx session and running programs alive. Swipe the tab strip normally to reach other tabs; moving your finger cancels the long press.
+To switch sessions, select **Choose zmx session**, enter the exact name and select **Open session**. An existing session resumes with its shell state and working directory. A new session starts in the server user's home directory. Choosing a session already open in another tab selects that tab.
 
 ## Copy terminal output
 

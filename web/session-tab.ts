@@ -1,13 +1,27 @@
+import { createContextMenu } from './context-menu';
+
 // Keep gesture state on the mounted tab so inventory updates cannot interrupt a press.
-export function attachSessionTabEditor(tab: HTMLButtonElement, edit: () => void): () => void {
+export function attachSessionTabActions(tab: HTMLButtonElement, edit: () => void, closeTab: () => void): () => void {
   let press: { id: number; x: number; y: number; timer: number } | undefined;
   let releaseClick: AbortController | undefined;
+  let menu: ReturnType<typeof createContextMenu> | undefined;
+  const open = (x?: number, y?: number) => {
+    if (!menu) {
+      menu = createContextMenu(`Tab actions for ${tab.textContent}`, () => tab.focus({ preventScroll: true }), tab);
+      menu.element.classList.add('tab-menu');
+      menu.item('Choose zmx session', edit);
+      menu.item('Close tab', closeTab);
+      document.body.append(menu.element);
+    }
+    if (!menu.element.hidden) return;
+    const bounds = tab.getBoundingClientRect();
+    menu.open(x ?? bounds.left, y ?? bounds.bottom);
+  };
   const suppressReleaseClick = () => {
     releaseClick?.abort();
     const controller = new AbortController(); releaseClick = controller;
     const clear = () => { controller.abort(); if (releaseClick === controller) releaseClick = undefined; };
-    // A modal can retarget the held finger's click to its backdrop. Only swallow
-    // that release; a new pointer press or a keyboard activation is intentional.
+    // A held finger can release over the new menu. Suppress only that release.
     document.addEventListener('pointerdown', clear, { capture: true, once: true, signal: controller.signal });
     document.addEventListener('click', event => {
       if (event.detail > 0) { event.preventDefault(); event.stopImmediatePropagation(); }
@@ -24,16 +38,25 @@ export function attachSessionTabEditor(tab: HTMLButtonElement, edit: () => void)
     press = { id: event.pointerId, x: event.clientX, y: event.clientY, timer: window.setTimeout(() => {
       press = undefined;
       if (!tab.isConnected || document.hidden) return;
-      suppressReleaseClick(); edit();
+      suppressReleaseClick(); open();
     }, 550) };
   };
   const move = (event: PointerEvent) => {
     if (press && (event.pointerId !== press.id || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10)) cancel();
   };
-  const doubleClick = (event: MouseEvent) => { cancel(); event.preventDefault(); edit(); };
-  const contextMenu = (event: MouseEvent) => { cancel(); event.preventDefault(); suppressReleaseClick(); edit(); };
+  const doubleClick = (event: MouseEvent) => { cancel(); event.preventDefault(); open(); };
+  const contextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    const touch = press || releaseClick;
+    cancel(); suppressReleaseClick();
+    if (!touch && (event.clientX || event.clientY)) open(event.clientX, event.clientY);
+    else open();
+  };
   const key = (event: KeyboardEvent) => {
     if (event.key === 'F2') { event.preventDefault(); edit(); }
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      event.preventDefault(); if (!event.repeat) open();
+    }
   };
   tab.addEventListener('pointerdown', down);
   tab.addEventListener('pointermove', move);
@@ -47,7 +70,7 @@ export function attachSessionTabEditor(tab: HTMLButtonElement, edit: () => void)
   window.addEventListener('blur', cancel);
   document.addEventListener('visibilitychange', cancel);
   return () => {
-    cancel(); releaseClick?.abort();
+    cancel(); releaseClick?.abort(); menu?.dispose();
     tab.removeEventListener('pointerdown', down);
     tab.removeEventListener('pointermove', move);
     tab.removeEventListener('pointerup', cancel);

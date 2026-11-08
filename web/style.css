@@ -75,18 +75,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tabs { display: flex; overflow-x: auto; flex: 1; min-width: 0; padding-left: 12px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { position: relative; flex-shrink: 0; color: var(--muted); padding: 0 19px; font-size: 13px; white-space: nowrap; }
-.tab:hover, .general-tab:hover .tab { color: var(--text); background: var(--accent-soft); }
+.tab:hover { color: var(--text); background: var(--accent-soft); }
 .tab.active { color: var(--accent); }
 .tab.active::after { position: absolute; bottom: 0; left: 15px; right: 15px; height: 2px; content: ''; background: var(--accent); }
-/* The close button overlays the tab's trailing edge and keeps its own focus and hit target. */
-.general-tab { --close-size: 32px; position: relative; display: flex; flex-shrink: 0; align-self: center; height: max(36px,var(--close-size)); margin-inline-end: 4px; }
-.general-tab .tab { min-width: calc(2 * var(--close-size) + 4px); max-width: min(320px,60vw); padding-inline: 10px calc(var(--close-size) + 2px); text-align: end; overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
-.general-tab .tab.active::after { inset-inline: 6px; }
-.general-tab button:focus-visible { outline-offset: -3px; }
-.close-terminal, .new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; padding: 0; border-radius: 6px; color: var(--muted); font-size: 19px; line-height: 1; }
-.close-terminal { position: absolute; inset-inline-end: 1px; width: var(--close-size); height: var(--close-size); justify-items: start; padding-inline-start: 3px; }
-.new-terminal { width: 32px; height: 32px; margin: 0 4px; }
-.close-terminal:hover, .new-terminal:hover { color: var(--text); background: var(--hover); }
+.general-tab { min-width: 44px; max-width: min(320px,60vw); overflow: hidden; text-overflow: ellipsis; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
+.general-tab:focus-visible { outline-offset: -3px; }
+.new-terminal { display: grid; place-items: center; flex-shrink: 0; align-self: center; width: 32px; height: 32px; margin: 0 4px; padding: 0; border-radius: 6px; color: var(--muted); font-size: 19px; line-height: 1; }
+.new-terminal:hover { color: var(--text); background: var(--hover); }
 .stale-indicator { margin-left: 7px; color: var(--warning); font-size: 11px; }
 .header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 5px; padding: 0 11px; border-left: 1px solid var(--border); }
 .tab-header .text-button { min-height: 36px; white-space: nowrap; }
@@ -158,10 +153,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-text-footer { display: flex; align-items: center; gap: 12px; padding-top: 4px; }
 .terminal-text-footer p { flex: 1; min-width: 0; margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
 .terminal-text-footer button { flex-shrink: 0; min-height: 44px; border: 1px solid var(--border); background: var(--surface); }
-.terminal-menu { position: fixed; z-index: 40; min-width: min(260px,calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--raised); box-shadow: 0 8px 28px #0004; }
-.terminal-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; padding: 9px 10px; border-radius: 4px; text-align: left; font-size: 13px; white-space: nowrap; }
-.terminal-menu button:not(:disabled):is(:hover,:focus) { background: var(--hover); outline: none; }
-.terminal-menu button span { color: var(--muted); font: 11px Iosevka,monospace; }
+.context-menu { position: fixed; z-index: 40; min-width: min(260px,calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--raised); box-shadow: 0 8px 28px #0004; }
+.context-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; padding: 9px 10px; border-radius: 4px; text-align: left; font-size: 13px; white-space: nowrap; }
+.context-menu button:not(:disabled):is(:hover,:focus) { background: var(--hover); outline: none; }
+.context-menu button span { color: var(--muted); font: 11px Iosevka,monospace; }
+.tab-menu { min-width: min(180px,calc(100vw - 16px)); }
 .empty-state, .general-empty { padding: clamp(30px,8vw,120px); display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: flex-start; background: var(--bg); }
 :root[data-theme='light'] :is(.empty-state, .general-empty) { background: radial-gradient(ellipse at 80% 15%,var(--accent-soft),transparent 65%); }
 .eyebrow { font-size: 10px; letter-spacing: .2em; color: var(--accent); font-weight: 700; }
@@ -292,6 +288,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .toast-region { right: 14px; }
 }
 @media (max-width: 700px), (pointer: coarse) {
-  .general-tab { --close-size: 44px; }
+  .tab-menu button { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }

@@ -87,7 +87,7 @@ export class TerminalPane {
   private remoteSize = '';
   private pendingSize = '';
   private desiredSize?: { cols: number; rows: number };
-  constructor(public link: Link, public target: TerminalTarget, theme: Theme, private notice: (text: string) => void) {
+  constructor(public link: Link, public target: TerminalTarget, theme: Theme, private notice: (text: string) => void, closeTab?: () => void) {
     this.element.className = 'terminal-pane view';
     this.element.classList.toggle('terminal-ios', isIOS());
     if (target.kind === 'project') this.element.dataset.terminalProject = target.id;
@@ -180,7 +180,7 @@ export class TerminalPane {
     });
     this.terminal.loadAddon(this.fit);
     const canInput = () => this.canInput();
-    this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput });
+    this.clipboard = attachTerminalClipboard(this.host, this.terminal, { copy, paste, canPaste: canInput, closeTab });
     if (isIOS() || navigator.maxTouchPoints > 0) {
       this.copyOutput = new TerminalCopyOutput(this.terminal, copyButton);
       this.element.append(this.copyOutput.element);

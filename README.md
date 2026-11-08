@@ -99,7 +99,9 @@ Select the machine name above the project list to open its terminals. The badge 
 
 On first use, the terminal tab opens `misc1`. Select **+** to open the lowest available name in the sequence `misc1`, `misc2`, `misc3`, and so on. For example, if only `misc1` and `misc3` are open, **+** opens `misc2`. A new session starts in the server user's home directory. An existing session resumes in its working directory with its shell state, including sessions opened through SSH.
 
-Use **×** to close a tab and leave its session running. The browser remembers the open tabs and selection for each machine, including existing session names. If you close all tabs, select **Open misc1** to return to that session. Machine terminals are available even when a machine has no projects.
+Long-press a machine terminal tab, or right-click or double-click it in the AppImage, then choose **Close tab**. You can also right-click the machine terminal's output and choose **Close tab** there. The session keeps running. With keyboard focus on the tab, Shift+F10 or the Menu key opens the same menu, and Delete closes the tab directly.
+
+The browser remembers the open tabs and selection for each machine, including existing session names. If you close all tabs, select **Open misc1** to return to that session. Machine terminals are available even when a machine has no projects.
 
 Switching projects or tabs does not close the shell. Closing the application disconnects its attachment, not the session. After a project rename, new attachments use the new name. Existing attachments and older sessions remain intact.
 

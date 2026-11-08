@@ -94,6 +94,27 @@ try {
   await page.getByLabel('Direct address', { exact: true }).fill(f.origin + '/');
   await page.getByRole('button', { name: 'Connect machine', exact: true }).click();
   await expect(page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true })).toBeVisible();
+  if (process.argv.includes('--interface')) {
+    await page.getByRole('button', { name: 'Desktop acceptance, online', exact: true }).click();
+    const tabs = page.getByRole('tablist', { name: 'Machine terminal tabs' });
+    const first = tabs.getByRole('tab', { name: 'misc1', exact: true });
+    await first.dblclick();
+    const menu = page.getByRole('menu', { name: 'Tab actions for misc1', exact: true });
+    await expect(menu.getByRole('menuitem', { name: 'Choose zmx session', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(first).toBeFocused();
+    await page.getByRole('button', { name: 'New terminal', exact: true }).click();
+    await expect(tabs.getByRole('button', { includeHidden: true })).toHaveCount(0);
+    await first.click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+    await expect(first).toHaveCount(0);
+    await expect(tabs.getByRole('tab', { selected: true })).toHaveText('misc2');
+    await page.locator('[data-terminal-session="misc2"] .terminal-host').click({ button: 'right' });
+    await page.getByRole('menu', { name: 'Terminal actions' }).getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+    await expect(tabs.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'New terminal', exact: true })).toBeFocused();
+    console.log('AppImage tab and terminal menus passed for double-click, right-click, and closing the last tab.');
+  }
   await page.getByRole('button', { name: 'alpha on Desktop acceptance, online', exact: true }).click();
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
   const sidebar = page.locator('.project-rail');

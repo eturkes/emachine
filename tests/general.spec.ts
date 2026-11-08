@@ -21,6 +21,11 @@ const general = (page: Page, name = 'Test workstation') => page.getByRole('butto
 const pane = (page: Page, name: string) => page.locator('[data-terminal-session="' + name + '"]');
 const add = (page: Page) => page.getByRole('button', { name: 'New terminal', exact: true });
 const editor = (page: Page) => page.getByRole('dialog', { name: 'Choose zmx session', exact: true });
+const tabMenu = (page: Page, name: string) => page.getByRole('menu', { name: 'Tab actions for ' + name, exact: true });
+async function closeTab(page: Page, name: string) {
+  await page.getByRole('tab', { name, exact: true }).click({ button: 'right' });
+  await tabMenu(page, name).getByRole('menuitem', { name: 'Close tab', exact: true }).click();
+}
 
 test('General tabs reuse the lowest free name and retain panes and zmx daemons through close and reload', async ({ page }) => {
   const f = await fixture();
@@ -37,7 +42,7 @@ test('General tabs reuse the lowest free name and retain panes and zmx daemons t
     await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
     const second = (await sessions(f)).find(row => row.name === 'misc2')!;
     expect(second).toBeTruthy();
-    await page.getByRole('button', { name: 'Close misc2', exact: true }).click();
+    await closeTab(page, 'misc2');
     await expect(pane(page, 'misc2')).toHaveCount(0);
     await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc2')).toEqual({ name: 'misc2', pid: second.pid, clients: 0 });
     await add(page).click();
@@ -49,10 +54,10 @@ test('General tabs reuse the lowest free name and retain panes and zmx daemons t
       await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
     }
     const third = (await sessions(f)).find(row => row.name === 'misc3')!;
-    await page.getByRole('button', { name: 'Close misc3', exact: true }).click();
-    await expect(page.getByRole('tab', { name: 'misc4', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc3')).toEqual({ name: 'misc3', pid: third.pid, clients: 0 });
     await page.getByRole('tab', { name: 'misc1', exact: true }).click();
+    await closeTab(page, 'misc3');
+    await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc3')).toEqual({ name: 'misc3', pid: third.pid, clients: 0 });
     await expect(pane(page, 'misc1')).toHaveAttribute('data-continuity', 'general-kept');
     await page.getByRole('button', { name: 'alpha on Test workstation, online', exact: true }).click();
     await expect(project).toHaveAttribute('data-continuity', 'project-kept');
@@ -73,11 +78,11 @@ test('General tabs reuse the lowest free name and retain panes and zmx daemons t
     await expect(pane(page, 'misc5')).toHaveAttribute('data-mode', 'control');
     const original = (await sessions(f)).map(({ name, pid }) => ({ name, pid })).sort((a, b) => a.name.localeCompare(b.name));
     for (const name of ['misc1', 'misc2', 'misc3', 'misc4', 'misc5']) {
-      await page.getByRole('button', { name: 'Close ' + name, exact: true }).click();
+      await closeTab(page, name);
     }
     await expect(page.getByRole('tab')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'No open terminals', exact: true })).toBeVisible();
-    await expect(add(page)).toBeVisible();
+    await expect(add(page)).toBeFocused();
     await add(page).click();
     await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
     await expect(page.getByRole('tab')).toHaveText(['misc1']);
@@ -120,7 +125,7 @@ test('General retains legacy names and ignores the saved counter when allocating
     await add(page).click();
     await expect(page.getByRole('tab')).toHaveText(['general', 'general3', 'misc1']);
     await expect(pane(page, 'misc1')).toHaveAttribute('data-mode', 'control');
-    await page.getByRole('button', { name: 'Close general', exact: true }).click();
+    await closeTab(page, 'general');
     await page.reload();
     await expect(page.getByRole('tab')).toHaveText(['general3', 'misc1']);
     await add(page).click();
@@ -139,6 +144,7 @@ test('General session editor creates and reattaches exact named sessions without
     await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
     const previous = (await allSessions(f)).find(row => row.name === 'misc2')!;
     await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
+    await tabMenu(page, 'misc2').getByRole('menuitem', { name: 'Choose zmx session', exact: true }).click();
     await expect(editor(page)).toBeVisible();
     await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc2');
     await editor(page).getByLabel('Session name', { exact: true }).fill(name);
@@ -150,12 +156,12 @@ test('General session editor creates and reattaches exact named sessions without
     await expect.poll(async () => (await allSessions(f)).find(row => row.name === 'misc2')).toEqual({ ...previous, clients: 0 });
     const named = (await allSessions(f)).find(row => row.name === name)!;
     expect(named).toBeTruthy();
-    await page.getByRole('button', { name: 'Close ' + name, exact: true }).click();
+    await closeTab(page, name);
     await expect.poll(async () => (await allSessions(f)).find(row => row.name === name)).toEqual({ ...named, clients: 0 });
     await add(page).click();
     await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
     expect((await allSessions(f)).find(row => row.name === 'misc2')!.pid).toBe(previous.pid);
-    await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
+    await page.getByRole('tab', { name: 'misc2', exact: true }).press('F2');
     await editor(page).getByLabel('Session name', { exact: true }).fill(name);
     await editor(page).getByRole('button', { name: 'Open session', exact: true }).click();
     await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
@@ -182,7 +188,9 @@ test('General session editor handles inactive tabs, cancellation, invalid names,
       await pane(page, name).evaluate(node => { (node as HTMLElement).dataset.continuity = 'source-kept'; });
     }
     const original = await sessions(f);
-    await page.getByRole('tab', { name: 'misc2', exact: true }).dblclick();
+    await page.getByRole('tab', { name: 'misc2', exact: true }).click({ button: 'right' });
+    await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await tabMenu(page, 'misc2').getByRole('menuitem', { name: 'Choose zmx session', exact: true }).click();
     await expect(editor(page)).toBeVisible();
     await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc2');
     await editor(page).getByLabel('Session name', { exact: true }).fill('discarded-draft');
@@ -363,6 +371,7 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     await row.click();
     await expect(activeTab).toBeVisible();
     expect(await appearance()).toEqual(projectAppearance);
+    await expect(page.getByRole('tablist').getByRole('button')).toHaveCount(0);
     for (const name of ['misc2', 'misc3', 'misc4', 'misc5', 'misc6']) {
       await add(page).click();
       await expect(pane(page, name)).toHaveAttribute('data-mode', 'control');
@@ -370,8 +379,16 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     await page.getByRole('tab', { name: 'misc6', exact: true }).focus();
     await page.keyboard.press('Home');
     await expect(page.getByRole('tab', { name: 'misc1', exact: true })).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: 'Close misc1', exact: true })).toBeFocused();
+    for (const key of ['Shift+F10', 'ContextMenu']) {
+      await page.keyboard.press(key);
+      const menu = tabMenu(page, 'misc1');
+      await expect(menu.getByRole('menuitem', { name: 'Choose zmx session', exact: true })).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(menu.getByRole('menuitem', { name: 'Close tab', exact: true })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+      await expect(activeTab).toBeFocused();
+    }
     await page.keyboard.press('Tab');
     await expect(add(page)).toBeFocused();
     await page.getByRole('tab', { name: 'misc1', exact: true }).focus();
@@ -380,36 +397,14 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
     await page.keyboard.press('Delete');
     await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'misc3', exact: true })).toBeFocused();
-    const textBounds = (element: Element) => {
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const { left, right } = range.getBoundingClientRect();
-      return { left, right };
-    };
     for (const width of [1360, 720, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(add(page)).toBeInViewport({ ratio: 1 });
-      const close = page.getByRole('button', { name: 'Close misc3', exact: true });
-      const [closeBox, addBox] = await close.or(add(page)).evaluateAll(buttons => buttons.map(button => {
-        const { top, width, height } = button.getBoundingClientRect();
-        return { top, width, height, fontSize: getComputedStyle(button).fontSize };
-      }));
-      expect(addBox).toEqual(closeBox);
-      const tabRect = await activeTab.evaluate(tab => tab.getBoundingClientRect().toJSON());
-      const closeRect = await close.evaluate(button => button.getBoundingClientRect().toJSON());
-      const labelEnd = (await activeTab.evaluate(textBounds)).right;
-      const gap = (await close.evaluate(textBounds)).left - labelEnd;
-      expect(closeRect.right).toBeLessThanOrEqual(tabRect.right);
-      expect(closeRect.top).toBeGreaterThanOrEqual(tabRect.top);
-      expect(closeRect.bottom).toBeLessThanOrEqual(tabRect.bottom);
-      expect(closeRect.left).toBeGreaterThanOrEqual(labelEnd);
-      expect(gap).toBeGreaterThanOrEqual(2);
-      expect(gap).toBeLessThanOrEqual(5);
       expect(await page.getByRole('tab').evaluateAll(tabs =>
         tabs.every(tab => getComputedStyle(tab).borderStyle === 'none'))).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (width <= 700) {
-        expect(addBox.height).toBeGreaterThanOrEqual(44);
+        expect((await add(page).boundingBox())!.height).toBeGreaterThanOrEqual(44);
         expect(await page.locator('.tabs').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
       }
       for (const theme of ['light', 'dark']) {
@@ -442,7 +437,7 @@ test('General stays compact and neutral, with keyboard tabs and a reachable plus
 test.describe('General mobile session tabs', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 740 } });
 
-  test('a touch context menu before the hold timer preserves the editor and its input focus after release', async ({ page }) => {
+  test('early and late touch contextmenu events leave one menu and the release cannot choose an action', async ({ page }) => {
     const f = await fixture();
     try {
       await page.goto(f.origin);
@@ -450,26 +445,26 @@ test.describe('General mobile session tabs', () => {
       await general(page).click();
       await add(page).click();
       await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
-      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
+      const tab = page.getByRole('tab', { name: 'misc1', exact: true });
+      const menu = tabMenu(page, 'misc1');
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
-      for (const target of ['tab', 'backdrop']) {
+      for (const delay of [100, 650]) {
         await tab.dispatchEvent('pointerdown', pointer);
-        await page.clock.runFor(100);
+        await page.clock.runFor(delay);
+        if (delay === 650) await expect(menu).toBeVisible();
         await tab.dispatchEvent('contextmenu', { button: 2, clientX: 110, clientY: 25 });
-        await expect(editor(page)).toBeVisible();
-        const input = editor(page).getByLabel('Session name', { exact: true });
-        await expect(input).toHaveValue('misc1');
-        await expect(input).toBeFocused();
+        await expect(menu.getByRole('menuitem', { name: 'Choose zmx session', exact: true })).toBeFocused();
         await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
-        await (target === 'tab' ? tab : editor(page)).dispatchEvent('click', { detail: 1, clientX: 0, clientY: 0 });
+        const release = delay === 100 ? tab : menu.getByRole('menuitem', { name: 'Close tab', exact: true });
+        await release.dispatchEvent('click', { detail: 1, clientX: 110, clientY: 25 });
         await page.clock.runFor(650);
-        await expect(editor(page)).toHaveCount(1);
-        await expect(editor(page)).toBeVisible();
-        await expect(input).toBeFocused();
+        await expect(menu).toHaveCount(1);
+        await expect(menu).toBeVisible();
+        await expect(tab).toBeVisible();
         await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveAttribute('aria-selected', 'true');
-        await editor(page).getByRole('button', { name: 'Cancel', exact: true }).click();
-        await expect(editor(page)).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
       }
       await page.clock.resume();
     } finally { await f.close(); }
@@ -483,26 +478,27 @@ test.describe('General mobile session tabs', () => {
       await general(page).click();
       await add(page).click();
       await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
-      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
+      const tab = page.getByRole('tab', { name: 'misc1', exact: true });
+      const menu = tabMenu(page, 'misc1');
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
       await tab.dispatchEvent('pointerdown', pointer);
       await page.clock.runFor(650);
-      await expect(editor(page)).toBeVisible();
+      await expect(menu).toBeVisible();
       await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
       await page.keyboard.press('Escape');
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
       await expect(tab).toBeFocused();
       await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveAttribute('aria-selected', 'true');
       await tab.press('Enter');
       await expect(tab).toHaveAttribute('aria-selected', 'true');
       await expect(pane(page, 'misc1')).toBeVisible();
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
       await page.clock.resume();
     } finally { await f.close(); }
   });
 
-  test('long press opens the session editor while taps, scrolling, cancellation and close controls do not', async ({ page, browserName }) => {
+  test('long press offers session selection and close while taps, scrolling and cancellation do not open a menu', async ({ page, browserName }) => {
     const f = await fixture();
     try {
       await page.goto(f.origin);
@@ -512,8 +508,8 @@ test.describe('General mobile session tabs', () => {
       await add(page).click();
       await expect(pane(page, 'misc2')).toHaveAttribute('data-mode', 'control');
       const original = await sessions(f);
-      const tab = page.locator('.general-tab [data-tab-id="misc1"]');
-      const close = page.getByRole('button', { name: 'Close misc2', exact: true });
+      const tab = page.getByRole('tab', { name: 'misc1', exact: true });
+      const menu = tabMenu(page, 'misc1');
       const pointer = { pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: 110, clientY: 25 };
       await page.clock.install();
 
@@ -521,39 +517,32 @@ test.describe('General mobile session tabs', () => {
       await page.clock.runFor(200);
       await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
       await page.clock.runFor(650);
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
 
       await tab.dispatchEvent('pointerdown', pointer);
       await tab.dispatchEvent('pointermove', { ...pointer, clientX: 155 });
       await tab.dispatchEvent('pointermove', pointer);
       await page.clock.runFor(650);
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
       await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
 
       await tab.dispatchEvent('pointerdown', pointer);
       await tab.dispatchEvent('pointercancel', pointer);
       await page.clock.runFor(650);
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
 
       await tab.dispatchEvent('pointerdown', { ...pointer, pointerType: 'mouse' });
       await page.clock.runFor(650);
-      await expect(editor(page)).toHaveCount(0);
+      await expect(menu).toHaveCount(0);
       await tab.dispatchEvent('pointerup', { ...pointer, pointerType: 'mouse', buttons: 0 });
-
-      await close.dispatchEvent('pointerdown', pointer);
-      await page.clock.runFor(650);
-      await expect(editor(page)).toHaveCount(0);
-      await close.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
-      await expect(page.getByRole('tab')).toHaveText(['misc1', 'misc2']);
 
       await tab.dispatchEvent('pointerdown', pointer);
       await page.clock.runFor(650);
-      await expect(editor(page)).toBeVisible();
-      await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc1');
+      await expect(menu).toBeVisible();
       await tab.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
       await tab.dispatchEvent('click', { detail: 1 });
-      await expect(editor(page)).toHaveCount(1);
-      await expect(editor(page)).toBeVisible();
+      await menu.getByRole('menuitem', { name: 'Choose zmx session', exact: true }).tap();
+      await expect(editor(page).getByLabel('Session name', { exact: true })).toHaveValue('misc1');
       await page.clock.resume();
 
       await page.setViewportSize({ width: 390, height: 380 });
@@ -568,7 +557,12 @@ test.describe('General mobile session tabs', () => {
       await expect(pane(page, 'mobile session')).toHaveAttribute('data-mode', 'control');
       await expect.poll(async () => (await sessions(f)).find(row => row.name === 'misc1')!.clients).toBe(0);
       expect((await sessions(f)).map(({ name, pid }) => ({ name, pid }))).toEqual(original.map(({ name, pid }) => ({ name, pid })));
-      await page.getByRole('button', { name: 'Close misc2', exact: true }).tap();
+      const inactive = page.getByRole('tab', { name: 'misc2', exact: true });
+      await inactive.dispatchEvent('pointerdown', pointer);
+      await page.clock.runFor(650);
+      await inactive.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
+      await tabMenu(page, 'misc2').getByRole('menuitem', { name: 'Close tab', exact: true }).tap();
+      await expect(page.getByRole('tab', { name: 'mobile session', exact: true })).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('tab', { name: 'misc2', exact: true })).toHaveCount(0);
       await expect(editor(page)).toHaveCount(0);
       expect((await sessions(f)).find(row => row.name === 'misc2')!.pid).toBe(original.find(row => row.name === 'misc2')!.pid);
