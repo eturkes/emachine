@@ -28,7 +28,7 @@ Project checks cover root `CLAUDE.md` eligibility, uncommitted phase changes, in
 Sidebar checks cover cached snapshot and pnpm-store exclusion, terminal continuity, and readable one-word phase labels in both themes.
 Header checks exercise light and dark colors at 320, 390, 720, and 1360 pixels without clipped controls.
 Layout checks cover a persistent desktop sidebar toggle, terminal and feature-view continuity, and an independent phone drawer; legacy collapse preferences remain ignored. They reject decorative initials, redundant strips, and Jobs or Workspaces buttons.
-Shortcut checks compare outgoing terminal bytes and native hardware modifiers, verify clipboard selection and failure handling, and retain observer control without a footer. Layout checks keep Keyboard/Esc/Tab pinned, group Shift+Left with the other key combinations, separate text and prompt tools from emitted keys, and fit phone, tablet, and keyboard-reduced viewports. Attaching and observer status stay outside the key scroller, leave terminal output unobscured, and preserve toolbar geometry.
+Shortcut checks compare outgoing terminal bytes and native hardware modifiers, verify clipboard selection and failure handling, and retain observer control without a footer. Layout checks verify that Esc and Tab scroll while Keyboard stays pinned, group Shift+Left with the other key combinations, separate text and prompt tools from emitted keys, and fit phone, tablet, and keyboard-reduced viewports. Attaching and observer status stay outside the key scroller, leave terminal output unobscured, and preserve toolbar geometry.
 Clipboard checks cover Ctrl+Shift+C/V, unchanged Ctrl+C, single bracketed paste, selection actions, keyboard navigation, menu dismissal, and mouse-reporting applications.
 The browser clipboard fixture specifies Linux explicitly because ChromiumFish advertises Windows by default.
 The desktop clipboard gate saves and restores all system clipboard formats, including when a check fails.
@@ -55,7 +55,7 @@ The first command builds the current web source under `.work/iphone-13-mini-web`
 
 | View | What to inspect |
 | --- | --- |
-| Portrait, 375 × 629 CSS px | Light and dark terminal text, line wrapping, fixed keys, and the project drawer while switching shells. |
+| Portrait, 375 × 629 CSS px | Light and dark terminal text, line wrapping, the Keyboard toggle and shortcut row, and the project drawer while switching shells. |
 | Portrait with 400 CSS px visible | A focused Text draft, the Send button, and the space left for output. The test models a keyboard by shrinking the visual viewport and checks that the draft reaches the fixture shell after Send and Enter. |
 | Landscape, 712 × 327 CSS px | The project rail with the terminal beside it, then the wider terminal grid after hiding the rail. |
 

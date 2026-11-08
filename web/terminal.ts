@@ -103,7 +103,7 @@ export class TerminalPane {
     const textTools = controlGroup('Text tools');
     const promptTools = controlGroup('Prompt tools');
     for (const [group, label, value] of [
-      [keys, 'Enter', '\r'],
+      [keys, 'Esc', '\u001b'], [keys, 'Tab', '\t'], [keys, 'Enter', '\r'],
       [navigation, '↑', '\u001b[A'], [navigation, '↓', '\u001b[B'], [navigation, '←', '\u001b[D'], [navigation, '→', '\u001b[C'],
       [shortcuts, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
       [shortcuts, 'Ctrl-O', '\u000f'], [shortcuts, 'Ctrl-E', '\u0005'],
@@ -145,19 +145,15 @@ export class TerminalPane {
       if (!hide) this.terminal.focus();
       this.setKeyboardShown(!hide);
     }, 'Toggle terminal keyboard');
-    this.keyboard.className = 'terminal-keyboard terminal-fixed-key'; this.keyboard.disabled = true;
+    this.keyboard.className = 'terminal-keyboard'; this.keyboard.disabled = true;
     this.setKeyboardShown(false);
     // Capture before the button can blur the input; cancelling pointerdown suppresses taps in WebKit.
     this.keyboard.addEventListener('pointerdown', event => {
       if (event.isPrimary && event.button === 0) this.keyboardTap = this.keyboardShown;
     }, { signal: this.keyboardEvents.signal });
     this.keyboard.addEventListener('pointercancel', () => { this.keyboardTap = undefined; }, { signal: this.keyboardEvents.signal });
-    const escape = button('Esc', () => { this.terminal.input('\u001b'); this.terminal.focus(); });
-    escape.className = 'terminal-fixed-key';
-    const tab = button('Tab', () => { this.terminal.input('\t'); this.terminal.focus(); });
-    tab.className = 'terminal-fixed-key';
     const keyboardControls = controlGroup('Terminal keyboard controls', 'terminal-keyboard-controls');
-    keyboardControls.append(this.keyboard, escape, tab, keys);
+    keyboardControls.append(this.keyboard, keys);
     const tools = document.createElement('div'); tools.className = 'terminal-tools'; tools.append(textTools, promptTools);
     const toolbar = controlGroup('Terminal controls', 'terminal-toolbar');
     toolbar.append(keyboardControls, tools);

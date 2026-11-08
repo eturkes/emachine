@@ -299,8 +299,10 @@ test.describe('terminal input', () => {
     expect(t.input).toEqual([]);
   });
 
-  test('terminal controls stay grouped and pinned across phone and tablet widths', async ({ page }, testInfo) => {
+  test('Esc and Tab scroll with terminal keys while Keyboard stays pinned', async ({ page }, testInfo) => {
     const t = await terminal(page);
+    const keyboard = t.pane.locator('.terminal-keyboard');
+    const keys = t.pane.locator('.terminal-keys');
     const escape = t.pane.getByRole('button', { name: 'Esc', exact: true });
     const tab = t.pane.getByRole('button', { name: 'Tab', exact: true });
     await expect(escape).toHaveCount(1);
@@ -315,24 +317,22 @@ test.describe('terminal input', () => {
     await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-O', 'Ctrl-E', 'Ctrl-X Ctrl-S']);
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(viewport);
-      await expect(t.pane.locator('.terminal-keyboard')).toBeInViewport({ ratio: 1 });
+      await expect(keyboard).toBeInViewport({ ratio: 1 });
       await expect(escape).toBeInViewport({ ratio: 1 });
       await expect(tab).toBeInViewport({ ratio: 1 });
       const geometry = await t.pane.evaluate(element => {
-        const keys = element.querySelector<HTMLElement>('.terminal-keys')!; keys.scrollLeft = 0;
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
-        const escape = element.querySelector('button[aria-label="Esc"]')!.getBoundingClientRect();
-        const tab = element.querySelector('button[aria-label="Tab"]')!.getBoundingClientRect();
-        const [first, up, down] = Array.from(keys.querySelectorAll('button')).filter(button => button.getClientRects().length).map(button => button.getBoundingClientRect());
+        const [escape, tab, enter, up, down] = ['Esc', 'Tab', 'Enter', '↑', '↓'].map(label =>
+          element.querySelector(`button[aria-label="${label}"]`)!.getBoundingClientRect());
         const tools = element.querySelector('.terminal-tools')!.getBoundingClientRect();
-        return { fixedGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, scrollGap: first.left - tab.right, shortcutGap: down.left - up.right, groupGap: up.left - first.right,
-          keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: first.top,
+        return { keyboardGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, enterGap: enter.left - tab.right, shortcutGap: down.left - up.right, groupGap: up.left - enter.right,
+          keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: enter.top,
           toolsTop: tools.top, keyboardBottom: keyboard.bottom,
-          keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: first.height };
+          keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: enter.height };
       });
-      expect(geometry.fixedGap).toBeGreaterThan(geometry.shortcutGap);
+      expect(geometry.keyboardGap).toBeGreaterThan(geometry.shortcutGap);
       expect(geometry.tabGap).toBeCloseTo(geometry.shortcutGap, 3);
-      expect(geometry.scrollGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.enterGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.groupGap).toBeGreaterThan(geometry.shortcutGap);
       expect(geometry.toolsTop).toBeGreaterThanOrEqual(geometry.keyboardBottom);
       expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
@@ -346,16 +346,17 @@ test.describe('terminal input', () => {
       expect(geometry.escapeWidth).toBeGreaterThanOrEqual(44);
       expect(geometry.tabHeight).toBeGreaterThanOrEqual(44);
       expect(geometry.tabWidth).toBeGreaterThanOrEqual(44);
-      const before = await escape.boundingBox();
-      const tabBefore = await tab.boundingBox();
-      await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = element.scrollWidth; });
-      expect(await escape.boundingBox()).toEqual(before);
-      expect(await tab.boundingBox()).toEqual(tabBefore);
-      await expect(escape).toBeInViewport({ ratio: 1 });
-      await expect(tab).toBeInViewport({ ratio: 1 });
+      const keyboardBefore = await keyboard.boundingBox();
+      const escapeBefore = (await escape.boundingBox())!;
+      const tabBefore = (await tab.boundingBox())!;
+      const offset = await keys.evaluate(element => { element.scrollLeft = element.scrollWidth; return element.scrollLeft; });
+      if (viewport.width <= 390) expect(offset).toBeGreaterThan(0);
+      expect((await escape.boundingBox())!.x).toBeCloseTo(escapeBefore.x - offset, 3);
+      expect((await tab.boundingBox())!.x).toBeCloseTo(tabBefore.x - offset, 3);
+      expect(await keyboard.boundingBox()).toEqual(keyboardBefore);
       for (const tool of await t.pane.locator('.terminal-tools button').all()) await expect(tool).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await t.pane.locator('.terminal-keys').evaluate(element => { element.scrollLeft = 0; });
+      await keys.evaluate(element => { element.scrollLeft = 0; });
       if (viewport.width === 390 || viewport.width === 844) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
     }
   });

@@ -134,10 +134,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-tools > .terminal-key-group + .terminal-key-group { padding-left: 16px; border-left: 1px solid var(--border); }
 .terminal-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.4 Iosevka,monospace; color: var(--muted); }
 .terminal-toolbar button, .terminal-session button { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
+.terminal-keys > button { min-width: 44px; }
 .terminal-toolbar button:hover, .terminal-session button:hover { color: var(--text); background: var(--hover); }
-.terminal-toolbar .terminal-fixed-key { min-width: 44px; margin: 8px 0; }
 .terminal-tools button { padding: 7px 8px; }
-.terminal-toolbar .terminal-keyboard { display: none; margin-right: 10px; }
+.terminal-toolbar .terminal-keyboard { display: none; min-width: 44px; margin: 8px 10px 8px 0; }
 .terminal-ios .terminal-keyboard { display: block; }
 .terminal-ios .terminal-toolbar button, .terminal-ios .terminal-session button { min-width: 44px; min-height: 44px; }
 .terminal-toolbar button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
@@ -280,7 +280,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .terminal-pane { --terminal-font-size: 12; }
   .terminal-main { padding: 9px 9px 0; }
   .terminal-toolbar .terminal-keyboard { display: block; }
-  .terminal-keys button, .terminal-fixed-key { padding: 9px 10px; min-height: 44px; }
+  .terminal-keys button, .terminal-keyboard { padding: 9px 10px; min-height: 44px; }
   .terminal-tools button { min-width: 44px; min-height: 44px; }
   .terminal-session button { min-height: 44px; }
   .connection-form input { font-size: 16px; }
