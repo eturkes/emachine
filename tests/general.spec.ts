@@ -94,6 +94,7 @@ test('Previously selected general session survives reload without an explicit ta
   const f = await fixture();
   try {
     await page.goto(f.origin);
+    await expect(general(page)).toBeVisible();
     const key = (await f.state()).machine.id + ':@general';
     await page.evaluate(key => {
       localStorage.setItem('emachine:selection', JSON.stringify(key));
@@ -112,6 +113,7 @@ test('General retains legacy names and ignores the saved counter when allocating
   const f = await fixture();
   try {
     await page.goto(f.origin);
+    await expect(general(page)).toBeVisible();
     const key = (await f.state()).machine.id + ':@general';
     await page.evaluate(key => {
       localStorage.setItem('emachine:selection', JSON.stringify(key));
