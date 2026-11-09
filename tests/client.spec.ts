@@ -333,6 +333,8 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     await expect(page.locator('.project-copy').first()).toBeInViewport();
     const machines = page.getByRole('button', { name: 'Machines', exact: true });
     const row = (await machines.boundingBox())!;
+    await expect(page.locator('.brand')).toHaveJSProperty('clientHeight', row.height);
+    await expect(page.locator('.tabs')).toHaveJSProperty('clientHeight', row.height);
     const count = (await page.locator('.machine-count').boundingBox())!;
     expect(count.y + count.height / 2, `Machines status at ${width}px`).toBeCloseTo(row.y + row.height / 2, 0);
     await expect(machines).toHaveAccessibleDescription('1 of 1 online');

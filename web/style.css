@@ -7,7 +7,7 @@
   --accent-soft: #d6d6d612; --warning: #ecc780; --danger: #ed7985;
   --claude-working: #8cbaff; --claude-completed: #8ac79c;
   --selection: #d6d6d633; --backdrop: #000000b0; --scrim: #000000aa;
-  --rail: 252px; --bar: 56px; --radius: 10px;
+  --rail: 252px; --bar: 44px; --radius: 10px;
   background: var(--bg); color: var(--text); font-size: 15px;
 }
 :root[data-theme='light'] {
@@ -33,7 +33,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 .app { display: grid; grid-template-columns: var(--rail) minmax(0,1fr); height: var(--app-height,100dvh); padding-top: env(safe-area-inset-top); }
 .project-rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: linear-gradient(150deg,var(--surface),var(--bg)); border-right: 1px solid var(--border); padding-left: env(safe-area-inset-left); }
-.brand { height: var(--bar); min-height: var(--bar); display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--border); }
+.brand, .tab-header { box-sizing: content-box; height: var(--bar); min-height: var(--bar); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 12px; padding: 0 18px; }
 .brand-name { font-size: 20px; font-weight: 650; letter-spacing: -.6px; }
 .rail-label { font-size: 10px; letter-spacing: .16em; font-weight: 700; color: var(--muted); margin: 26px 20px 13px; }
 .project-search { margin: 0 13px 17px; background: var(--accent-soft); font-size: 13px; }
@@ -63,7 +64,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes claude-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { [data-claude-status='working'] .claude-status-icon { animation: none; } }
 .rail-footer { padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--border); }
-.manage-machines { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0 13px; font-size: 13px; }
+.manage-machines { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: var(--bar); padding: 0 13px; font-size: 13px; }
 .manage-machines:focus-visible { outline-offset: -3px; }
 .machine-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .icon { flex-shrink: 0; display: grid; place-items: center; min-width: 34px; height: 34px; font-size: 19px; border-radius: 7px; color: var(--muted); }
@@ -71,7 +72,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .rail-empty, .machine-pending { color: var(--muted); font-size: 12px; padding: 12px; }
 .machine-pending { display: grid; gap: 6px; overflow-wrap: anywhere; }
 .workspace { display: flex; min-width: 0; min-height: 0; flex-direction: column; padding-right: env(safe-area-inset-right); }
-.tab-header { display: flex; flex-shrink: 0; align-items: stretch; min-width: 0; height: var(--bar); min-height: var(--bar); border-bottom: 1px solid var(--border); background: var(--surface); }
+.tab-header { display: flex; flex-shrink: 0; align-items: stretch; min-width: 0; background: var(--surface); }
 .sidebar-toggle { flex-shrink: 0; align-self: center; margin: 0 6px; }
 .tabs { display: flex; overflow-x: auto; flex: 1; min-width: 0; padding-left: 12px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
@@ -275,7 +276,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .tab-header.general-view { grid-template-columns: auto minmax(0,1fr) auto; }
   .header-actions { grid-column: 1 / -1; flex-wrap: wrap; gap: 2px; padding: 4px 8px; border-left: 0; border-top: 1px solid var(--border); }
   .tab-header .waiting-projects { min-height: 44px; }
-  .tabs { padding-left: 0; min-height: 44px; }
+  .tabs { padding-left: 0; min-height: var(--bar); }
   .tab { padding: 0 13px; }
   .new-terminal { width: 44px; height: 44px; }
   .terminal-pane { --terminal-font-size: 12; }
