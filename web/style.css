@@ -63,7 +63,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 [data-claude-status='waiting'] .claude-status-icon::after { content: '!'; position: absolute; inset: 0; text-align: center; font: bold 9px/10px Iosevka,monospace; }
 @keyframes claude-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { [data-claude-status='working'] .claude-status-icon { animation: none; } }
-.rail-footer { padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--border); }
+.rail-footer { border-top: 1px solid var(--border); }
 .manage-machines { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: var(--bar); padding: 0 13px; font-size: 13px; }
 .manage-machines:focus-visible { outline-offset: -3px; }
 .machine-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -265,7 +265,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .app { display: block; }
   .sidebar-toggle { display: none; }
   .workspace { height: 100%; }
-  .project-rail { position: fixed; inset: 0 auto 0 0; width: min(300px,85vw); z-index: 40; padding-top: env(safe-area-inset-top); transform: translateX(-100%); transition: transform .18s; }
+  .project-rail { position: fixed; inset: 0 auto auto 0; width: min(300px,85vw); height: var(--app-height,100dvh); z-index: 40; padding-top: env(safe-area-inset-top); transform: translateX(-100%); transition: transform .18s; }
   .drawer-open .project-rail { transform: translateX(0); }
   .drawer-open .drawer-scrim { display: block; position: fixed; inset: 0; z-index: 30; background: var(--scrim); }
   .mobile-close, .mobile-menu { display: grid; }

@@ -702,9 +702,13 @@ test('feature replacement updates only its project view', async ({ page }) => {
 
 test('phone drawer, touch controls and shell-only offline cache', async ({ page, context }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { bottom: 34 } });
   await page.goto(a.origin);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-mode', 'control');
   await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
+  const machines = page.getByRole('button', { name: 'Machines', exact: true });
+  expect(await machines.evaluate(row => row.getBoundingClientRect().bottom)).toBe(page.viewportSize()!.height);
   await page.getByRole('button', { name: 'beta on Workstation A, online', exact: true }).click();
   await expect(page.getByRole('button', { name: 'beta on Workstation A, online', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.terminal-pane:not([hidden]) .terminal-keys')).toBeVisible();

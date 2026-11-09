@@ -98,6 +98,9 @@ test.describe('Portrait', () => {
     await expect(draft).toHaveValue('');
     await pane.getByRole('button', { name: 'Enter', exact: true }).tap();
     await expect(rows.locator(':scope > div').filter({ hasText: /^ready-for-review\s*$/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Open project drawer' }).tap();
+    const machines = page.getByRole('button', { name: 'Machines', exact: true });
+    expect(await machines.evaluate(row => row.getBoundingClientRect().bottom)).toBe(visibleHeight);
   });
 });
 
