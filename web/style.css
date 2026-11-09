@@ -290,6 +290,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .toast-region { right: 14px; }
 }
 @media (max-width: 700px), (pointer: coarse) {
+  .manage-machines { box-shadow: inset 0 -1px var(--border); }
   .tab-menu button { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
