@@ -77,12 +77,12 @@ test('live discovery, concurrent machines and persistent terminal rendering', as
   await rm(join(a.config.projectRoot, 'browser-added'), { recursive: true });
   await expect(page.getByRole('button', { name: 'browser-added on Workstation A, online', exact: true })).toHaveCount(0);
   await expect(page.locator('.terminal-pane')).toHaveAttribute('data-continuity', 'kept');
-  await page.getByRole('button', { name: 'Machine settings', exact: true }).click();
+  await page.locator('.machine-count').click();
   await page.getByLabel('Name', { exact: true }).fill('Remote B');
   await page.getByLabel('Direct address', { exact: true }).fill(b.origin + '/');
   await page.getByRole('button', { name: 'Connect machine', exact: true }).click();
   await expect(page.getByRole('button', { name: 'alpha on Workstation B, online', exact: true })).toBeVisible();
-  await expect(page.locator('.machine-count')).toHaveText('2 of 2 machines online');
+  await expect(page.locator('.machine-count')).toHaveText('2 of 2 online');
   await page.screenshot({ path: 'test-results/emachine-desktop.png', animations: 'disabled' });
   expect(errors).toEqual([]);
 });
@@ -331,6 +331,11 @@ test('streamlined layout ignores old collapse state and removes decorative strip
     if (width <= 700) await page.getByRole('button', { name: 'Open project drawer', exact: true }).click();
     await expect(page.locator('.brand-name')).toBeInViewport();
     await expect(page.locator('.project-copy').first()).toBeInViewport();
+    const machines = page.getByRole('button', { name: 'Machines', exact: true });
+    const row = (await machines.boundingBox())!;
+    const count = (await page.locator('.machine-count').boundingBox())!;
+    expect(count.y + count.height / 2, `Machines status at ${width}px`).toBeCloseTo(row.y + row.height / 2, 0);
+    await expect(machines).toHaveAccessibleDescription('1 of 1 online');
     if (width <= 700) await page.getByRole('button', { name: 'Close projects', exact: true }).click();
     await expect(page.locator('.terminal-keys')).toBeVisible();
     for (const key of await page.locator('.terminal-toolbar button:visible').all()) {
@@ -715,7 +720,7 @@ test('phone drawer, touch controls and shell-only offline cache', async ({ page,
   expect(cached.some(url => url.includes('/api/') || url.includes('bootstrap.json'))).toBe(false);
   await context.setOffline(true); await page.reload();
   await expect(page.locator('.brand-name')).toHaveText('emachine');
-  await expect(page.locator('.machine-count')).toHaveText('0 of 1 machines online');
+  await expect(page.locator('.machine-count')).toHaveText('0 of 1 online');
   await context.setOffline(false);
 });
 
@@ -738,7 +743,7 @@ test('fallback route, identity deduplication and reconnection preserve project s
   await expect(page.locator('.terminal-pane:not([hidden])')).toHaveAttribute('data-mode', 'control');
   await page.locator('.terminal-pane:not([hidden])').evaluate(element => { (element as HTMLElement).dataset.continuity = 'retained'; });
   await connect('Same machine direct', b.origin + '/');
-  await expect(page.locator('.machine-count')).toHaveText('2 of 2 machines online');
+  await expect(page.locator('.machine-count')).toHaveText('2 of 2 online');
   await expect(row).toHaveCount(1);
   await b.stop();
   await expect(page.locator('.offline-banner')).toBeVisible();

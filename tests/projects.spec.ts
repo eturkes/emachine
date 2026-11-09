@@ -244,14 +244,14 @@ test('header waiting indicator counts unique online projects across machines and
     await expect(waiting).toHaveAccessibleName('2 projects waiting for input. Show projects.');
     await expect(waiting).toHaveAttribute('title', /alpha on Waiting A/);
     await expect(waiting).toHaveAttribute('title', /alpha on Waiting B/);
-    await expect(page.locator('.machine-count')).toHaveText('2 of 2 machines online');
+    await expect(page.locator('.machine-count')).toHaveText('2 of 2 online');
     await b.stop();
     await expect(waiting).toHaveText('Waiting (1)');
     await expect(waiting).not.toHaveAttribute('title', /Waiting B/);
     await claudeSession(a, 'idle');
     await expect(waiting).toBeHidden();
     await page.reload();
-    await expect(page.locator('.machine-count')).toHaveText('1 of 2 machines online');
+    await expect(page.locator('.machine-count')).toHaveText('1 of 2 online');
     await expect(waiting).toBeHidden();
     await b.start();
     await expect(waiting).toHaveText('Waiting (1)');

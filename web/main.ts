@@ -41,8 +41,12 @@ const search = $('input', 'project-search'); search.type = 'search'; search.plac
 const projectList = $('nav', 'project-list'); projectList.setAttribute('aria-label', 'Project list');
 const generalList = $('nav', 'general-list'); generalList.setAttribute('aria-label', 'Machine terminals');
 const railFooter = $('footer', 'rail-footer');
+const manageMachines = button('Machines', () => openSettings(), 'manage-machines');
 const machineCount = $('span', 'machine-count');
-railFooter.append(button('Machines', () => openSettings(), 'manage-machines'), machineCount);
+machineCount.id = 'machine-count';
+manageMachines.setAttribute('aria-describedby', machineCount.id);
+manageMachines.append(machineCount);
+railFooter.append(manageMachines);
 rail.append(brand, generalList, $('div', 'rail-label', 'PROJECTS'), search, projectList, railFooter);
 const workspace = $('main', 'workspace');
 const tabHeader = $('header', 'tab-header');
@@ -260,7 +264,7 @@ function renderRail(): void {
     const pending = $('div', 'machine-pending'); pending.append($('strong', '', link.config.name), $('small', '', link.error || 'Connecting…')); projectList.append(pending);
   }
   projectList.scrollTop = scroll;
-  const count = fleet.unique(); machineCount.textContent = `${count.filter(link => link.online).length} of ${count.length} machines online`;
+  const count = fleet.unique(); machineCount.textContent = `${count.filter(link => link.online).length} of ${count.length} online`;
 }
 class FeatureFrame {
   element = $('iframe', 'feature-frame view');
