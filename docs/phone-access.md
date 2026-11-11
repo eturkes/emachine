@@ -95,8 +95,9 @@ Use this command if a device or cookie may have been lost: signing out one app c
 ## Open the terminal keyboard
 
 Tap **Keyboard** to type directly in the terminal. Tap it again to hide the keyboard.
-**Keyboard** stays visible as you scroll the shortcut bar. Its pressed state marks active terminal input.
-At the start of the scrollable row, tap **Esc** to send Escape or **Tab** for shell completion or the running program's Tab action.
+Its pressed state marks active terminal input. The controls use one row when they fit and distribute whole groups across two rows as the terminal narrows, including when History is open.
+On narrow phones, **Keyboard** stays visible beside a scrollable key row, with text and prompt tools below.
+At the start of the keys, tap **Esc** to send Escape or **Tab** for shell completion or the running program's Tab action.
 The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, **Ctrl-O**, **Ctrl-E**, and **Ctrl-X Ctrl-S**.
 Connection messages and **Take control** appear above the controls when needed.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.

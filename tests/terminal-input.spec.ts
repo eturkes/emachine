@@ -70,6 +70,97 @@ async function deleteInput(textarea: Locator, count = 1, inputType = 'deleteCont
   }, { count, inputType });
 }
 
+for (const platform of ['Linux x86_64', 'iPhone']) test.describe(`responsive terminal toolbar on ${platform}`, () => {
+  test.use({ viewport: { width: 1800, height: 900 }, isMobile: platform === 'iPhone', hasTouch: platform === 'iPhone' });
+
+  test('terminal toolbar distributes whole groups across available rows', async ({ page }, testInfo) => {
+    await page.route(/\/api\/v1\/projects\/[^/]+\/prompt-history(?:\?.*)?$/, route => route.fulfill({ json: { prompts: [], nextCursor: null } }));
+    const t = await terminal(page, platform);
+    const mounted = await t.pane.locator('.xterm').elementHandle();
+    const geometry = () => t.pane.evaluate(element => {
+      const toolbar = element.querySelector<HTMLElement>('.terminal-toolbar')!;
+      const box = toolbar.getBoundingClientRect();
+      const buttons = Array.from(toolbar.querySelectorAll<HTMLButtonElement>('button')).filter(button => {
+        const rect = button.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(button).visibility !== 'hidden';
+      });
+      const rectangles = buttons.map(button => button.getBoundingClientRect());
+      const tops: number[] = [];
+      for (const rect of rectangles) if (!tops.some(top => Math.abs(top - rect.top) < 2)) tops.push(rect.top);
+      const key = (label: string) => toolbar.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.getBoundingClientRect();
+      const group = (name: string) => {
+        const items = Array.from(toolbar.querySelectorAll<HTMLButtonElement>(`[role="group"][aria-label="${name}"] button`)).map(button => button.getBoundingClientRect());
+        return { top: items[0].top, left: items[0].left, right: items.at(-1)!.right, sameRow: items.every(rect => Math.abs(rect.top - items[0].top) < 2) };
+      };
+      const navigation = group('Navigation'), shortcuts = group('Key combinations');
+      return {
+        rows: tops.length,
+        contained: rectangles.every(rect => rect.left >= box.left - 1 && rect.right <= box.right + 1 && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1),
+        overflow: Array.from(toolbar.querySelectorAll<HTMLElement>('.terminal-keys, .terminal-tools')).some(part => part.clientWidth > 0 && part.scrollWidth > part.clientWidth + 1),
+        pageOverflow: document.documentElement.scrollWidth > innerWidth,
+        groupsIntact: ['Navigation', 'Key combinations', 'Text tools', 'Prompt tools'].every(name => group(name).sameRow),
+        commonTop: key('Esc').top, shortcutTop: shortcuts.top,
+        groupGap: navigation.left - key('Enter').right, buttonGap: key('↓').left - key('↑').right,
+        shortcutCenter: ((shortcuts.left + shortcuts.right) / 2 - box.left) / box.width,
+        width: box.width,
+      };
+    });
+    const expectRows = async (rows: number) => {
+      await expect.poll(async () => {
+        const layout = await geometry();
+        return { rows: layout.rows, contained: layout.contained, overflow: layout.overflow, pageOverflow: layout.pageOverflow, groupsIntact: layout.groupsIntact };
+      }).toEqual({ rows, contained: true, overflow: false, pageOverflow: false, groupsIntact: true });
+      return geometry();
+    };
+    const expectWide = async () => {
+      const layout = await expectRows(1);
+      expect(layout.groupGap).toBeGreaterThan(layout.buttonGap + 24);
+      expect(layout.shortcutCenter).toBeGreaterThan(0.4);
+      expect(layout.shortcutCenter).toBeLessThan(0.7);
+    };
+    await expectRows(1);
+    for (const width of [1100, 1024]) {
+      await page.setViewportSize({ width, height: 768 });
+      if (width === 1100) {
+        const layout = await expectRows(2);
+        expect(layout.shortcutTop).toBeGreaterThan(layout.commonTop + 20);
+      } else {
+        // At tablet widths, larger iOS targets may still need the compact two-row fallback.
+        await expect.poll(async () => {
+          const layout = await geometry();
+          return { rows: layout.rows, pageOverflow: layout.pageOverflow, groupsIntact: layout.groupsIntact };
+        }).toEqual({ rows: 2, pageOverflow: false, groupsIntact: true });
+        for (const button of await t.pane.locator('.terminal-tools button').all()) await expect(button).toBeInViewport({ ratio: 1 });
+      }
+      await page.screenshot({ path: testInfo.outputPath(`toolbar-${platform === 'iPhone' ? 'ios' : 'desktop'}-${width}.png`) });
+    }
+    // A narrow scroller's old offset must not hide buttons when full groups fit again.
+    await page.setViewportSize({ width: 390, height: 420 });
+    await expect.poll(() => t.pane.locator('.terminal-keys').evaluate(element => {
+      element.scrollLeft = element.scrollWidth;
+      return element.scrollLeft;
+    })).toBeGreaterThan(0);
+    await page.setViewportSize({ width: 1800, height: 900 });
+    await expectWide();
+    await page.screenshot({ path: testInfo.outputPath(`toolbar-${platform === 'iPhone' ? 'ios' : 'desktop'}-wide.png`) });
+    await page.getByRole('button', { name: 'Collapse project sidebar', exact: true }).click();
+    await page.setViewportSize({ width: 1300, height: 900 });
+    const beforeHistory = await expectRows(1);
+    await t.pane.getByRole('button', { name: 'History', exact: true }).click();
+    const history = t.pane.getByRole('complementary', { name: 'Prompt history', exact: true });
+    await expect(history).toBeVisible();
+    const withHistory = await expectRows(2);
+    expect(withHistory.width).toBeLessThan(beforeHistory.width);
+    expect(withHistory.shortcutTop).toBeGreaterThan(withHistory.commonTop + 20);
+    await history.getByRole('button', { name: 'Collapse prompt history', exact: true }).click();
+    await expectRows(1);
+    expect(await mounted!.evaluate(element => element === document.querySelector('.terminal-pane:not([hidden]) .xterm'))).toBe(true);
+    t.send(Buffer.from('toolbar resize output continues\r\n'));
+    await expect(t.pane.locator('.xterm-rows')).toContainText('toolbar resize output continues');
+    expect(t.input).toEqual([]);
+  });
+});
+
 test.describe('terminal input', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -315,7 +406,7 @@ test.describe('terminal input', () => {
     await expect(t.pane.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
     await expect(t.pane.getByRole('group', { name: 'Navigation', exact: true }).getByRole('button')).toHaveText(['↑', '↓', '←', '→']);
     await expect(t.pane.getByRole('group', { name: 'Key combinations', exact: true }).getByRole('button')).toHaveText(['Shift + ←', 'Ctrl-C', 'Ctrl-O', 'Ctrl-E', 'Ctrl-X Ctrl-S']);
-    for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1024, height: 768 }]) {
+    for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
       await page.setViewportSize(viewport);
       await expect(keyboard).toBeInViewport({ ratio: 1 });
       await expect(escape).toBeInViewport({ ratio: 1 });
@@ -350,14 +441,14 @@ test.describe('terminal input', () => {
       const escapeBefore = (await escape.boundingBox())!;
       const tabBefore = (await tab.boundingBox())!;
       const offset = await keys.evaluate(element => { element.scrollLeft = element.scrollWidth; return element.scrollLeft; });
-      if (viewport.width <= 390) expect(offset).toBeGreaterThan(0);
+      expect(offset).toBeGreaterThan(0);
       expect((await escape.boundingBox())!.x).toBeCloseTo(escapeBefore.x - offset, 3);
       expect((await tab.boundingBox())!.x).toBeCloseTo(tabBefore.x - offset, 3);
       expect(await keyboard.boundingBox()).toEqual(keyboardBefore);
       for (const tool of await t.pane.locator('.terminal-tools button').all()) await expect(tool).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await keys.evaluate(element => { element.scrollLeft = 0; });
-      if (viewport.width === 390 || viewport.width === 844) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
+      if (viewport.width === 390) await page.screenshot({ path: testInfo.outputPath(`keyboard-spacing-${viewport.width}.png`) });
     }
   });
 

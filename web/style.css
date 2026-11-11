@@ -125,20 +125,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-host .xterm-viewport { background-color: var(--bg); }
 /* Safari's focus zoom follows the editable input, independently of the terminal cells. */
 .terminal-host .xterm-helper-textarea { font-size: 16px; }
-.terminal-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 0 16px; min-width: 0; padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0; }
+.terminal-toolbar { --terminal-section-gap: 24px; --terminal-toolbar-inset: 6px; display: grid; grid-template-columns: minmax(0,1fr); align-items: start; min-width: 0; padding-bottom: env(safe-area-inset-bottom); flex-shrink: 0; }
 .terminal-toolbar, .terminal-toolbar button, .terminal-session, .terminal-session button { touch-action: manipulation; }
 .terminal-keyboard-controls { display: flex; align-items: flex-start; gap: var(--terminal-key-gap); min-width: 0; }
 /* Reserve the shortcut scrollbar so WebKit does not change the terminal height after fitting. */
 .terminal-keys { display: flex; align-items: center; gap: var(--terminal-key-gap); min-width: 0; margin-left: calc(-1 * var(--terminal-key-gap)); padding: 8px var(--terminal-key-gap); flex: 1; overflow-x: scroll; scroll-padding-inline: var(--terminal-key-gap); }
 .terminal-key-group { display: flex; flex-shrink: 0; align-items: center; gap: var(--terminal-key-gap); }
-.terminal-keys > .terminal-key-group { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); }
+.terminal-keys > .terminal-key-group ~ .terminal-key-group { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); }
 .terminal-session { display: flex; flex-shrink: 0; align-items: center; gap: 12px; min-width: 0; padding: 0 0 4px; border-bottom: 1px solid var(--border); }
 .terminal-session:not(:has(> :not([hidden]))) { display: none; }
-.terminal-tools { display: flex; align-items: center; gap: 16px; padding: 8px 0 8px 16px; border-left: 1px solid var(--border); }
-.terminal-tools > .terminal-key-group + .terminal-key-group { padding-left: 16px; border-left: 1px solid var(--border); }
+.terminal-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 4px 6px 6px; overflow-x: auto; scroll-padding-inline: 6px; border-top: 1px solid var(--border); }
 .terminal-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.4 Iosevka,monospace; color: var(--muted); }
 .terminal-toolbar button, .terminal-session button { flex-shrink: 0; min-width: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font: 12px Iosevka,monospace; white-space: nowrap; color: var(--muted); background: var(--surface); }
-.terminal-keys > button { min-width: 44px; }
+.terminal-common-keys > button { min-width: 44px; }
 .terminal-toolbar button:hover, .terminal-session button:hover { color: var(--text); background: var(--hover); }
 .terminal-tools button { padding: 7px 8px; }
 .terminal-toolbar .terminal-keyboard { display: none; min-width: 44px; margin: 8px 10px 8px 0; }
@@ -146,11 +145,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-ios .terminal-toolbar button, .terminal-ios .terminal-session button { min-width: 44px; min-height: 44px; }
 .terminal-toolbar button[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 .terminal-toolbar button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
-@container terminal (max-width: 960px) {
-  .terminal-toolbar { grid-template-columns: minmax(0,1fr); }
-  .terminal-tools { justify-content: space-between; gap: 12px; min-width: 0; padding: 4px 6px 6px; overflow-x: auto; scroll-padding-inline: 6px; border-left: 0; border-top: 1px solid var(--border); }
-  .terminal-tools > .terminal-key-group + .terminal-key-group { padding-left: 0; border-left: 0; }
-}
+/* Flatten layout boxes, preserving keyboard controls' focus and inert ancestry. */
+.terminal-toolbar:not([data-layout='compact']) { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--terminal-section-gap); padding-inline: var(--terminal-toolbar-inset); }
+.terminal-toolbar:not([data-layout='compact']) :is(.terminal-keyboard-controls, .terminal-keys, .terminal-tools) { display: contents; }
+.terminal-toolbar:not([data-layout='compact']) .terminal-key-group { margin: 0; padding: 8px 0; border: 0; }
+.terminal-toolbar:not([data-layout='compact']) .terminal-keyboard { margin: 8px 0; }
+.terminal-toolbar-break { flex: 0 0 100%; height: 0; }
+.terminal-toolbar:not([data-layout='compact']) .terminal-selection-bar { grid-area: auto; inset: 0 auto auto var(--terminal-toolbar-inset); width: var(--terminal-selection-width); height: var(--terminal-row-height); }
 .terminal-text { flex-shrink: 0; min-width: 0; padding: 8px 6px 0; border-top: 1px solid var(--border); }
 .terminal-text label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .terminal-text textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; resize: none; font-size: 16px; line-height: 1.4; color: var(--text); background: var(--surface); }

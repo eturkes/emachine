@@ -17,6 +17,7 @@ import { TerminalRestore } from './terminal-restore';
 import { TerminalTextInput } from './terminal-text';
 import { TerminalPrompts } from './terminal-prompts';
 import { TerminalHistory } from './terminal-history';
+import { attachTerminalToolbar } from './terminal-toolbar';
 import { socketUrl, type Link } from './transport';
 export type Theme = 'dark' | 'light';
 export type TerminalTarget = { kind: 'project'; id: string } | { kind: 'general'; session: string };
@@ -70,6 +71,7 @@ export class TerminalPane {
   private clipboard: ReturnType<typeof attachTerminalClipboard>;
   private copyOutput?: TerminalCopyOutput;
   private nativeSelection?: ReturnType<typeof attachNativeSelection>;
+  private detachToolbar: () => void;
   private fit = new FitAddon();
   private ws?: WebSocket;
   private decoding?: AbortController;
@@ -98,13 +100,14 @@ export class TerminalPane {
     this.control = button('Take control', () => { if (this.ready && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'claim' })); this.terminal.focus(); });
     this.control.hidden = true;
     const keys = document.createElement('div'); keys.className = 'terminal-keys';
+    const common = controlGroup('Common keys', 'terminal-key-group terminal-common-keys');
     const navigation = controlGroup('Navigation');
     const shortcuts = controlGroup('Key combinations');
     const session = controlGroup('Terminal session', 'terminal-session');
     const textTools = controlGroup('Text tools');
     const promptTools = controlGroup('Prompt tools');
     for (const [group, label, value] of [
-      [keys, 'Esc', '\u001b'], [keys, 'Tab', '\t'], [keys, 'Enter', '\r'],
+      [common, 'Esc', '\u001b'], [common, 'Tab', '\t'], [common, 'Enter', '\r'],
       [navigation, '↑', '\u001b[A'], [navigation, '↓', '\u001b[B'], [navigation, '←', '\u001b[D'], [navigation, '→', '\u001b[C'],
       [shortcuts, 'Shift + ←', '\u001b[1;2D'], [shortcuts, 'Ctrl-C', '\u0003'],
       [shortcuts, 'Ctrl-O', '\u000f'], [shortcuts, 'Ctrl-E', '\u0005'],
@@ -132,7 +135,7 @@ export class TerminalPane {
     }
     shortcuts.append(button('Ctrl-X Ctrl-S', () => { this.terminal.input('\u0018\u0013'); this.terminal.focus(); }, 'Ctrl+X then Ctrl+S'));
     session.append(this.status, this.control);
-    keys.append(navigation, shortcuts);
+    keys.append(common, navigation, shortcuts);
     const copy = () => { void this.copy(); };
     const paste = () => { void this.paste(); };
     const copyButton = button('Copy', copy);
@@ -212,6 +215,7 @@ export class TerminalPane {
       });
       this.element.append(this.history.element); promptTools.append(this.history.button);
     }
+    this.detachToolbar = attachTerminalToolbar(toolbar, [common, navigation, shortcuts, textTools, promptTools], this.keyboard);
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
@@ -545,6 +549,7 @@ export class TerminalPane {
     this.history?.dispose();
     this.copyOutput?.dispose();
     this.nativeSelection?.dispose();
+    this.detachToolbar();
     if (this.attachment && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'detach' }));
     this.ws?.close(); this.observer.disconnect(); this.output.dispose(); this.terminalReplies.dispose(); this.terminalRestore.dispose(); this.terminal.dispose(); this.element.remove();
   }

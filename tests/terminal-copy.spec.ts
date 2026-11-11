@@ -306,14 +306,35 @@ test('iOS native handoff clips a selection crossing the instructions to the outp
   expect(t.input).toEqual([]);
 });
 
-test('iOS native handoff ends on Done and is discarded when switching terminals', async ({ page, browserName }) => {
+for (const width of [390, 1100]) test(`iOS native handoff ends on Done and is discarded when switching terminals at ${width}px`, async ({ page, browserName }) => {
+  await page.setViewportSize({ width, height: 844 });
   const t = await terminal(page, 'MacIntel');
   const done = t.pane.getByRole('button', { name: 'Done selecting', exact: true });
+  const copy = t.pane.getByRole('button', { name: 'Copy', exact: true });
+  const controls = t.pane.locator('.terminal-keyboard-controls');
+  const host = t.pane.locator('.terminal-host');
+  const shortcut = t.pane.getByRole('button', { name: 'Ctrl-O', exact: true });
+  if (width === 1100) await expect(shortcut).toBeInViewport({ ratio: 1 });
+  const shortcutBox = width === 1100 ? (await shortcut.boundingBox())! : undefined;
+  const hostBefore = await host.boundingBox();
   const start = await cell(t.pane, 'output ready', 8);
   await hold(page, browserName, t.pane, start);
   await expect(done).toBeVisible({ timeout: 3000 });
+  await expect(done).toBeInViewport({ ratio: 1 });
+  await expect(copy).toBeInViewport({ ratio: 1 });
+  await expect(controls).toHaveJSProperty('inert', true);
+  expect(await host.boundingBox()).toEqual(hostBefore);
+  await copy.tap();
+  await expect.poll(() => writes(page)).toEqual(['ready']);
+  if (shortcutBox) {
+    // Relocated key combinations must remain inactive while the frozen selection is open.
+    await page.touchscreen.tap(shortcutBox.x + shortcutBox.width / 2, shortcutBox.y + shortcutBox.height / 2);
+    await expect(done).toBeVisible();
+    expect(t.input).toEqual([]);
+  }
   await done.tap();
   await expect(done).toBeHidden();
+  await expect(controls).toHaveJSProperty('inert', false);
   expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
   await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
   await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
