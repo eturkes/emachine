@@ -150,10 +150,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-toolbar:not([data-layout='compact']) :is(.terminal-keyboard-controls, .terminal-keys, .terminal-tools) { display: contents; }
 .terminal-toolbar:not([data-layout='compact']) .terminal-key-group { margin: 0; padding: 8px 0; border: 0; }
 .terminal-toolbar:not([data-layout='compact']) .terminal-keyboard { margin: 8px 0; }
-.terminal-toolbar[data-layout='wrapped'] .terminal-key-group { padding-block: 5px; }
-.terminal-toolbar[data-layout='wrapped'] .terminal-keyboard { margin-block: 5px; }
+/* Keep the original outer insets while tightening only the gap between wrapped rows. */
+.terminal-toolbar[data-layout='wrapped'] { padding-block: 4px calc(4px + env(safe-area-inset-bottom)); }
+.terminal-toolbar[data-layout='wrapped'] .terminal-key-group { padding-block: 4px; }
+.terminal-toolbar[data-layout='wrapped'] .terminal-keyboard { margin-block: 4px; }
 .terminal-toolbar-break { flex: 0 0 100%; height: 0; }
 .terminal-toolbar:not([data-layout='compact']) .terminal-selection-bar { grid-area: auto; inset: 0 auto auto var(--terminal-toolbar-inset); width: var(--terminal-selection-width); height: var(--terminal-row-height); }
+.terminal-toolbar[data-layout='wrapped'] .terminal-selection-bar { top: 4px; }
 .terminal-text { flex-shrink: 0; min-width: 0; padding: 8px 6px 0; border-top: 1px solid var(--border); }
 .terminal-text label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .terminal-text textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; resize: none; font-size: 16px; line-height: 1.4; color: var(--text); background: var(--surface); }
