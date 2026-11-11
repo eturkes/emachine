@@ -125,7 +125,7 @@ test('a deliberate hold selects the touched word without focusing the terminal',
   expect(t.input).toEqual([]);
 });
 
-for (const theme of ['dark', 'light']) test(`iOS native handoff preserves terminal colors and formatting in ${theme} mode`, async ({ page, browserName }) => {
+for (const theme of ['dark', 'light']) test(`iOS native handoff preserves terminal colors and formatting in ${theme} mode`, async ({ page, browserName }, testInfo) => {
   const t = await terminal(page);
   if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).tap();
   t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 32, rows: 12 }));
@@ -134,7 +134,7 @@ for (const theme of ['dark', 'light']) test(`iOS native handoff preserves termin
   t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H\u001b[?25l' + [
     ...history,
     '   \u001b[1;3;4;38;2;255;226;75;48;2;57;30;111mStyled wide \u754c   \u001b[0m',
-    '      \u001b[38;5;23;48;5;221;7mAligned column\u001b[0m tail',
+    '      \u001b[38;5;23;48;5;221;7mAligned column \u2590\u259b\u2588\u259c\u258c\u001b[0m tail',
     'tap target', 'ready',
   ].join('\r\n')));
   const rows = t.pane.locator('.xterm-rows');
@@ -144,11 +144,21 @@ for (const theme of ['dark', 'light']) test(`iOS native handoff preserves termin
   const box = (await row.boundingBox())!;
   // Compare the same screen pixels for two unselected rows. The cursor, handles and controls are outside this crop.
   const clip = { x: Math.ceil(box.x), y: Math.ceil(box.y), width: Math.floor(box.width) - 1, height: Math.floor(box.height * 2) - 1 };
-  const capture = () => page.screenshot({ clip, scale: 'css', animations: 'disabled', caret: 'hide' });
-  const before = await capture();
+  const capture = (path?: string) => page.screenshot({ path, clip, scale: 'css', animations: 'disabled', caret: 'hide' });
+  const before = await capture(testInfo.outputPath('live.png'));
   await hold(page, browserName, t.pane, await cell(t.pane, 'tap target', 6));
   await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe('target');
-  expect((await capture()).equals(before), 'the frozen rows match the live renderer at their original coordinates').toBe(true);
+  const frozen = await capture(testInfo.outputPath('frozen.png'));
+  if (!frozen.equals(before)) {
+    await testInfo.attach('live.png', { body: before, contentType: 'image/png' });
+    await testInfo.attach('frozen.png', { body: frozen, contentType: 'image/png' });
+  }
+  expect(frozen.equals(before), 'the frozen rows match the live renderer at their original coordinates').toBe(true);
+  const snapshot = t.pane.locator('.terminal-native-selection pre');
+  const original = await snapshot.evaluate(pre => {
+    const range = document.createRange(); range.selectNodeContents(pre); return range.toString();
+  });
+  expect(original).toContain('Aligned column \u2590\u259b\u2588\u259c\u258c');
   t.send(Buffer.from('\u001b[2J\u001b[Hnew frame'));
   await expect(rows).toContainText('new frame');
   expect((await capture()).equals(before), 'live redraws cannot change the frozen formatting').toBe(true);

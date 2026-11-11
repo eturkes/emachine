@@ -3,6 +3,7 @@ import '@fontsource/jetbrains-mono/700.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { BlockGlyphsAddon } from './terminal-block-glyphs';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachNativeSelection } from './terminal-native-selection';
 import { attachTerminalClipboard } from './terminal-clipboard';
@@ -215,6 +216,7 @@ export class TerminalPane {
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
       this.terminal.open(this.host);
+      this.terminal.loadAddon(new BlockGlyphsAddon());
       this.detachInput = attachTerminalInput(this.host, this.terminal);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal, this.nativeSelection?.open);
       this.attachKeyboard();
