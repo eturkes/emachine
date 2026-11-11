@@ -96,8 +96,9 @@ Use this command if a device or cookie may have been lost: signing out one app c
 
 Tap **Keyboard** to type directly in the terminal. Tap it again to hide the keyboard.
 Its pressed state marks active terminal input. The controls use one row when they fit and distribute whole groups across two rows as the terminal narrows, including when History is open.
-On narrow phones, **Keyboard** stays visible beside a scrollable key row, with text and prompt tools below.
+On narrow phones, **Keyboard** stays visible beside a scrollable key row, with **Text** and prompt tools below.
 At the start of the keys, tap **Esc** to send Escape or **Tab** for shell completion or the running program's Tab action.
+**Copy** and **Paste** immediately follow **Enter** in the same group.
 The other keys are grouped into arrows and key combinations: **Shift + Left**, **Ctrl-C**, **Ctrl-O**, **Ctrl-E**, and **Ctrl-X Ctrl-S**.
 Connection messages and **Take control** appear above the controls when needed.
 You can also tap the terminal once. Swipe vertically to scroll terminal history.
@@ -139,7 +140,7 @@ Snapshots are discarded when closed, when switching away from their terminal, or
 
 ## Type with native spelling tools
 
-On iPhone or iPad, select **Text** beside **Copy** and **Paste** in the text tools row.
+On iPhone or iPad, select **Text** in the toolbar; on narrow phones it appears in the lower tools row.
 Type in the **Terminal text** field and use the keyboard's spelling corrections.
 Select **Send text** to paste the completed draft into the terminal.
 

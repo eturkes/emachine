@@ -311,17 +311,29 @@ for (const width of [390, 1100]) test(`iOS native handoff ends on Done and is di
   const t = await terminal(page, 'MacIntel');
   const done = t.pane.getByRole('button', { name: 'Done selecting', exact: true });
   const copy = t.pane.getByRole('button', { name: 'Copy', exact: true });
+  const paste = t.pane.getByRole('button', { name: 'Paste', exact: true });
+  const common = t.pane.getByRole('group', { name: 'Common keys', exact: true });
   const controls = t.pane.locator('.terminal-keyboard-controls');
   const host = t.pane.locator('.terminal-host');
   const shortcut = t.pane.getByRole('button', { name: 'Ctrl-O', exact: true });
   if (width === 1100) await expect(shortcut).toBeInViewport({ ratio: 1 });
   const shortcutBox = width === 1100 ? (await shortcut.boundingBox())! : undefined;
+  if (width === 390) {
+    expect(await t.pane.locator('.terminal-keys').evaluate(element => {
+      element.scrollLeft = element.scrollWidth;
+      return element.scrollLeft;
+    })).toBeGreaterThan(0);
+    await expect(copy).not.toBeInViewport();
+  }
   const hostBefore = await host.boundingBox();
   const start = await cell(t.pane, 'output ready', 8);
   await hold(page, browserName, t.pane, start);
   await expect(done).toBeVisible({ timeout: 3000 });
   await expect(done).toBeInViewport({ ratio: 1 });
+  await expect(copy).toHaveCount(1);
+  await expect(paste).toHaveCount(1);
   await expect(copy).toBeInViewport({ ratio: 1 });
+  await expect(paste).toBeInViewport({ ratio: 1 });
   await expect(controls).toHaveJSProperty('inert', true);
   expect(await host.boundingBox()).toEqual(hostBefore);
   await copy.tap();
@@ -335,6 +347,7 @@ for (const width of [390, 1100]) test(`iOS native handoff ends on Done and is di
   await done.tap();
   await expect(done).toBeHidden();
   await expect(controls).toHaveJSProperty('inert', false);
+  await expect(common.getByRole('button')).toHaveText(['Esc', 'Tab', 'Enter', 'Copy', 'Paste']);
   expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
   await expect(t.pane.locator('.xterm-helper-textarea')).not.toBeFocused();
   await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
@@ -343,8 +356,30 @@ for (const width of [390, 1100]) test(`iOS native handoff ends on Done and is di
   await expect(done).toBeHidden();
   await page.getByRole('button', { name: 'alpha on Test workstation, online', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
   await expect(done).toBeHidden();
+  await expect(common.getByRole('button')).toHaveText(['Esc', 'Tab', 'Enter', 'Copy', 'Paste']);
   expect(await page.evaluate(() => document.getSelection()?.toString())).toBe('');
   expect(t.input).toEqual([]);
+});
+
+test('iOS Paste from a frozen selection closes it and sends the clipboard once', async ({ page, browserName }) => {
+  const t = await terminal(page);
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, 'readText', { configurable: true, value: async () => 'paste after selection' }));
+  expect(await t.pane.locator('.terminal-keys').evaluate(element => {
+    element.scrollLeft = element.scrollWidth;
+    return element.scrollLeft;
+  })).toBeGreaterThan(0);
+  await hold(page, browserName, t.pane, await cell(t.pane, 'output ready', 8));
+  const done = t.pane.getByRole('button', { name: 'Done selecting', exact: true });
+  await expect(done).toBeVisible();
+  const paste = t.pane.getByRole('button', { name: 'Paste', exact: true });
+  await expect(paste).toHaveCount(1);
+  await expect(paste).toBeInViewport({ ratio: 1 });
+  await paste.tap();
+  await expect(done).toBeHidden();
+  await expect(t.pane.getByRole('group', { name: 'Common keys', exact: true }).getByRole('button')).toHaveText(['Esc', 'Tab', 'Enter', 'Copy', 'Paste']);
+  await expect(t.pane.locator('.terminal-keyboard-controls')).toHaveJSProperty('inert', false);
+  await expect(t.pane.locator('.xterm-helper-textarea')).toBeFocused();
+  await expect.poll(() => t.input.join('')).toBe('paste after selection');
 });
 
 test('non-iOS touch keeps the live selection without a native handoff', async ({ page, browserName }) => {

@@ -76,6 +76,10 @@ for (const platform of ['Linux x86_64', 'iPhone']) test.describe(`responsive ter
   test('terminal toolbar distributes whole groups across available rows', async ({ page }, testInfo) => {
     await page.route(/\/api\/v1\/projects\/[^/]+\/prompt-history(?:\?.*)?$/, route => route.fulfill({ json: { prompts: [], nextCursor: null } }));
     const t = await terminal(page, platform);
+    await expect(t.pane.getByRole('group', { name: 'Common keys', exact: true }).getByRole('button')).toHaveText(['Esc', 'Tab', 'Enter', 'Copy', 'Paste']);
+    const textTools = t.pane.getByRole('group', { name: 'Text tools', exact: true });
+    await expect(textTools).toHaveCount(platform === 'iPhone' ? 1 : 0);
+    if (platform === 'iPhone') await expect(textTools.getByRole('button')).toHaveText(['Text']);
     const mounted = await t.pane.locator('.xterm').elementHandle();
     const geometry = () => t.pane.evaluate(element => {
       const toolbar = element.querySelector<HTMLElement>('.terminal-toolbar')!;
@@ -93,14 +97,17 @@ for (const platform of ['Linux x86_64', 'iPhone']) test.describe(`responsive ter
         return { top: items[0].top, left: items[0].left, right: items.at(-1)!.right, sameRow: items.every(rect => Math.abs(rect.top - items[0].top) < 2) };
       };
       const navigation = group('Navigation'), shortcuts = group('Key combinations');
+      const groupNames = ['Common keys', 'Navigation', 'Key combinations', 'Prompt tools'];
+      if (toolbar.querySelector('[role="group"][aria-label="Text tools"]')) groupNames.push('Text tools');
       return {
         rows: tops.length,
         contained: rectangles.every(rect => rect.left >= box.left - 1 && rect.right <= box.right + 1 && rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1),
         overflow: Array.from(toolbar.querySelectorAll<HTMLElement>('.terminal-keys, .terminal-tools')).some(part => part.clientWidth > 0 && part.scrollWidth > part.clientWidth + 1),
         pageOverflow: document.documentElement.scrollWidth > innerWidth,
-        groupsIntact: ['Navigation', 'Key combinations', 'Text tools', 'Prompt tools'].every(name => group(name).sameRow),
+        groupsIntact: groupNames.every(name => group(name).sameRow),
         commonTop: key('Esc').top, shortcutTop: shortcuts.top,
-        groupGap: navigation.left - key('Enter').right, buttonGap: key('↓').left - key('↑').right,
+        groupGap: navigation.left - key('Paste').right, buttonGap: key('↓').left - key('↑').right,
+        copyGap: key('Copy').left - key('Enter').right, pasteGap: key('Paste').left - key('Copy').right,
         shortcutCenter: ((shortcuts.left + shortcuts.right) / 2 - box.left) / box.width,
         width: box.width,
       };
@@ -115,6 +122,8 @@ for (const platform of ['Linux x86_64', 'iPhone']) test.describe(`responsive ter
     const expectWide = async () => {
       const layout = await expectRows(1);
       expect(layout.groupGap).toBeGreaterThan(layout.buttonGap + 24);
+      expect(layout.copyGap).toBeCloseTo(layout.buttonGap, 3);
+      expect(layout.pasteGap).toBeCloseTo(layout.buttonGap, 3);
       expect(layout.shortcutCenter).toBeGreaterThan(0.4);
       expect(layout.shortcutCenter).toBeLessThan(0.7);
     };
@@ -400,7 +409,8 @@ test.describe('terminal input', () => {
     await expect(tab).toHaveCount(1);
     const textTools = t.pane.getByRole('group', { name: 'Text tools', exact: true });
     const promptTools = t.pane.getByRole('group', { name: 'Prompt tools', exact: true });
-    await expect(textTools.getByRole('button')).toHaveText(['Text', 'Copy', 'Paste']);
+    await expect(t.pane.getByRole('group', { name: 'Common keys', exact: true }).getByRole('button')).toHaveText(['Esc', 'Tab', 'Enter', 'Copy', 'Paste']);
+    await expect(textTools.getByRole('button')).toHaveText(['Text']);
     await expect(promptTools.getByRole('button')).toHaveText(['Prompts', 'History']);
     await expect(t.pane.getByRole('group', { name: 'Modifiers', exact: true, includeHidden: true })).toHaveCount(0);
     await expect(t.pane.getByRole('button', { name: /^Use (Control|Alt) with/, includeHidden: true })).toHaveCount(0);
@@ -413,22 +423,27 @@ test.describe('terminal input', () => {
       await expect(tab).toBeInViewport({ ratio: 1 });
       const geometry = await t.pane.evaluate(element => {
         const keyboard = element.querySelector('.terminal-keyboard')!.getBoundingClientRect();
-        const [escape, tab, enter, up, down] = ['Esc', 'Tab', 'Enter', '↑', '↓'].map(label =>
-          element.querySelector(`button[aria-label="${label}"]`)!.getBoundingClientRect());
+        const keys = element.querySelector('.terminal-keys')!;
+        const [escape, tab, enter, copy, paste, up, down] = ['Esc', 'Tab', 'Enter', 'Copy', 'Paste', '↑', '↓'].map(label =>
+          keys.querySelector(`button[aria-label="${label}"]`)!.getBoundingClientRect());
         const tools = element.querySelector('.terminal-tools')!.getBoundingClientRect();
-        return { keyboardGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, enterGap: enter.left - tab.right, shortcutGap: down.left - up.right, groupGap: up.left - enter.right,
-          keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: enter.top,
+        return { keyboardGap: escape.left - keyboard.right, tabGap: tab.left - escape.right, enterGap: enter.left - tab.right, copyGap: copy.left - enter.right, pasteGap: paste.left - copy.right, shortcutGap: down.left - up.right, groupGap: up.left - paste.right,
+          keyboardTop: keyboard.top, escapeTop: escape.top, tabTop: tab.top, shortcutTop: enter.top, copyTop: copy.top, pasteTop: paste.top,
           toolsTop: tools.top, keyboardBottom: keyboard.bottom,
           keyboardHeight: keyboard.height, escapeHeight: escape.height, escapeWidth: escape.width, tabHeight: tab.height, tabWidth: tab.width, shortcutHeight: enter.height };
       });
       expect(geometry.keyboardGap).toBeGreaterThan(geometry.shortcutGap);
       expect(geometry.tabGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.enterGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.copyGap).toBeCloseTo(geometry.shortcutGap, 3);
+      expect(geometry.pasteGap).toBeCloseTo(geometry.shortcutGap, 3);
       expect(geometry.groupGap).toBeGreaterThan(geometry.shortcutGap);
       expect(geometry.toolsTop).toBeGreaterThanOrEqual(geometry.keyboardBottom);
       expect(geometry.keyboardTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.escapeTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.tabTop).toBeCloseTo(geometry.shortcutTop, 3);
+      expect(geometry.copyTop).toBeCloseTo(geometry.shortcutTop, 3);
+      expect(geometry.pasteTop).toBeCloseTo(geometry.shortcutTop, 3);
       expect(geometry.keyboardHeight).toBeCloseTo(geometry.shortcutHeight, 3);
       expect(geometry.escapeHeight).toBeCloseTo(geometry.shortcutHeight, 3);
       expect(geometry.tabHeight).toBeCloseTo(geometry.shortcutHeight, 3);

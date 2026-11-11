@@ -37,7 +37,7 @@ export function attachTerminalToolbar(toolbar: HTMLElement, groups: HTMLElement[
     lineBreak.hidden = mode !== 'wrapped';
     if (split && lineBreak.nextSibling !== groups[split]) groups[split].before(lineBreak);
     if (mode === 'compact') return;
-    // Keep native selection's Done bar over first-row keys, clear of the still-usable Copy tools.
+    // Keep native selection's Copy/Paste/Done bar over first-row keys, clear of the other tools.
     const bounds = toolbar.getBoundingClientRect();
     const first = groups[0].getBoundingClientRect();
     const rowKeys = groups.slice(0, 3).map(group => group.getBoundingClientRect()).filter(rect => Math.abs(rect.top - first.top) < 1);

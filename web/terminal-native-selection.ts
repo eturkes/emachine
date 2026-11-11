@@ -2,7 +2,7 @@ import type { Terminal } from '@xterm/xterm';
 import { snapshotGrid } from './terminal-snapshot-grid';
 import { selectionPages, textPoint } from './terminal-selection-pages';
 
-export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, terminal: Terminal, copy: HTMLButtonElement) {
+export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, terminal: Terminal, copy: HTMLButtonElement, paste: HTMLButtonElement) {
   const display = document.createElement('div'); display.className = 'terminal-display';
   host.before(display); display.append(host);
   const view = document.createElement('section'); view.className = 'terminal-native-selection'; view.hidden = true;
@@ -15,6 +15,12 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
   // Use the keyboard control strip for Done so the frozen grid keeps its entire viewport.
   const keys = pane.querySelector<HTMLElement>('.terminal-keyboard-controls')!;
   bar.hidden = true; bar.append(hint, done); keys.after(bar);
+  // Keep the same clipboard actions reachable outside the inert keys without changing row widths.
+  const clipboard = [copy, paste].map(button => {
+    const placeholder = button.cloneNode(true) as HTMLButtonElement;
+    placeholder.setAttribute('aria-hidden', 'true'); placeholder.inert = true; placeholder.tabIndex = -1;
+    return { button, placeholder };
+  });
   view.append(output); display.append(view);
   const events = new AbortController(), { signal } = events;
   let pressedText: string | undefined;
@@ -42,10 +48,11 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
     const selection = document.getSelection();
     if (selection?.rangeCount && selection.getRangeAt(0).intersectsNode(output)) selection.removeAllRanges();
     view.hidden = bar.hidden = true; output.replaceChildren(); view.querySelector('style')?.remove();
+    for (const { button, placeholder } of clipboard) placeholder.replaceWith(button);
     resize.disconnect(); snapshot?.grid.dispose(); snapshot = undefined;
     keys.inert = host.inert = false; pressedText = undefined;
     terminal.clearSelection();
-    if (focus) copy.focus({ preventScroll: true });
+    if (focus) { copy.scrollIntoView({ block: 'nearest', inline: 'nearest' }); copy.focus({ preventScroll: true }); }
   };
   done.onclick = () => close(true);
   pane.addEventListener('keydown', event => {
@@ -60,7 +67,7 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
   copy.addEventListener('pointercancel', () => { pressedText = undefined; }, { signal });
   copy.addEventListener('mousedown', event => { if (!view.hidden) event.preventDefault(); }, { signal });
   pane.addEventListener('click', event => {
-    if (event.target instanceof Element && event.target.closest('.terminal-toolbar button, .terminal-session button') && !bar.contains(event.target) && !copy.contains(event.target)) close();
+    if (event.target instanceof Element && event.target.closest('.terminal-toolbar button, .terminal-session button') && !done.contains(event.target) && !copy.contains(event.target)) close();
   }, { capture: true, signal });
   return {
     open() {
@@ -79,6 +86,7 @@ export function attachNativeSelection(pane: HTMLElement, host: HTMLElement, term
       output.className = grid.ownerClass; output.style.backgroundColor = grid.background;
       view.prepend(grid.css); output.replaceChildren(pages.element);
       terminal.blur(); host.inert = keys.inert = true; view.hidden = bar.hidden = false;
+      for (const { button, placeholder } of clipboard) { button.before(placeholder); bar.insertBefore(button, done); }
       output.focus({ preventScroll: true });
       const range = document.createRange();
       range.setStart(...textPoint(output, start, false)); range.setEnd(...textPoint(output, end, true));

@@ -486,7 +486,7 @@ test('terminal Copy uses the selected text and reports unavailable clipboard acc
     ws.send(Buffer.from('\u001b[2J\u001b[HclipboardFixture\r\n'));
   });
   await page.goto(a.origin);
-  const copy = page.getByRole('group', { name: 'Text tools', exact: true }).getByRole('button', { name: 'Copy', exact: true });
+  const copy = page.getByRole('group', { name: 'Common keys', exact: true }).getByRole('button', { name: 'Copy', exact: true });
   await expect(page.locator('.xterm-rows')).toContainText('clipboardFixture');
   await page.evaluate(() => navigator.clipboard.writeText('preserve this'));
   await copy.click();
@@ -502,7 +502,7 @@ test('terminal Copy uses the selected text and reports unavailable clipboard acc
   await expect(page.locator('.toast-region')).toContainText('Clipboard access was not granted.');
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
   await copy.click();
-  await page.getByRole('group', { name: 'Text tools', exact: true }).getByRole('button', { name: 'Paste', exact: true }).click();
+  await page.getByRole('group', { name: 'Common keys', exact: true }).getByRole('button', { name: 'Paste', exact: true }).click();
   expect(errors).toEqual([]);
 });
 

@@ -139,7 +139,8 @@ export class TerminalPane {
     const copy = () => { void this.copy(); };
     const paste = () => { void this.paste(); };
     const copyButton = button('Copy', copy);
-    textTools.append(copyButton, button('Paste', paste));
+    const pasteButton = button('Paste', paste);
+    common.append(copyButton, pasteButton);
     this.keyboard = button('Keyboard', event => {
       const hide = (event.detail > 0 ? this.keyboardTap : undefined) ?? this.keyboardShown;
       this.keyboardTap = undefined;
@@ -195,7 +196,7 @@ export class TerminalPane {
         focusTerminal: () => this.terminal.focus(),
       });
       this.host.after(this.textInput.element); textTools.prepend(this.textInput.button);
-      this.nativeSelection = attachNativeSelection(this.element, this.host, this.terminal, copyButton);
+      this.nativeSelection = attachNativeSelection(this.element, this.host, this.terminal, copyButton, pasteButton);
     }
     this.prompts = new TerminalPrompts({
       link: () => this.link,
@@ -215,7 +216,8 @@ export class TerminalPane {
       });
       this.element.append(this.history.element); promptTools.append(this.history.button);
     }
-    this.detachToolbar = attachTerminalToolbar(toolbar, [common, navigation, shortcuts, textTools, promptTools], this.keyboard);
+    if (!this.textInput) textTools.remove();
+    this.detachToolbar = attachTerminalToolbar(toolbar, [common, navigation, shortcuts, ...(this.textInput ? [textTools] : []), promptTools], this.keyboard);
     // xterm caches fallback cell widths when opened before the bundled fonts load.
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
