@@ -98,7 +98,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .feature-frame { display: block; background: var(--bg); }
 .terminal-pane { --terminal-font-size: 14; --terminal-key-gap: 6px; position: relative; display: flex; touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .terminal-pane.terminal-ios { --terminal-font-size: 12; }
-.terminal-main { container: terminal / inline-size; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 14px 16px 0; }
+.terminal-main { container: terminal / inline-size; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 14px 8px 0; }
 .terminal-host { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-screen { -webkit-touch-callout: none; }
@@ -288,7 +288,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .tab { padding: 0 13px; }
   .new-terminal { width: 44px; height: 44px; }
   .terminal-pane { --terminal-font-size: 12; }
-  .terminal-main { padding: 9px 9px 0; }
+  .terminal-main { padding: 9px 6px 0; }
   .terminal-toolbar .terminal-keyboard { display: block; }
   .terminal-keys button, .terminal-keyboard { padding: 9px 10px; min-height: 44px; }
   .terminal-tools button { min-width: 44px; min-height: 44px; }
