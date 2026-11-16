@@ -207,6 +207,46 @@ test('iOS dark terminal uses black and makes dark ANSI and RGB text readable', a
   expect((await colors(sample(t.pane, 'iosDefault'))).background).toEqual([0, 0, 0]);
 });
 
+test.describe('background-only terminal styles', () => {
+  test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
+
+  for (const platform of ['desktop', 'ios'] as const) test(`default text stays readable on program backgrounds (${platform})`, async ({ page }, testInfo) => {
+    const samples = [
+      ['codexPrompt', '48;2;68;68;68'], ['ansiBackground', '100'], ['indexedBackground', '48;5;8'],
+      ['whiteBackground', '47'], ['lightBackground', '48;2;246;245;244'], ['blackBackground', '48;2;0;0;0'],
+      ['inverseLight', '7;38;2;246;245;244'], ['inverseDark', '7;38;2;66;66;66'],
+      ['dimPrompt', '2;48;2;68;68;68'], ['plainText', ''],
+    ] as const;
+    const content = '\u001b[2J\u001b[H' + samples.map(([label, sgr]) => `\u001b[0m\u001b[${sgr}m${label}\u001b[0m\r\n`).join('');
+    const t = await terminal(page, content, 'plainText', platform);
+    for (const theme of ['light', 'dark', 'light'] as const) {
+      if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.screenshot({ path: `test-results/background-only-${platform}-${theme}-${testInfo.project.name}.png`, animations: 'disabled' });
+      for (const [label] of samples) {
+        const rendered = await colors(sample(t.pane, label));
+        expect.soft(rendered.contrast, `${platform} ${theme}: ${label} (${JSON.stringify(rendered)})`).toBeGreaterThanOrEqual(label === 'dimPrompt' ? 2.25 : 4.5);
+      }
+      expect((await colors(sample(t.pane, 'codexPrompt'))).background).toEqual([68, 68, 68]);
+      expect((await colors(sample(t.pane, 'inverseLight'))).background).toEqual([246, 245, 244]);
+      expect((await colors(sample(t.pane, 'inverseDark'))).background).toEqual([66, 66, 66]);
+    }
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect.poll(async () => (await colors(sample(t.pane, 'codexPrompt'))).contrast).toBeGreaterThanOrEqual(4.5);
+    const target = sample(t.pane, 'codexPrompt');
+    const bounds = await target.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.dblclick(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+    await expect(target).toHaveClass(/xterm-decoration-top/);
+    expect((await colors(target)).contrast).toBeGreaterThanOrEqual(4.5);
+    await t.pane.getByRole('button', { name: 'Copy', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).contrastCopiedText)).toBe('codexPrompt');
+    expect(t.input).toEqual([]);
+  });
+});
+
 test.describe('desktop terminal palette', () => {
   test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
 

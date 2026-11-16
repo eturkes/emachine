@@ -3,7 +3,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { fixture } from './network-helper.mjs';
 
 let machine: any;
-test.beforeAll(async () => { machine = await fixture(); });
+test.beforeAll(async () => { machine = await fixture({ webRoot: process.env.EMACHINE_TEST_WEB_ROOT }); });
 test.afterAll(async () => { await machine?.close(); });
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -162,6 +162,44 @@ for (const theme of ['dark', 'light']) test(`iOS native handoff preserves termin
   t.send(Buffer.from('\u001b[2J\u001b[Hnew frame'));
   await expect(rows).toContainText('new frame');
   expect((await capture()).equals(before), 'live redraws cannot change the frozen formatting').toBe(true);
+  expect(t.input).toEqual([]);
+});
+
+test('iOS frozen scrollback retains readable default text after live colors change', async ({ page, browserName }, testInfo) => {
+  const t = await terminal(page);
+  if (await page.locator('html').getAttribute('data-theme') !== 'light') await page.getByRole('button', { name: /^Theme:/ }).tap();
+  t.send(JSON.stringify({ type: 'state', mode: 'observe', cols: 32, rows: 10 }));
+  t.send(Buffer.from('\u001b[2J\u001b[3J\u001b[H\u001b[?25l\u001b[48;2;68;68;68mfilled prompt\u001b[0m'));
+  const rows = t.pane.locator('.xterm-rows');
+  const live = rows.getByText('filled prompt', { exact: true });
+  await expect(live).toBeVisible();
+  const painted = await live.evaluate(element => ({ foreground: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor }));
+  const luminance = (css: string) => css.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+    const channel = value / 255; return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+  }).reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
+  const levels = [luminance(painted.foreground), luminance(painted.background)].sort((a, b) => a - b);
+  expect((levels[1] + .05) / (levels[0] + .05)).toBeGreaterThanOrEqual(4.5);
+  const first = (await rows.locator(':scope > div').first().boundingBox())!;
+  const clip = { x: Math.ceil(first.x), y: Math.ceil(first.y), width: Math.floor(first.width) - 1, height: Math.floor(first.height) - 1 };
+  const capture = (path?: string) => page.screenshot({ path, clip, scale: 'css', animations: 'disabled', caret: 'hide' });
+  const before = await capture(testInfo.outputPath('default-text-live.png'));
+  t.send(Buffer.from('\r\n' + [...Array.from({ length: 100 }, (_, i) => 'filler ' + i), 'tap target'].join('\r\n')));
+  await expect(rows).toContainText('tap target');
+  await expect(rows).not.toContainText('filled prompt');
+  await hold(page, browserName, t.pane, await cell(t.pane, 'tap target', 6));
+  const snapshot = t.pane.locator('.terminal-native-selection pre');
+  t.send(Buffer.from('\u001b]10;rgb:00/ff/00\u0007\u001b]11;rgb:00/00/00\u0007\u001b[2J\u001b[3J\u001b[Hnew frame'));
+  await expect(rows).toContainText('new frame');
+  await snapshot.evaluate(pre => { pre.scrollTop = 0; document.getSelection()!.removeAllRanges(); });
+  const frozen = snapshot.locator('.terminal-native-row').getByText('filled prompt', { exact: true });
+  await expect(frozen).toBeInViewport();
+  await expect(frozen).toHaveCSS('color', painted.foreground);
+  await expect(frozen).toHaveCSS('background-color', painted.background);
+  expect((await capture(testInfo.outputPath('default-text-frozen.png'))).equals(before)).toBe(true);
+  const range = await snapshotRange(snapshot, 0, 'filled prompt'.length);
+  await range.evaluate(range => { const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range); });
+  await t.pane.getByRole('button', { name: 'Copy', exact: true }).tap();
+  await expect.poll(() => writes(page)).toEqual(['filled prompt']);
   expect(t.input).toEqual([]);
 });
 

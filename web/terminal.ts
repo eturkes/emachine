@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { BlockGlyphsAddon } from './terminal-block-glyphs';
+import { DefaultTextContrastAddon } from './terminal-default-contrast';
 import { attachTerminalTouchScroll } from './terminal-touch';
 import { attachNativeSelection } from './terminal-native-selection';
 import { attachTerminalClipboard } from './terminal-clipboard';
@@ -164,7 +165,7 @@ export class TerminalPane {
     toolbar.append(keyboardControls, tools);
     const main = document.createElement('div'); main.className = 'terminal-main';
     main.append(this.host, session, toolbar); this.element.append(main);
-    // Only iOS dark mode corrects contrast; bold keeps the requested palette entry.
+    // iOS dark mode corrects all text; the addon handles default text on explicit fills.
     this.terminal = new Terminal({
       theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
@@ -222,6 +223,7 @@ export class TerminalPane {
     Promise.allSettled([400, 700].map(weight => document.fonts.load(`${weight} ${this.terminal.options.fontSize}px "JetBrains Mono"`))).then(() => {
       if (this.closed) return;
       this.terminal.open(this.host);
+      this.terminal.loadAddon(new DefaultTextContrastAddon());
       this.terminal.loadAddon(new BlockGlyphsAddon());
       this.detachInput = attachTerminalInput(this.host, this.terminal);
       this.detachTouch = attachTerminalTouchScroll(this.host, this.terminal, this.nativeSelection?.open);
