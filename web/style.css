@@ -102,6 +102,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .terminal-host { min-width: 0; min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pinch-zoom; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-screen { -webkit-touch-callout: none; }
+/* xterm's block blink inherits the pale terminal background; keep its outline visible. */
+:root[data-theme='light'] .terminal-host .xterm-cursor.xterm-cursor-block {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
 .terminal-block-glyph { position: relative; -webkit-text-fill-color: transparent; }
 .terminal-block-ink { position: absolute; background-color: currentColor; pointer-events: none; }
 .terminal-display { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }

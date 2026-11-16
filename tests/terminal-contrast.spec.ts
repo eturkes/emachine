@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import sharp from 'sharp';
 // @ts-expect-error This JavaScript fixture drives the real native server.
 import { fixture } from './network-helper.mjs';
 
@@ -20,6 +21,7 @@ const output = '\u001b[2J\u001b[H' + samples.map(([label, sgr]) => `\u001b[0m\u0
 
 async function terminal(page: Page, content = output, lastLabel = 'dimBlack', platform: 'ios' | 'desktop' = 'ios') {
   const input: string[] = [];
+  let sendOutput: (data: string) => void = () => { throw new Error('Terminal socket is not connected'); };
   await page.addInitScript(platform => {
     Object.defineProperty(navigator, 'platform', { configurable: true, value: platform === 'ios' ? 'MacIntel' : 'Linux x86_64' });
     Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: platform === 'ios' ? 5 : 0 });
@@ -29,6 +31,7 @@ async function terminal(page: Page, content = output, lastLabel = 'dimBlack', pl
   }, platform);
   await page.routeWebSocket(/\/api\/v1\/terminal\//, ws => {
     ws.onMessage(data => { if (Buffer.isBuffer(data)) input.push(data.toString()); });
+    sendOutput = data => ws.send(Buffer.from(data));
     ws.send(JSON.stringify({ type: 'state', mode: 'control', session: 'contrast-fixture', cols: 80, rows: 24 }));
     ws.send(Buffer.from(content));
   });
@@ -40,7 +43,7 @@ async function terminal(page: Page, content = output, lastLabel = 'dimBlack', pl
   if (await page.locator('html').getAttribute('data-theme') !== 'dark') await page.getByRole('button', { name: /^Theme:/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  return { pane, input };
+  return { pane, input, sendOutput: (data: string) => sendOutput(data) };
 }
 
 function sample(pane: Locator, label: string) {
@@ -304,6 +307,83 @@ test.describe('desktop terminal palette', () => {
     await expect(target).toHaveClass(/xterm-decoration-top/);
     await t.pane.getByRole('button', { name: 'Copy', exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as any).contrastCopiedText)).toBe('explicitRgb');
+    expect(t.input).toEqual([]);
+  });
+});
+
+test.describe('outlined light terminal cursor', () => {
+  test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
+
+  for (const platform of ['desktop', 'ios'] as const) test(`light block cursor retains its border through blinking and focus (${platform})`, async ({ page }, testInfo) => {
+    if (platform === 'ios') await page.setViewportSize({ width: 390, height: 844 });
+    // Match the screenshot's shaded prompt and blank cursor cell, not just the page background.
+    const content = '\u001b[2J\u001b[H\u001b[48;2;235;234;233m> ffsa' + ' '.repeat(74)
+      + '\u001b[1;7H\u001b[?25h\u001b[1 q';
+    const t = await terminal(page, content, 'ffsa', platform);
+    const cursor = t.pane.locator('.xterm-cursor');
+    const input = t.pane.locator('.xterm-helper-textarea');
+    const frame = () => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const outline = () => cursor.evaluate(element => {
+      const style = getComputedStyle(element);
+      return [style.outlineStyle, style.outlineWidth, style.outlineColor, style.outlineOffset];
+    });
+
+    for (const [pass, theme] of ['light', 'dark', 'light'].entries()) {
+      if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
+      if (pass === 2) await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(t.pane.locator('.xterm-rows')).toContainText('ffsa');
+      await input.focus();
+      await expect(cursor).toHaveClass(/xterm-cursor-block/);
+      await frame();
+      for (const time of [100, 600]) {
+        // Seek the real xterm animation deterministically without replacing its keyframes.
+        const animations = await cursor.evaluate((element, time) => {
+          const animations = element.getAnimations();
+          for (const animation of animations) { animation.pause(); animation.currentTime = time; }
+          return animations.length;
+        }, time);
+        expect(animations).toBeGreaterThan(0);
+        await frame();
+        const png = await cursor.screenshot({ path: testInfo.outputPath(`cursor-${pass}-${theme}-${time}.png`), animations: 'allow' });
+        if (theme === 'light') {
+          expect.soft(await outline(), `light cursor border at ${time}ms`).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+          const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+          const dark = (x: number, y: number) => {
+            const offset = (y * info.width + x) * info.channels;
+            return data[offset] < 160 && data[offset + 1] < 160 && data[offset + 2] < 160;
+          };
+          // Check all four edges, allowing fractional cell positioning at screenshot boundaries.
+          const vertical = (right: boolean) => Array.from({ length: info.height - 4 }, (_, index) => index + 2)
+            .filter(y => [0, 1].some(offset => dark(right ? info.width - 1 - offset : offset, y))).length;
+          const horizontal = (bottom: boolean) => Array.from({ length: info.width - 4 }, (_, index) => index + 2)
+            .filter(x => [0, 1].some(offset => dark(x, bottom ? info.height - 1 - offset : offset))).length;
+          expect.soft([vertical(false), vertical(true), horizontal(false), horizontal(true)], `painted border at ${time}ms`)
+            .toEqual([info.height - 4, info.height - 4, info.width - 4, info.width - 4]);
+        } else {
+          expect((await outline())[0], 'dark block cursor keeps its existing appearance').toBe('none');
+        }
+      }
+      await input.blur();
+      await expect(cursor).toHaveClass(/xterm-cursor-outline/);
+      if (theme === 'light') await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+    }
+
+    await input.focus();
+    t.sendOutput('\u001b[2 q');
+    await expect(cursor).not.toHaveClass(/xterm-cursor-blink/);
+    await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+    for (const [sequence, shape] of [['5', 'bar'], ['3', 'underline']]) {
+      t.sendOutput(`\u001b[${sequence} q`);
+      await expect(cursor).toHaveClass(new RegExp(`xterm-cursor-${shape}`));
+      await expect.poll(async () => (await outline())[0]).toBe('none');
+    }
+    t.sendOutput('\u001b[1 q\u001b[?25l');
+    await expect(cursor).toHaveCount(0);
+    t.sendOutput('\u001b[1;9H\u001b[?25h');
+    await expect(cursor).toHaveCount(1);
+    await expect(cursor).toHaveClass(/xterm-cursor-block/);
+    await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
     expect(t.input).toEqual([]);
   });
 });
