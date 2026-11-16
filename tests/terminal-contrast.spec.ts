@@ -311,10 +311,10 @@ test.describe('desktop terminal palette', () => {
   });
 });
 
-test.describe('steady outlined terminal cursor', () => {
+test.describe('steady terminal cursor focus states', () => {
   test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
 
-  for (const platform of ['desktop', 'ios'] as const) test(`cursor stays steady and outlined despite program blink requests (${platform})`, async ({ page }, testInfo) => {
+  for (const platform of ['desktop', 'ios'] as const) test(`cursor is filled when focused and outlined when blurred without blinking (${platform})`, async ({ page }, testInfo) => {
     if (platform === 'ios') await page.setViewportSize({ width: 390, height: 844 });
     // Match the screenshot's shaded prompt and blank cursor cell, not just the page background.
     const content = '\u001b[2J\u001b[H\u001b[48;2;235;234;233m> ffsa' + ' '.repeat(74)
@@ -352,33 +352,26 @@ test.describe('steady outlined terminal cursor', () => {
         previousPixels = data;
         const center = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
         expect.soft(Array.from(data.subarray(center, center + 3)), `${theme} cursor fill stays visible`)
-          .toEqual(theme === 'light' ? [246, 245, 244] : [214, 214, 214]);
-        if (theme === 'light') {
-          expect.soft(await outline(), `light cursor border at ${time}ms`).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
-          const dark = (x: number, y: number) => {
-            const offset = (y * info.width + x) * info.channels;
-            return data[offset] < 160 && data[offset + 1] < 160 && data[offset + 2] < 160;
-          };
-          // Check all four edges, allowing fractional cell positioning at screenshot boundaries.
-          const vertical = (right: boolean) => Array.from({ length: info.height - 4 }, (_, index) => index + 2)
-            .filter(y => [0, 1].some(offset => dark(right ? info.width - 1 - offset : offset, y))).length;
-          const horizontal = (bottom: boolean) => Array.from({ length: info.width - 4 }, (_, index) => index + 2)
-            .filter(x => [0, 1].some(offset => dark(x, bottom ? info.height - 1 - offset : offset))).length;
-          expect.soft([vertical(false), vertical(true), horizontal(false), horizontal(true)], `painted border at ${time}ms`)
-            .toEqual([info.height - 4, info.height - 4, info.width - 4, info.width - 4]);
-        } else {
-          expect((await outline())[0], 'dark block cursor keeps its existing appearance').toBe('none');
-        }
+          .toEqual(theme === 'light' ? [69, 69, 69] : [214, 214, 214]);
+        expect((await outline())[0], 'focused cursor is a filled block, without an outline').toBe('none');
+        await expect(cursor).toHaveCSS('color', theme === 'light' ? 'rgb(246, 245, 244)'
+          : platform === 'ios' ? 'rgb(0, 0, 0)' : 'rgb(0, 36, 81)');
       }
       await input.blur();
       await expect(cursor).toHaveClass(/xterm-cursor-outline/);
-      if (theme === 'light') await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+      await expect.poll(outline).toEqual(['solid', '1px', theme === 'light' ? 'rgb(69, 69, 69)' : 'rgb(214, 214, 214)', '-1px']);
+      await expect.poll(animationStates).toEqual([]);
+      const unfocused = await cursor.screenshot({ path: testInfo.outputPath(`cursor-${pass}-${theme}-unfocused.png`), animations: 'allow' });
+      const { data, info } = await sharp(unfocused).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      const center = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+      expect(Array.from(data.subarray(center, center + 3)), 'unfocused outline keeps the original prompt fill').toEqual([235, 234, 233]);
     }
 
     await input.focus();
     t.sendOutput('\u001b[2 q');
     await expect(cursor).not.toHaveClass(/xterm-cursor-blink/);
-    await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+    await expect.poll(async () => (await outline())[0]).toBe('none');
+    await expect(cursor).toHaveCSS('background-color', 'rgb(69, 69, 69)');
     for (const [sequence, shape] of [['5', 'bar'], ['3', 'underline']]) {
       t.sendOutput(`\u001b[${sequence} q`);
       await expect(cursor).toHaveClass(new RegExp(`xterm-cursor-${shape}`));
@@ -393,15 +386,25 @@ test.describe('steady outlined terminal cursor', () => {
     t.sendOutput('\u001b[1;9H\u001b[?25h');
     await expect(cursor).toHaveCount(1);
     await expect(cursor).toHaveClass(/xterm-cursor-block/);
-    await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+    await expect.poll(async () => (await outline())[0]).toBe('none');
+    await expect(cursor).toHaveCSS('background-color', 'rgb(69, 69, 69)');
     t.sendOutput('\u001b[0 q');
     await expect(cursor).not.toHaveClass(/xterm-cursor-blink/);
     await expect.poll(animationStates).toEqual([]);
     t.sendOutput('\u001b[1;9HQ\u001b[1;9H\u001b[?12h');
     await expect(cursor).toHaveText('Q');
-    await expect(cursor).toHaveCSS('color', 'rgb(66, 66, 66)');
+    await expect(cursor).toHaveCSS('color', 'rgb(246, 245, 244)');
     await frame();
     await expect.poll(animationStates).toEqual([{ state: 'paused', time: 0 }]);
+    await input.blur();
+    await expect(cursor).toHaveClass(/xterm-cursor-outline/);
+    await expect(cursor).toHaveText('Q');
+    await expect(cursor).toHaveCSS('background-color', 'rgb(235, 234, 233)');
+    await expect(cursor).toHaveCSS('color', 'rgb(66, 66, 66)');
+    await input.focus();
+    await expect(cursor).toHaveClass(/xterm-cursor-block/);
+    await expect(cursor).toHaveCSS('background-color', 'rgb(69, 69, 69)');
+    await expect(cursor).toHaveCSS('color', 'rgb(246, 245, 244)');
     expect(t.input).toEqual([]);
   });
 });

@@ -107,13 +107,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   animation-play-state: paused !important;
   animation-delay: 0s !important;
 }
-/* Keep the light cursor pale and outlined, including over a printed character. */
-:root[data-theme='light'] .terminal-host .xterm-rows .xterm-cursor.xterm-cursor-block {
-  background-color: inherit !important;
-  color: inherit !important;
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
 .terminal-block-glyph { position: relative; -webkit-text-fill-color: transparent; }
 .terminal-block-ink { position: absolute; background-color: currentColor; pointer-events: none; }
 .terminal-display { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
