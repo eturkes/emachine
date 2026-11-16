@@ -169,7 +169,7 @@ export class TerminalPane {
     this.terminal = new Terminal({
       theme: displayTheme(theme), minimumContrastRatio: contrastRatio(theme), drawBoldTextInBrightColors: false,
       fontFamily: '"JetBrains Mono", "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace',
-      fontSize: 14, lineHeight: 1.15, cursorBlink: true, scrollback: 10000, allowProposedApi: true, convertEol: false,
+      fontSize: 14, lineHeight: 1.15, cursorBlink: false, scrollback: 10000, allowProposedApi: true, convertEol: false,
     });
     // Stock zmx counts wide emoji by code point in its default terminal mode.
     this.terminal.loadAddon(new Unicode11Addon());

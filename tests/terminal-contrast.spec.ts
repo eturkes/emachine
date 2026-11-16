@@ -311,10 +311,10 @@ test.describe('desktop terminal palette', () => {
   });
 });
 
-test.describe('outlined light terminal cursor', () => {
+test.describe('steady outlined terminal cursor', () => {
   test.use({ viewport: { width: 1360, height: 900 }, isMobile: false, hasTouch: false });
 
-  for (const platform of ['desktop', 'ios'] as const) test(`light block cursor retains its border through blinking and focus (${platform})`, async ({ page }, testInfo) => {
+  for (const platform of ['desktop', 'ios'] as const) test(`cursor stays steady and outlined despite program blink requests (${platform})`, async ({ page }, testInfo) => {
     if (platform === 'ios') await page.setViewportSize({ width: 390, height: 844 });
     // Match the screenshot's shaded prompt and blank cursor cell, not just the page background.
     const content = '\u001b[2J\u001b[H\u001b[48;2;235;234;233m> ffsa' + ' '.repeat(74)
@@ -327,6 +327,9 @@ test.describe('outlined light terminal cursor', () => {
       const style = getComputedStyle(element);
       return [style.outlineStyle, style.outlineWidth, style.outlineColor, style.outlineOffset];
     });
+    const animationStates = () => cursor.evaluate(element => element.getAnimations().map(animation => ({
+      state: animation.playState, time: animation.currentTime,
+    })));
 
     for (const [pass, theme] of ['light', 'dark', 'light'].entries()) {
       if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: /^Theme:/ }).click();
@@ -336,19 +339,22 @@ test.describe('outlined light terminal cursor', () => {
       await input.focus();
       await expect(cursor).toHaveClass(/xterm-cursor-block/);
       await frame();
-      for (const time of [100, 600]) {
-        // Seek the real xterm animation deterministically without replacing its keyframes.
-        const animations = await cursor.evaluate((element, time) => {
-          const animations = element.getAnimations();
-          for (const animation of animations) { animation.pause(); animation.currentTime = time; }
-          return animations.length;
-        }, time);
-        expect(animations).toBeGreaterThan(0);
-        await frame();
+      let previousPixels: Buffer | undefined;
+      for (const time of [100, 650]) {
+        // Leave the cursor untouched across a blink interval to catch visible animation.
+        await page.waitForTimeout(time);
+        const animations = await animationStates();
+        expect.soft(animations, 'application-requested blinking remains at its visible first frame')
+          .toEqual(animations.map(() => ({ state: 'paused', time: 0 })));
         const png = await cursor.screenshot({ path: testInfo.outputPath(`cursor-${pass}-${theme}-${time}.png`), animations: 'allow' });
+        const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        if (previousPixels) expect.soft(data.equals(previousPixels), 'cursor pixels do not blink').toBe(true);
+        previousPixels = data;
+        const center = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+        expect.soft(Array.from(data.subarray(center, center + 3)), `${theme} cursor fill stays visible`)
+          .toEqual(theme === 'light' ? [246, 245, 244] : [214, 214, 214]);
         if (theme === 'light') {
           expect.soft(await outline(), `light cursor border at ${time}ms`).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
-          const { data, info } = await sharp(png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
           const dark = (x: number, y: number) => {
             const offset = (y * info.width + x) * info.channels;
             return data[offset] < 160 && data[offset + 1] < 160 && data[offset + 2] < 160;
@@ -377,6 +383,10 @@ test.describe('outlined light terminal cursor', () => {
       t.sendOutput(`\u001b[${sequence} q`);
       await expect(cursor).toHaveClass(new RegExp(`xterm-cursor-${shape}`));
       await expect.poll(async () => (await outline())[0]).toBe('none');
+      await frame();
+      await expect.poll(animationStates).toEqual([{ state: 'paused', time: 0 }]);
+      if (shape === 'bar') await expect(cursor).not.toHaveCSS('box-shadow', 'none');
+      else await expect(cursor).toHaveCSS('border-bottom-style', 'solid');
     }
     t.sendOutput('\u001b[1 q\u001b[?25l');
     await expect(cursor).toHaveCount(0);
@@ -384,6 +394,14 @@ test.describe('outlined light terminal cursor', () => {
     await expect(cursor).toHaveCount(1);
     await expect(cursor).toHaveClass(/xterm-cursor-block/);
     await expect.poll(outline).toEqual(['solid', '1px', 'rgb(69, 69, 69)', '-1px']);
+    t.sendOutput('\u001b[0 q');
+    await expect(cursor).not.toHaveClass(/xterm-cursor-blink/);
+    await expect.poll(animationStates).toEqual([]);
+    t.sendOutput('\u001b[1;9HQ\u001b[1;9H\u001b[?12h');
+    await expect(cursor).toHaveText('Q');
+    await expect(cursor).toHaveCSS('color', 'rgb(66, 66, 66)');
+    await frame();
+    await expect.poll(animationStates).toEqual([{ state: 'paused', time: 0 }]);
     expect(t.input).toEqual([]);
   });
 });
